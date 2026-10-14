@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Runs · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+  <div class="page-head">
+    <div><h1>Runs</h1><p class="sub">Completed runs, newest first</p></div>
+    <div class="actions"><button class="btn">Compare two runs</button>
+      <button class="btn btn-primary">Start run</button></div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Run</th><th>Started</th><th class="num">Duration</th>
+        <th class="num">Domains</th><th class="num">Pages</th><th class="num">Changed</th>
+        <th class="num">New</th><th class="num">Failed</th><th class="num">Assets</th>
+        <th class="num">Bytes</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><a href="run-monitor.html" class="mono">r-2026-10-14-02</a>
+          <span class="pill pill-active" style="margin-left:6px"><i class="dot"></i>Running</span></td>
+          <td class="secondary">14 Oct 19:42</td><td class="num mono">26m</td><td class="num">4</td>
+          <td class="num">3,841</td><td class="num">1,284</td><td class="num">96</td>
+          <td class="num" style="color:var(--state-broken)">232</td>
+          <td class="num">8,104</td><td class="num">2.1 GB</td>
+          <td><div class="row-actions"><button class="btn btn-sm">Stop</button></div></td></tr>
+        <tr><td><a href="#" class="mono">r-2026-10-14-01</a></td>
+          <td class="secondary">14 Oct 08:15</td><td class="num mono">1h 04m</td><td class="num">12</td>
+          <td class="num">9,204</td><td class="num">412</td><td class="num">38</td>
+          <td class="num">61</td><td class="num">19,882</td><td class="num">4.8 GB</td>
+          <td><div class="row-actions"><button class="btn btn-sm">Report</button></div></td></tr>
+        <tr><td><a href="#" class="mono">r-2026-10-11-01</a></td>
+          <td class="secondary">11 Oct 21:03</td><td class="num mono">58m</td><td class="num">12</td>
+          <td class="num">9,118</td><td class="num">377</td><td class="num">24</td>
+          <td class="num">44</td><td class="num">18,201</td><td class="num">4.4 GB</td>
+          <td><div class="row-actions"><button class="btn btn-sm">Report</button></div></td></tr>
+        <tr><td><a href="#" class="mono">r-2026-10-07-01</a></td>
+          <td class="secondary">07 Oct 20:30</td><td class="num mono">51m</td><td class="num">10</td>
+          <td class="num">7,660</td><td class="num">298</td><td class="num">112</td>
+          <td class="num">29</td><td class="num">15,440</td><td class="num">3.7 GB</td>
+          <td><div class="row-actions"><button class="btn btn-sm">Report</button></div></td></tr>
+      </tbody>
+    </table>
+    <div class="table-foot"><span>4 of 38 runs</span></div>
+  </div>
+
+  <div class="card" style="margin-top:var(--space-4)">
+    <div class="card-head"><h3>r-2026-10-14-01 vs r-2026-10-11-01</h3>
+      <div class="actions"><span class="tag">domains whose health moved materially</span></div></div>
+    <div class="card-body">
+      <table class="table-compact">
+        <thead><tr><th>Domain</th><th class="num">Health was</th><th class="num">Now</th>
+          <th class="num">Δ</th><th>Read</th></tr></thead>
+        <tbody>
+          <tr><td>northfield-supply.com</td><td class="num muted">97%</td>
+            <td class="num" style="color:var(--state-broken)">41%</td>
+            <td class="num" style="color:var(--state-broken)">−56</td>
+            <td class="secondary">Redesign — title and price both stopped resolving</td></tr>
+          <tr><td>calder-industrial.co.uk</td><td class="num muted">95%</td>
+            <td class="num" style="color:var(--state-broken)">52%</td>
+            <td class="num" style="color:var(--state-broken)">−43</td>
+            <td class="secondary">Blocked mid-run, partial data</td></tr>
+          <tr><td>mertens-hydraulik.de</td><td class="num muted">94%</td>
+            <td class="num" style="color:var(--state-pending)">88%</td>
+            <td class="num" style="color:var(--state-pending)">−6</td>
+            <td class="secondary">Within normal variance — watch, do not act</td></tr>
+        </tbody>
+      </table>
+      <p class="muted" style="font-size:var(--text-xs);margin-bottom:0">
+        This view answers the question a single run cannot: whether a redesign broke you, or
+        whether that domain always had a 12% failure rate.</p>
+    </div>
+  </div>
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: 'runs', crumbs: ['Spydra','Runs'], runnable: true });</script>
+</body>
+</html>

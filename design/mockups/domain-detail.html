@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Domain detail · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+  <div class="page-head">
+    <div>
+      <div class="row-flex" style="margin-bottom:2px">
+        <h1 style="margin:0">northfield-supply.com</h1>
+        <span class="pill pill-broken"><i class="dot"></i>Broken</span></div>
+      <p class="sub">1,204 pages · 3 templates · extraction health 41% over 7 days</p>
+    </div>
+    <div class="actions">
+      <button class="btn">Pause</button>
+      <button class="btn">Crawl now</button>
+      <button class="btn btn-primary">Re-propose template</button></div>
+  </div>
+
+  <div class="banner banner-danger" style="margin-bottom:var(--space-5)">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linecap="round"><path d="M8 5.5v3.2 M8 11.3v.01 M8 1.8l6.2 11.4H1.8z"/></svg>
+    <div><strong>Marked broken during run r-2026-10-14-02.</strong>
+      59% of pages failed validation, above the 20% threshold. Crawling stopped mid-run —
+      recording thousands of empty extractions is how a redesign quietly corrupts a dataset.</div>
+    <div class="actions"><button class="btn btn-sm">View failing pages</button></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab" aria-selected="false">Overview</button>
+    <button class="tab" aria-selected="true">Templates</button>
+    <button class="tab" aria-selected="false">Pages</button>
+    <button class="tab" aria-selected="false">Activity</button>
+  </div>
+
+  <div class="table-wrap" style="margin-bottom:var(--space-5)">
+    <div class="table-toolbar"><strong style="font-size:var(--text-md)">Template versions</strong>
+      <span class="spacer"></span><button class="btn btn-sm">Diff v3 → v4</button></div>
+    <table>
+      <thead><tr><th>Version</th><th>URL pattern</th><th class="num">Fields</th>
+        <th>Active</th><th>Approved</th><th>Health since</th><th></th></tr></thead>
+      <tbody>
+        <tr><td class="mono">v4</td><td class="mono">/catalog/*</td><td class="num">6</td>
+          <td><span class="pill pill-active"><i class="dot"></i>Active</span></td>
+          <td class="secondary">02 Oct</td>
+          <td><span style="color:var(--state-broken)">41%</span></td>
+          <td><div class="row-actions"><button class="btn btn-sm">Edit</button></div></td></tr>
+        <tr><td class="mono">v3</td><td class="mono">/catalog/*</td><td class="num">6</td>
+          <td class="muted">—</td><td class="secondary">18 Sep</td>
+          <td class="secondary">97%</td>
+          <td><div class="row-actions"><button class="btn btn-sm">Restore</button></div></td></tr>
+        <tr><td class="mono">v2</td><td class="mono">/clearance/*</td><td class="num">4</td>
+          <td><span class="pill pill-active"><i class="dot"></i>Active</span></td>
+          <td class="secondary">18 Sep</td><td class="secondary">99%</td>
+          <td><div class="row-actions"><button class="btn btn-sm">Edit</button></div></td></tr>
+        <tr><td class="mono">v1</td><td class="mono">/catalog/*</td><td class="num">5</td>
+          <td class="muted">—</td><td class="secondary">11 Sep</td>
+          <td class="secondary">94%</td>
+          <td><div class="row-actions"><button class="btn btn-sm">Restore</button></div></td></tr>
+      </tbody>
+    </table>
+    <div class="table-foot"><span>Templates are keyed on
+      <span class="mono">(domain, url_pattern)</span> — one site often needs different
+      selectors per section</span></div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head"><h3>Settings</h3>
+        <div class="actions"><button class="btn btn-sm">Save</button></div></div>
+      <div class="card-body stack" style="gap:var(--space-3)">
+        <div class="grid grid-2">
+          <div class="field"><label>Crawl delay (ms)</label><input type="text" value="2000" /></div>
+          <div class="field"><label>Asset concurrency</label><input type="text" value="5" /></div>
+        </div>
+        <div class="grid grid-2">
+          <div class="field"><label>Render mode</label>
+            <select><option>static</option><option>rendered</option><option>auto</option></select></div>
+          <div class="field"><label>Max depth</label><input type="text" value="5" /></div>
+        </div>
+        <div class="field"><label>Deny patterns</label>
+          <textarea rows="3" class="mono" style="font-size:var(--text-xs)">?(sort|view|per_page)=
+/catalog/compare
+/account</textarea></div>
+        <div class="field"><label>User agent</label>
+          <input type="text" class="mono" style="font-size:var(--text-xs)"
+            value="Spydra/1.0 (+mailto:k.jagdish@gmail.com)" /></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>robots.txt</h3>
+        <div class="actions"><span class="tag">fetched 2 h ago</span></div></div>
+      <div class="card-body">
+        <div class="log" style="height:150px">
+          <div class="row"><span class="path">User-agent: *</span></div>
+          <div class="row"><span class="path">Disallow: /account</span></div>
+          <div class="row"><span class="path">Disallow: /checkout</span></div>
+          <div class="row"><span class="path" style="color:var(--state-pending)">Crawl-delay: 3</span></div>
+          <div class="row"><span class="path">Sitemap: /sitemap_index.xml</span></div>
+        </div>
+        <div class="banner banner-warn" style="margin-top:var(--space-3)">
+          <div><strong>Crawl-delay 3 s overrides your 2 s.</strong>
+            A site's stated delay is a floor, never lowered by configuration.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: 'domains', crumbs: ['Spydra','Domains','northfield-supply.com'], runnable: true });</script>
+</body>
+</html>

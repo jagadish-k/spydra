@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Unknown pages · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+  <div class="page-head">
+    <div>
+      <h1>Unknown pages</h1>
+      <p class="sub">38 pages across 6 groups · grouped by domain, reason and URL pattern</p>
+    </div>
+    <div class="actions">
+      <button class="btn">Retry all</button>
+      <button class="btn btn-primary">Propose templates (4)</button>
+    </div>
+  </div>
+
+  <div class="banner banner-info" style="margin-bottom:var(--space-4)">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linecap="round"><path d="M8 7.3v4 M8 4.7v.01 M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13z"/></svg>
+    <div>Grouped rather than listed. One root cause usually produces dozens of failures,
+      so a flat list of 38 rows would be 38 readings of the same problem.</div>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-toolbar">
+      <select><option>All reasons</option><option>no_template</option>
+        <option>validation_failed</option><option>empty_extraction</option>
+        <option>fetch_error</option><option>llm_low_confidence</option></select>
+      <select><option>All domains</option></select>
+      <span class="spacer"></span>
+      <span class="muted" style="font-size:var(--text-xs)">Oldest first</span>
+    </div>
+    <div class="table-scroll">
+    <table>
+      <thead><tr>
+        <th style="width:28px"><input type="checkbox" aria-label="Select all" /></th>
+        <th>Domain</th><th>Reason</th><th>URL pattern</th>
+        <th class="num">Pages</th><th>First seen</th><th style="width:180px"></th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><input type="checkbox" /></td>
+          <td>northfield-supply.com</td>
+          <td><span class="pill pill-broken"><i class="dot"></i>empty_extraction</span></td>
+          <td class="mono">/catalog/*</td>
+          <td class="num">14</td>
+          <td class="secondary">2 h ago</td>
+          <td><div class="row-flex">
+            <button class="btn btn-sm">Diff vs last working</button>
+            <button class="btn btn-sm btn-primary">Re-propose</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" /></td>
+          <td>calder-industrial.co.uk</td>
+          <td><span class="pill pill-pending"><i class="dot"></i>validation_failed</span></td>
+          <td class="mono">/parts/*</td>
+          <td class="num">9</td>
+          <td class="secondary">2 h ago</td>
+          <td><div class="row-flex">
+            <button class="btn btn-sm">Open in review</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" /></td>
+          <td>orbis-components.nl</td>
+          <td><span class="pill pill-discovered"><i class="dot"></i>no_template</span></td>
+          <td class="mono">/datasheets/*</td>
+          <td class="num">7</td>
+          <td class="secondary">2 h ago</td>
+          <td><div class="row-flex">
+            <button class="btn btn-sm">Not a product page</button>
+            <button class="btn btn-sm">Propose</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" /></td>
+          <td>mertens-hydraulik.de</td>
+          <td><span class="pill pill-pending"><i class="dot"></i>llm_low_confidence</span></td>
+          <td class="mono">/zubehoer/*</td>
+          <td class="num">4</td>
+          <td class="secondary">2 h ago</td>
+          <td><div class="row-flex">
+            <button class="btn btn-sm btn-primary">Review manually</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" /></td>
+          <td>vantage-abrasives.com</td>
+          <td><span class="pill pill-broken"><i class="dot"></i>fetch_error</span></td>
+          <td class="mono">/products/discontinued/*</td>
+          <td class="num">3</td>
+          <td class="secondary">1 d ago</td>
+          <td><div class="row-flex">
+            <button class="btn btn-sm">Inspect response</button>
+            <button class="btn btn-sm">Retry</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" /></td>
+          <td>helix-seals.com</td>
+          <td><span class="pill pill-discovered"><i class="dot"></i>no_template</span></td>
+          <td class="mono">/shop/*</td>
+          <td class="num">1</td>
+          <td class="secondary">3 d ago</td>
+          <td><div class="row-flex">
+            <button class="btn btn-sm">Propose</button></div></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="table-foot"><span>6 groups · 38 pages</span></div>
+  </div>
+
+  <div class="card" style="margin-top:var(--space-4)">
+    <div class="card-head"><h3>northfield-supply.com · empty_extraction · <span class="mono">/catalog/*</span></h3>
+      <div class="actions"><span class="tag">expanded</span></div></div>
+    <div class="card-body">
+      <p style="margin-top:0">All 14 pages return 200 with a template that matched, but every
+        field resolves to nothing. The signature of a redesign rather than a block.</p>
+      <div class="grid grid-2">
+        <div>
+          <div class="metric-label">Last working observation · 11 Oct</div>
+          <div class="log" style="height:150px">
+            <div class="row"><span class="host">title</span><span class="path">Hex Bolt M8×40 A2</span></div>
+            <div class="row"><span class="host">price</span><span class="path">0.42 GBP</span></div>
+            <div class="row"><span class="host">vendor</span><span class="path">Northfield Supply</span></div>
+            <div class="row"><span class="host">images</span><span class="path">3 assets</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="metric-label">This run · 14 Oct</div>
+          <div class="log" style="height:150px">
+            <div class="row"><span class="host">title</span><span class="st-404">∅</span></div>
+            <div class="row"><span class="host">price</span><span class="st-404">∅</span></div>
+            <div class="row"><span class="host">vendor</span><span class="st-404">∅</span></div>
+            <div class="row"><span class="host">images</span><span class="st-404">∅</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="row-flex" style="margin-top:var(--space-4)">
+        <span class="muted" style="font-size:var(--text-xs)">
+          HTML snapshot retained for 5 more days</span>
+        <div style="margin-left:auto;display:flex;gap:var(--space-2)">
+          <button class="btn btn-sm">View snapshot</button>
+          <button class="btn btn-sm btn-primary">Propose new template</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: 'unknown', crumbs: ['Spydra','Unknown Pages'], runnable: true });</script>
+</body>
+</html>

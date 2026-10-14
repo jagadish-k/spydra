@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" role="img" aria-label="Spydra">
+  <title>Spydra</title>
+  <g transform="translate(32 32) scale(1.55) translate(-32 -32)">
+    <g fill="none" stroke="#4338CA" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M31.03,28.19 L28.55,22.07 L23.97,19.21"/>
+    <path d="M32.97,28.19 L35.45,22.07 L40.03,19.21"/>
+    <path d="M29.77,29.26 L24.11,25.86 L18.73,26.33"/>
+    <path d="M34.23,29.26 L39.89,25.86 L45.27,26.33"/>
+    <path d="M29.43,31.01 L22.91,32.04 L19.09,35.86"/>
+    <path d="M34.57,31.01 L41.09,32.04 L44.91,35.86"/>
+    <path d="M30.16,32.44 L25.49,37.11 L24.65,42.44"/>
+    <path d="M33.84,32.44 L38.51,37.11 L39.35,42.44"/>
+    </g>
+    <circle cx="32.0" cy="36.4" r="4.6" fill="#4338CA"/>
+    <circle cx="32.0" cy="29.0" r="2.4" fill="#4338CA"/>
+  </g>
+</svg>

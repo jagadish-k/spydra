@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Domains · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+
+  <div class="page-head">
+    <div>
+      <h1>Domains</h1>
+      <p class="sub">34 registered · sorted by extraction health, worst first</p>
+    </div>
+    <div class="actions">
+      <button class="btn">Import CSV</button>
+      <button class="btn btn-primary">Add domain</button>
+    </div>
+  </div>
+
+  <!-- Summary strip. Each counter filters the table below; they are links,
+       not decoration, because every number here is a question you will
+       want to answer by looking at the rows behind it. -->
+  <div class="grid grid-6" style="margin-bottom:var(--space-5)">
+    <a class="metric" href="#"><div class="metric-label">Active</div>
+      <div class="metric-value num">21</div></a>
+    <a class="metric" href="template-review.html"><div class="metric-label">Awaiting review</div>
+      <div class="metric-value num attention">7</div></a>
+    <a class="metric" href="#"><div class="metric-label">Broken</div>
+      <div class="metric-value num danger">3</div></a>
+    <a class="metric" href="#"><div class="metric-label">Paused</div>
+      <div class="metric-value num">2</div></a>
+    <a class="metric" href="#"><div class="metric-label">Never crawled</div>
+      <div class="metric-value num">1</div></a>
+    <a class="metric" href="products.html"><div class="metric-label">Pages extracted</div>
+      <div class="metric-value num">18,402</div></a>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-toolbar">
+      <input type="search" placeholder="Filter by host…" style="width:200px" />
+      <select><option>All states</option><option>Active</option><option>Broken</option>
+        <option>Paused</option><option>Awaiting review</option></select>
+      <select><option>All render modes</option><option>Static</option>
+        <option>Rendered</option><option>Auto</option></select>
+      <span class="spacer"></span>
+      <span class="muted" style="font-size:var(--text-xs)">Row height</span>
+      <div class="btn-group">
+        <button class="btn btn-sm" aria-pressed="true">Comfortable</button>
+        <button class="btn btn-sm" aria-pressed="false">Compact</button>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px"><input type="checkbox" aria-label="Select all" /></th>
+          <th class="sortable">Host</th>
+          <th>State</th>
+          <th class="num">Templates</th>
+          <th class="num">Pages</th>
+          <th>Last crawled</th>
+          <th class="sortable">Health (7d) <span class="caret">▲</span></th>
+          <th class="num">Delay</th>
+          <th>Render</th>
+          <th style="width:96px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Degrading domains sort to the top. The healthy ones need
+             nothing from you; these are why you opened the screen. -->
+        <tr>
+          <td><input type="checkbox" aria-label="Select" /></td>
+          <td><div class="cell-stack"><a href="domain-detail.html">northfield-supply.com</a>
+            <span class="sub">Industrial fasteners</span></div></td>
+          <td><span class="pill pill-broken"><i class="dot"></i>Broken</span></td>
+          <td class="num">3</td>
+          <td class="num">1,204</td>
+          <td class="secondary">2 h ago</td>
+          <td>
+            <div class="row-flex">
+              <svg class="spark" viewBox="0 0 72 20" preserveAspectRatio="none">
+                <path class="bad" d="M0,3 L12,4 L24,3 L36,6 L48,13 L60,17 L72,18"/>
+              </svg>
+              <span class="num" style="color:var(--state-broken);font-weight:500">41%</span>
+            </div>
+          </td>
+          <td class="num mono">2.0s</td>
+          <td><span class="tag">static</span></td>
+          <td><div class="row-actions">
+            <button class="btn btn-sm">Review</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select" /></td>
+          <td><div class="cell-stack"><a href="domain-detail.html">calder-industrial.co.uk</a>
+            <span class="sub">Bearings, seals</span></div></td>
+          <td><span class="pill pill-broken"><i class="dot"></i>Broken</span></td>
+          <td class="num">2</td>
+          <td class="num">842</td>
+          <td class="secondary">2 h ago</td>
+          <td>
+            <div class="row-flex">
+              <svg class="spark" viewBox="0 0 72 20" preserveAspectRatio="none">
+                <path class="bad" d="M0,2 L12,2 L24,3 L36,3 L48,4 L60,14 L72,16"/>
+              </svg>
+              <span class="num" style="color:var(--state-broken);font-weight:500">52%</span>
+            </div>
+          </td>
+          <td class="num mono">2.0s</td>
+          <td><span class="tag">static</span></td>
+          <td><div class="row-actions">
+            <button class="btn btn-sm">Review</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select" /></td>
+          <td><div class="cell-stack"><a href="domain-detail.html">mertens-hydraulik.de</a>
+            <span class="sub">Hydraulic components</span></div></td>
+          <td><span class="pill pill-active"><i class="dot"></i>Active</span></td>
+          <td class="num">4</td>
+          <td class="num">2,918</td>
+          <td class="secondary">2 h ago</td>
+          <td>
+            <div class="row-flex">
+              <svg class="spark" viewBox="0 0 72 20" preserveAspectRatio="none">
+                <path class="warn" d="M0,2 L12,3 L24,2 L36,4 L48,5 L60,7 L72,8"/>
+              </svg>
+              <span class="num" style="color:var(--state-pending);font-weight:500">88%</span>
+            </div>
+          </td>
+          <td class="num mono">2.5s</td>
+          <td><span class="tag">rendered</span></td>
+          <td><div class="row-actions">
+            <button class="btn btn-sm">Pause</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select" /></td>
+          <td><div class="cell-stack"><a href="domain-detail.html">pacific-tooling.com</a>
+            <span class="sub">Cutting tools</span></div></td>
+          <td><span class="pill pill-paused"><i class="dot"></i>Paused</span></td>
+          <td class="num">2</td>
+          <td class="num">611</td>
+          <td class="secondary">6 d ago</td>
+          <td>
+            <div class="row-flex">
+              <svg class="spark" viewBox="0 0 72 20" preserveAspectRatio="none">
+                <path class="ok" d="M0,4 L12,3 L24,3 L36,2 L48,3 L60,3 L72,2"/>
+              </svg>
+              <span class="num secondary">96%</span>
+            </div>
+          </td>
+          <td class="num mono">4.0s</td>
+          <td><span class="tag">static</span></td>
+          <td><div class="row-actions">
+            <button class="btn btn-sm">Resume</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select" /></td>
+          <td><div class="cell-stack"><a href="domain-detail.html">orbis-components.nl</a>
+            <span class="sub">Electronic components</span></div></td>
+          <td><span class="pill pill-active"><i class="dot"></i>Active</span></td>
+          <td class="num">6</td>
+          <td class="num">4,077</td>
+          <td class="secondary">2 h ago</td>
+          <td>
+            <div class="row-flex">
+              <svg class="spark" viewBox="0 0 72 20" preserveAspectRatio="none">
+                <path class="ok" d="M0,4 L12,3 L24,2 L36,3 L48,2 L60,2 L72,2"/>
+              </svg>
+              <span class="num secondary">99%</span>
+            </div>
+          </td>
+          <td class="num mono">2.0s</td>
+          <td><span class="tag">auto</span></td>
+          <td><div class="row-actions">
+            <button class="btn btn-sm">Pause</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select" /></td>
+          <td><div class="cell-stack"><a href="domain-detail.html">vantage-abrasives.com</a>
+            <span class="sub">Abrasives, consumables</span></div></td>
+          <td><span class="pill pill-pending"><i class="dot"></i>Awaiting review</span></td>
+          <td class="num">1 <span class="muted">draft</span></td>
+          <td class="num muted">—</td>
+          <td class="muted">Never</td>
+          <td class="muted">—</td>
+          <td class="num mono">2.0s</td>
+          <td><span class="tag">auto</span></td>
+          <td><div class="row-actions">
+            <button class="btn btn-sm btn-primary">Review</button></div></td>
+        </tr>
+        <tr>
+          <td><input type="checkbox" aria-label="Select" /></td>
+          <td><div class="cell-stack"><a href="domain-detail.html">helix-seals.com</a>
+            <span class="sub">Gaskets, O-rings</span></div></td>
+          <td><span class="pill pill-discovered"><i class="dot"></i>Discovered</span></td>
+          <td class="num muted">—</td>
+          <td class="num muted">—</td>
+          <td class="muted">Never</td>
+          <td class="muted">—</td>
+          <td class="num mono">2.0s</td>
+          <td><span class="tag">auto</span></td>
+          <td><div class="row-actions">
+            <button class="btn btn-sm">Propose</button></div></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="table-foot">
+      <span>7 of 34 domains</span>
+      <span class="spacer"></span>
+      <button class="btn btn-sm" disabled>Previous</button>
+      <button class="btn btn-sm">Next</button>
+    </div>
+  </div>
+
+  <p class="muted" style="font-size:var(--text-xs);margin-top:var(--space-3)">
+    Selecting rows reveals bulk actions: pause, resume, set crawl delay, or start a run
+    over the selection.
+  </p>
+
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: 'domains', crumbs: ['Spydra','Domains'], runnable: true });</script>
+</body>
+</html>

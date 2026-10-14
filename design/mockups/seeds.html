@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Seeds · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+  <div class="page-head">
+    <div><h1>Seeds</h1><p class="sub">Add category or listing URLs · nothing enqueues until you confirm</p></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab" aria-selected="true">CSV upload</button>
+    <button class="tab" aria-selected="false">Single URL</button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:var(--space-4);align-items:start">
+    <div class="stack">
+      <div class="card">
+        <div class="card-head"><h3>Upload</h3></div>
+        <div class="card-body">
+          <div style="border:1.5px dashed var(--border-strong);border-radius:var(--radius-md);
+                      padding:var(--space-8) var(--space-4);text-align:center;color:var(--text-muted)">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"
+              stroke-linecap="round" style="width:26px;height:26px;margin-bottom:var(--space-2)">
+              <path d="M8 11V2 M4.5 5.5L8 2l3.5 3.5 M2 11v3h12v-3"/></svg>
+            <div style="font-size:var(--text-md);color:var(--text-secondary)">
+              Drop a CSV here</div>
+            <div style="font-size:var(--text-xs);margin-top:4px">or click to browse</div>
+          </div>
+          <div class="divider" style="margin:var(--space-4) 0"></div>
+          <div class="metric-label">Required columns</div>
+          <code class="mono" style="display:block;background:var(--bg-inset);padding:var(--space-2);
+            border-radius:var(--radius-sm);margin:6px 0 var(--space-3);font-size:10px">url,
+domain_hint, category, max_depth, notes</code>
+          <button class="btn btn-sm" style="width:100%">Download template CSV</button>
+          <p class="muted" style="font-size:var(--text-xs);margin-bottom:0">
+            You will use this a handful of times a month and will not remember the format.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Defaults for new domains</h3></div>
+        <div class="card-body stack" style="gap:var(--space-3)">
+          <div class="field"><label>Crawl delay</label>
+            <div class="row-flex"><input type="text" value="2000" style="width:90px" />
+              <span class="muted" style="font-size:var(--text-xs)">ms, ±30% jitter</span></div></div>
+          <div class="field"><label>Max depth</label><input type="text" value="5" style="width:90px" /></div>
+          <div class="field"><label>Render mode</label>
+            <select><option>auto — retry through the browser if fields fail</option>
+              <option>static</option><option>rendered</option></select></div>
+          <div class="row-flex"><label class="switch"><input type="checkbox" checked />
+            <span class="track"></span></label>
+            <span style="font-size:var(--text-md)">Request a template proposal on arrival</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Preview · spydra-seeds-oct.csv</h3>
+        <div class="actions">
+          <span class="pill pill-active">5 accepted</span>
+          <span class="pill pill-broken">2 rejected</span>
+          <button class="btn btn-sm btn-primary">Confirm 5 seeds</button></div></div>
+      <div class="card-body flush">
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th style="width:28px"></th><th>URL</th><th>Category</th>
+            <th class="num">Depth</th><th>Domain</th><th>Validation</th></tr></thead>
+          <tbody>
+            <tr><td style="color:var(--state-active)">✓</td>
+              <td class="mono truncate" style="max-width:280px">https://helix-seals.com/shop/o-rings</td>
+              <td>O-rings</td><td class="num">5</td>
+              <td><span class="pill pill-discovered"><i class="dot"></i>New</span></td>
+              <td class="secondary">OK</td></tr>
+            <tr><td style="color:var(--state-active)">✓</td>
+              <td class="mono truncate" style="max-width:280px">https://helix-seals.com/shop/gaskets</td>
+              <td>Gaskets</td><td class="num">5</td>
+              <td><span class="pill pill-discovered"><i class="dot"></i>New</span></td>
+              <td class="secondary">OK</td></tr>
+            <tr><td style="color:var(--state-active)">✓</td>
+              <td class="mono truncate" style="max-width:280px">https://orbis-components.nl/c/sensors</td>
+              <td>Sensors</td><td class="num">4</td>
+              <td><span class="pill pill-active"><i class="dot"></i>Active</span></td>
+              <td class="secondary">Enqueues immediately</td></tr>
+            <tr><td style="color:var(--state-broken)">✗</td>
+              <td class="mono truncate" style="max-width:280px">htp://vantage-abrasives.com/products</td>
+              <td>Abrasives</td><td class="num">5</td><td class="muted">—</td>
+              <td style="color:var(--state-broken)">Malformed scheme</td></tr>
+            <tr><td style="color:var(--state-broken)">✗</td>
+              <td class="mono truncate" style="max-width:280px">https://orbis-components.nl/c/sensors</td>
+              <td>Sensors</td><td class="num">4</td>
+              <td><span class="pill pill-active"><i class="dot"></i>Active</span></td>
+              <td style="color:var(--state-broken)">Duplicate of row 3</td></tr>
+            <tr><td style="color:var(--state-active)">✓</td>
+              <td class="mono truncate" style="max-width:280px">https://pacific-tooling.com/catalog/endmills</td>
+              <td>End mills</td><td class="num">3</td>
+              <td><span class="pill pill-paused"><i class="dot"></i>Paused</span></td>
+              <td style="color:var(--state-pending)">Queued until resumed</td></tr>
+            <tr><td style="color:var(--state-active)">✓</td>
+              <td class="mono truncate" style="max-width:280px">https://helix-seals.com/shop/seals</td>
+              <td>Seals</td><td class="num">5</td>
+              <td><span class="pill pill-discovered"><i class="dot"></i>New</span></td>
+              <td class="secondary">OK</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+      <div class="table-foot"><span>7 rows parsed · new domains enter
+        <span class="mono">discovered</span> and route straight to template proposal</span></div>
+    </div>
+  </div>
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: 'seeds', crumbs: ['Spydra','Seeds'], runnable: true });</script>
+</body>
+</html>

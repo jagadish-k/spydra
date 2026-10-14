@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Template review · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+
+  <div class="page-head">
+    <div>
+      <h1>vantage-abrasives.com</h1>
+      <p class="sub">Proposal v1 · pattern <code class="mono">/products/*</code> ·
+        model <span class="mono">qwen3-30b-a3b</span> · 6 of 7 fields verified</p>
+    </div>
+    <div class="actions">
+      <button class="btn">Reject</button>
+      <button class="btn">Save draft</button>
+      <button class="btn btn-primary">Approve &amp; activate</button>
+    </div>
+  </div>
+
+  <div class="banner banner-warn" style="margin-bottom:var(--space-4)">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linecap="round"><path d="M8 5.5v3.2 M8 11.3v.01 M8 1.8l6.2 11.4H1.8z"/></svg>
+    <div>
+      <strong>supplier_ref fails on 2 of 5 samples.</strong>
+      The selector resolves on this page but returns nothing on
+      <span class="mono">SKU-8841</span> and <span class="mono">SKU-9102</span> —
+      the field is likely absent on some products rather than mis-selected.
+      Mark it optional or narrow the pattern before approving.
+    </div>
+  </div>
+
+  <!-- Three panes: preview · fields · samples. The sample strip is the
+       reason this screen is worth building — a selector that works on the
+       page in front of you and fails on the next product is the common
+       error, and it is invisible in a one-page review. -->
+  <div style="display:grid;grid-template-columns:minmax(0,45fr) minmax(0,35fr) minmax(0,20fr);
+              gap:var(--space-4);align-items:start">
+
+    <!-- ---------------------------------------------------------- preview -->
+    <div class="card" style="overflow:hidden">
+      <div class="card-head">
+        <h3>Page preview</h3>
+        <div class="actions">
+          <div class="btn-group">
+            <button class="btn btn-sm" aria-pressed="true">Rendered</button>
+            <button class="btn btn-sm" aria-pressed="false">DOM skeleton</button>
+          </div>
+        </div>
+      </div>
+      <div class="preview-frame" style="border:0;border-radius:0">
+        <div class="preview-chrome">
+          <span class="url">https://vantage-abrasives.com/products/flap-disc-120g-115mm</span>
+        </div>
+        <div class="preview-body" style="height:560px">
+          <div class="ghost ghost-line" style="width:40%"></div>
+          <div style="height:var(--space-4)"></div>
+
+          <div class="highlight" data-field="title" style="margin-bottom:var(--space-4)">
+            <div style="font-size:var(--text-lg);font-weight:600">
+              Zirconia Flap Disc 115 mm · 120 grit</div>
+          </div>
+
+          <div style="display:flex;gap:var(--space-4);margin-bottom:var(--space-4)">
+            <div class="ghost" style="width:132px;height:132px;flex-shrink:0"></div>
+            <div style="flex:1;min-width:0">
+              <div class="highlight" data-field="price" style="display:inline-block;margin-bottom:var(--space-4)">
+                <span style="font-size:var(--text-xl);font-weight:600">£4.85</span>
+                <span class="muted" style="font-size:var(--text-xs)">ex VAT</span>
+              </div>
+              <div class="highlight" data-field="vendor" style="margin-bottom:10px">
+                <span style="font-size:var(--text-sm)">Vantage Abrasives Ltd</span>
+              </div>
+              <div class="ghost ghost-line" style="width:85%"></div>
+              <div class="ghost ghost-line" style="width:72%"></div>
+            </div>
+          </div>
+
+          <div class="highlight" data-field="description" style="margin-bottom:var(--space-5)">
+            <div class="ghost ghost-line" style="width:100%"></div>
+            <div class="ghost ghost-line" style="width:96%"></div>
+            <div class="ghost ghost-line" style="width:64%;margin-bottom:0"></div>
+          </div>
+
+          <div class="highlight" data-field="specs">
+            <table class="table-compact" style="font-size:var(--text-xs)">
+              <tbody>
+                <tr><td class="secondary" style="width:40%">Diameter</td><td>115 mm</td></tr>
+                <tr><td class="secondary">Grit</td><td>120</td></tr>
+                <tr><td class="secondary">Bore</td><td>22.23 mm</td></tr>
+                <tr><td class="secondary">Max RPM</td><td>13,300</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ----------------------------------------------------------- fields -->
+    <div class="stack">
+      <div class="card">
+        <div class="card-head">
+          <h3>Extraction fields</h3>
+          <div class="actions"><button class="btn btn-sm">Add field</button></div>
+        </div>
+        <div class="card-body" style="padding:var(--space-2)">
+
+          <div class="selector-field">
+            <div class="fname">title <span class="req" title="Required">*</span></div>
+            <div class="fbody">
+              <input class="sel" type="text" value="h1.product-title" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">Zirconia Flap Disc 115 mm · 120 grit</span>
+                <span class="matches tag">1</span>
+              </div>
+              <div class="row-flex" style="font-size:var(--text-2xs);color:var(--text-muted)">
+                <span class="confidence"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+                <span>high</span>
+                <span style="margin-left:auto">trim · non-empty</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field">
+            <div class="fname">price <span class="req">*</span></div>
+            <div class="fbody">
+              <input class="sel" type="text" value="span[itemprop='price']" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">4.85 <span class="muted">GBP</span></span>
+                <span class="matches tag">1</span>
+              </div>
+              <div class="row-flex" style="font-size:var(--text-2xs);color:var(--text-muted)">
+                <span class="confidence"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+                <span>high</span>
+                <span style="margin-left:auto">strip symbol · currency</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field">
+            <div class="fname">images <span class="req">*</span></div>
+            <div class="fbody">
+              <input class="sel" type="text" value=".gallery img[data-zoom]" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val mono">/img/fd-115-120_01.jpg +3</span>
+                <span class="matches tag">4</span>
+              </div>
+              <div class="row-flex" style="font-size:var(--text-2xs);color:var(--text-muted)">
+                <span class="confidence"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+                <span>good</span>
+                <span style="margin-left:auto">absolute URL · take all</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field">
+            <div class="fname">description</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="div#tab-description" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">Zirconia alumina flap disc for aggressive stock…</span>
+                <span class="matches tag">1</span>
+              </div>
+              <div class="row-flex" style="font-size:var(--text-2xs);color:var(--text-muted)">
+                <span class="confidence"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+                <span>good</span>
+                <span style="margin-left:auto">trim</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field">
+            <div class="fname">vendor</div>
+            <div class="fbody">
+              <input class="sel" type="text" value=".brand-name a" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">Vantage Abrasives Ltd</span>
+                <span class="matches tag">1</span>
+              </div>
+              <div class="row-flex" style="font-size:var(--text-2xs);color:var(--text-muted)">
+                <span class="confidence mid"><i class="on"></i><i class="on"></i></span>
+                <span>medium</span>
+                <span style="margin-left:auto">trim</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field is-warn">
+            <div class="fname">supplier_ref</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="dl.meta dd:nth-of-type(3)" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val empty">empty on 2 of 5 samples</span>
+                <span class="matches tag">1</span>
+              </div>
+              <div class="row-flex" style="font-size:var(--text-2xs)">
+                <span class="confidence low"><i class="on"></i></span>
+                <span style="color:var(--state-pending)">low — positional selector</span>
+                <label class="row-flex" style="margin-left:auto;gap:4px;cursor:pointer">
+                  <input type="checkbox" /> optional</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field">
+            <div class="fname">specs</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="table.spec-table tr" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">4 key/value pairs → JSONB</span>
+                <span class="matches tag">4</span>
+              </div>
+              <div class="row-flex" style="font-size:var(--text-2xs);color:var(--text-muted)">
+                <span class="confidence"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+                <span>good</span>
+                <span style="margin-left:auto">pairs(th,td)</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Discovery rules are part of the same approval. Making them
+           deterministic here is what stops a facet trap generating 40,000
+           URLs mid-run. -->
+      <div class="card">
+        <div class="card-head">
+          <h3>Discovery rules</h3>
+          <div class="actions"><button class="btn btn-sm">Dry-run discovery</button></div>
+        </div>
+        <div class="card-body" style="padding:var(--space-2)">
+          <div class="selector-field">
+            <div class="fname">product_link</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="a.product-card__link" />
+              <div class="resolved"><span class="arrow">→</span>
+                <span class="val">48 URLs on the sample listing page</span></div>
+            </div>
+          </div>
+          <div class="selector-field">
+            <div class="fname">next_page</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="a[rel='next']" />
+              <div class="resolved"><span class="arrow">→</span>
+                <span class="val mono">/products/abrasives?page=2</span></div>
+            </div>
+          </div>
+          <div class="selector-field">
+            <div class="fname">subcategory</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="nav.cat-tree a" />
+              <div class="resolved"><span class="arrow">→</span>
+                <span class="val">11 URLs</span></div>
+            </div>
+          </div>
+          <div class="selector-field">
+            <div class="fname">deny pattern</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="?(colour|grit|sort)=" />
+              <div class="resolved"><span class="arrow">→</span>
+                <span class="val">excludes 312 faceted URLs</span></div>
+            </div>
+          </div>
+          <div class="selector-field">
+            <div class="fname">max depth</div>
+            <div class="fbody"><input class="sel" type="text" value="5" style="width:70px" /></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------- samples -->
+    <div class="card">
+      <div class="card-head"><h3>Samples</h3></div>
+      <div class="card-body">
+        <p class="muted" style="font-size:var(--text-xs);margin:0 0 var(--space-3)">
+          Current selector set, run against five URLs from this pattern.</p>
+
+        <div class="sample-grid" style="grid-template-columns:auto repeat(5,1fr)">
+          <div class="hd">Field</div>
+          <div class="hd" style="text-align:center">1</div>
+          <div class="hd" style="text-align:center">2</div>
+          <div class="hd" style="text-align:center">3</div>
+          <div class="hd" style="text-align:center">4</div>
+          <div class="hd" style="text-align:center">5</div>
+
+          <div>title</div>
+          <div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+          <div class="pass">✓</div><div class="pass">✓</div>
+
+          <div>price</div>
+          <div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+          <div class="pass">✓</div><div class="pass">✓</div>
+
+          <div>images</div>
+          <div class="pass">✓</div><div class="pass">✓</div><div class="partial">1</div>
+          <div class="pass">✓</div><div class="pass">✓</div>
+
+          <div>description</div>
+          <div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+          <div class="pass">✓</div><div class="pass">✓</div>
+
+          <div>vendor</div>
+          <div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+          <div class="pass">✓</div><div class="pass">✓</div>
+
+          <div>supplier_ref</div>
+          <div class="pass">✓</div><div class="fail">✗</div><div class="pass">✓</div>
+          <div class="fail">✗</div><div class="pass">✓</div>
+
+          <div>specs</div>
+          <div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+          <div class="pass">✓</div><div class="pass">✓</div>
+        </div>
+
+        <div class="divider" style="margin:var(--space-4) 0"></div>
+
+        <div style="font-size:var(--text-xs);display:flex;flex-direction:column;gap:6px">
+          <div class="row-flex"><span class="mono truncate">…/flap-disc-120g-115mm</span>
+            <span class="pill pill-active" style="margin-left:auto">7/7</span></div>
+          <div class="row-flex"><span class="mono truncate">…/SKU-8841</span>
+            <span class="pill pill-broken" style="margin-left:auto">6/7</span></div>
+          <div class="row-flex"><span class="mono truncate">…/sanding-belt-50x686</span>
+            <span class="pill pill-pending" style="margin-left:auto">6/7</span></div>
+          <div class="row-flex"><span class="mono truncate">…/SKU-9102</span>
+            <span class="pill pill-broken" style="margin-left:auto">6/7</span></div>
+          <div class="row-flex"><span class="mono truncate">…/wire-cup-brush-75</span>
+            <span class="pill pill-active" style="margin-left:auto">7/7</span></div>
+        </div>
+
+        <button class="btn btn-sm" style="width:100%;margin-top:var(--space-3)">
+          Add sample URL</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="row-flex">
+    <div>
+      <h2 style="font-size:var(--text-lg);font-weight:600;margin:0 0 2px">Batch review</h2>
+      <p class="muted" style="margin:0;font-size:var(--text-md)">
+        The same review state rendered as a grid — approve up to 20 templates at once.
+        Not a second screen: "open full review" expands a row in place.</p>
+    </div>
+    <div style="margin-left:auto"><a class="btn" href="#">Switch to batch view (6 queued)</a></div>
+  </div>
+
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: 'templates', crumbs: ['Spydra','Templates','vantage-abrasives.com'], runnable: false });</script>
+</body>
+</html>

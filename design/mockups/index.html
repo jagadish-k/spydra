@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spydra design · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+  <div class="page-head">
+    <div><h1>Spydra — screen set</h1>
+      <p class="sub">Nine screens plus foundations. Static mockups; the shell, tokens and
+        components are the reference implementation of the design system.</p></div>
+  </div>
+  <div class="grid grid-3">
+    <a class="metric" href="foundations.html"><div class="metric-label">Foundations</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Design system</div>
+      <div class="metric-delta">Logo, colour, type, components</div></a>
+    <a class="metric" href="domains.html"><div class="metric-label">1 · Home</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Domains</div>
+      <div class="metric-delta">Sorted by health, worst first</div></a>
+    <a class="metric" href="domain-detail.html"><div class="metric-label">2</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Domain detail</div>
+      <div class="metric-delta">Settings, template versions, robots</div></a>
+    <a class="metric" href="seeds.html"><div class="metric-label">3</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Seeds</div>
+      <div class="metric-delta">CSV intake with a mandatory preview</div></a>
+    <a class="metric" href="template-review.html"
+       style="border-color:var(--brand-400)"><div class="metric-label">4 · critical</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Template review</div>
+      <div class="metric-delta">Preview · fields · sample matrix</div></a>
+    <a class="metric" href="unknown-pages.html"><div class="metric-label">5</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Unknown pages</div>
+      <div class="metric-delta">Grouped by root cause, not listed</div></a>
+    <a class="metric" href="run-monitor.html"><div class="metric-label">6</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Run monitor</div>
+      <div class="metric-delta">SSE live · two throughput pools</div></a>
+    <a class="metric" href="runs-history.html"><div class="metric-label">7</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Runs history</div>
+      <div class="metric-delta">Comparison between two runs</div></a>
+    <a class="metric" href="products.html"><div class="metric-label">8</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Products</div>
+      <div class="metric-delta">Change tracking and field diffs</div></a>
+    <a class="metric" href="reports.html"><div class="metric-label">9</div>
+      <div class="metric-value" style="font-size:var(--text-lg)">Reports</div>
+      <div class="metric-delta">Health, breakage, politeness, coverage</div></a>
+  </div>
+  <p class="muted" style="font-size:var(--text-xs);margin-top:var(--space-5)">
+    Open any page directly from disk — no build step and no server. The theme toggle in the
+    top bar persists per browser; light is the default on a first visit unless the OS asks
+    for dark.</p>
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: '', crumbs: ['Spydra','Screens'], runnable: false });</script>
+</body>
+</html>

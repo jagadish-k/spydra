@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Run monitor · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+  <div class="page-head">
+    <div>
+      <h1>Run <span class="mono" style="font-weight:400">r-2026-10-14-02</span></h1>
+      <p class="sub">Started 19:42 · elapsed 26m 11s · 4 domains · live</p>
+    </div>
+    <div class="actions">
+      <button class="btn">Pause</button>
+      <button class="btn btn-danger">Stop</button>
+    </div>
+  </div>
+
+  <!-- Stacked bar, never a percentage: during discovery the denominator is
+       still growing, so a percentage would simply lie. -->
+  <div class="card" style="margin-bottom:var(--space-4)">
+    <div class="card-body">
+      <div class="progress">
+        <span class="done" style="width:46%"></span>
+        <span class="inflight" style="width:4%"></span>
+        <span class="failed" style="width:3%"></span>
+        <span class="queued" style="width:47%"></span>
+      </div>
+      <div class="progress-legend">
+        <span><i style="background:var(--state-active)"></i> 3,841 done</span>
+        <span><i style="background:var(--viz-1)"></i> 14 in flight</span>
+        <span><i style="background:var(--state-broken)"></i> 232 failed</span>
+        <span><i style="background:var(--border-strong)"></i> 3,902 queued</span>
+        <span style="margin-left:auto">discovery still running — queue is still growing</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-4" style="margin-bottom:var(--space-4)">
+    <div class="card"><div class="card-body">
+      <div class="metric-label">Pages / min</div>
+      <div class="metric-value num">148</div>
+      <div class="metric-delta">static 121 · rendered 27</div></div></div>
+    <div class="card"><div class="card-body">
+      <div class="metric-label">Assets / min</div>
+      <div class="metric-value num">612</div>
+      <div class="metric-delta up">dedupe hit rate 31%</div></div></div>
+    <div class="card"><div class="card-body">
+      <div class="metric-label">Asset queue depth</div>
+      <div class="metric-value num">2,204</div>
+      <div class="metric-delta">below the 10,000 backpressure threshold</div></div></div>
+    <div class="card"><div class="card-body">
+      <div class="metric-label">Errors</div>
+      <div class="metric-value num danger">232</div>
+      <div class="metric-delta down">1 domain auto-paused</div></div></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);
+              gap:var(--space-4);align-items:start">
+    <div class="stack">
+
+      <!-- An auto-paused domain goes red and sorts to the top. -->
+      <div class="card" style="border-color:var(--state-broken)">
+        <div class="card-body">
+          <div class="row-flex" style="margin-bottom:var(--space-3)">
+            <span class="pill pill-broken"><i class="dot"></i>Auto-paused</span>
+            <strong>calder-industrial.co.uk</strong>
+            <span class="muted" style="font-size:var(--text-xs)">3 consecutive 403s</span>
+            <div style="margin-left:auto;display:flex;gap:var(--space-2)">
+              <button class="btn btn-sm">Inspect</button>
+              <button class="btn btn-sm">Resume anyway</button>
+            </div>
+          </div>
+          <div class="progress">
+            <span class="done" style="width:31%"></span>
+            <span class="failed" style="width:9%"></span>
+            <span class="queued" style="width:60%"></span>
+          </div>
+          <div class="progress-legend">
+            <span>262 done · 71 failed · 508 abandoned</span>
+            <span style="margin-left:auto;color:var(--state-broken)">
+              crawling stopped — a retry loop turns a temporary block into a permanent one</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card"><div class="card-body">
+        <div class="row-flex" style="margin-bottom:var(--space-3)">
+          <span class="pill pill-active"><i class="dot"></i>Active</span>
+          <strong>orbis-components.nl</strong>
+          <span class="muted mono" style="font-size:var(--text-xs)">2.0s · static</span>
+          <span style="margin-left:auto;font-size:var(--text-xs)" class="secondary num">
+            74 pages/min</span>
+        </div>
+        <div class="progress">
+          <span class="done" style="width:68%"></span>
+          <span class="inflight" style="width:2%"></span>
+          <span class="queued" style="width:30%"></span>
+        </div>
+        <div class="progress-legend"><span>2,771 done · 1 in flight · 1,306 queued</span>
+          <span style="margin-left:auto">next eligible in 0.6s</span></div>
+      </div></div>
+
+      <div class="card"><div class="card-body">
+        <div class="row-flex" style="margin-bottom:var(--space-3)">
+          <span class="pill pill-active"><i class="dot"></i>Active</span>
+          <strong>mertens-hydraulik.de</strong>
+          <span class="muted mono" style="font-size:var(--text-xs)">4.5s · rendered</span>
+          <span class="tag" style="color:var(--state-pending)">backoff ×2</span>
+          <span style="margin-left:auto;font-size:var(--text-xs)" class="secondary num">
+            27 pages/min</span>
+        </div>
+        <div class="progress">
+          <span class="done" style="width:41%"></span>
+          <span class="inflight" style="width:3%"></span>
+          <span class="failed" style="width:2%"></span>
+          <span class="queued" style="width:54%"></span>
+        </div>
+        <div class="progress-legend"><span>808 done · 3 in flight · 1,071 queued</span>
+          <span style="margin-left:auto">2 of 3 browser contexts busy</span></div>
+      </div></div>
+
+      <div class="card"><div class="card-body">
+        <div class="row-flex" style="margin-bottom:var(--space-3)">
+          <span class="pill pill-active"><i class="dot"></i>Active</span>
+          <strong>northfield-supply.com</strong>
+          <span class="muted mono" style="font-size:var(--text-xs)">2.0s · static</span>
+          <span style="margin-left:auto;font-size:var(--text-xs)" class="secondary num">
+            47 pages/min</span>
+        </div>
+        <div class="progress">
+          <span class="done" style="width:22%"></span>
+          <span class="inflight" style="width:2%"></span>
+          <span class="failed" style="width:14%"></span>
+          <span class="queued" style="width:62%"></span>
+        </div>
+        <div class="progress-legend">
+          <span style="color:var(--state-pending)">
+            validation failures at 14% — the 20% threshold marks the domain broken</span></div>
+      </div></div>
+
+      <!-- Two lines on one axis. Seeing them diverge is how you confirm the
+           pools are independent. -->
+      <div class="card">
+        <div class="card-head"><h3>Throughput</h3>
+          <div class="actions"><span class="tag" style="color:var(--viz-1)">■ pages</span>
+            <span class="tag" style="color:var(--viz-2)">■ assets</span></div></div>
+        <div class="card-body">
+          <svg viewBox="0 0 800 160" style="width:100%;height:160px" preserveAspectRatio="none">
+            <g stroke="var(--viz-grid)" stroke-width="1">
+              <line x1="0" y1="40" x2="800" y2="40"/><line x1="0" y1="80" x2="800" y2="80"/>
+              <line x1="0" y1="120" x2="800" y2="120"/></g>
+            <path fill="none" stroke="var(--viz-1)" stroke-width="2" stroke-linejoin="round"
+              d="M0,130 L80,96 L160,70 L240,66 L320,72 L400,68 L480,74 L560,88 L640,96 L720,100 L800,98"/>
+            <path fill="none" stroke="var(--viz-2)" stroke-width="2" stroke-linejoin="round"
+              d="M0,155 L80,142 L160,120 L240,92 L320,60 L400,38 L480,30 L560,26 L640,24 L720,22 L800,20"/>
+          </svg>
+          <p class="muted" style="font-size:var(--text-xs);margin:var(--space-2) 0 0">
+            Assets climbing while pages flatten is the expected shape once discovery
+            finishes. The reverse would mean the asset pool is starved or a CDN is throttling.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="position:sticky;top:calc(var(--topbar-height) + var(--space-4))">
+      <div class="card-head"><h3>Live log</h3>
+        <div class="actions">
+          <select class="btn btn-sm" style="height:24px"><option>All domains</option></select>
+          <button class="btn btn-sm">Pause</button></div></div>
+      <div class="card-body" style="padding:var(--space-2)">
+        <div class="log" style="height:560px">
+          <div class="row"><span class="ts">20:08:41</span><span class="host">orbis-compon…</span>
+            <span class="path">/p/mlx90614-esf</span><span class="st-200">200</span>
+            <span class="strategy">jsonld</span><span>7f</span></div>
+          <div class="row"><span class="ts">20:08:41</span><span class="host">northfield-s…</span>
+            <span class="path">/catalog/hex-m8-a2</span><span class="st-200">200</span>
+            <span class="strategy">selector</span><span>6f</span></div>
+          <div class="row"><span class="ts">20:08:40</span><span class="host">mertens-hydr…</span>
+            <span class="path">/produkt/zylinder-63-200</span><span class="st-200">200</span>
+            <span class="strategy">rendered</span><span>7f</span></div>
+          <div class="row"><span class="ts">20:08:40</span><span class="host">calder-indus…</span>
+            <span class="path">/parts/6204-2RS</span><span class="st-403">403</span>
+            <span class="strategy">—</span><span>backoff 8m</span></div>
+          <div class="row"><span class="ts">20:08:39</span><span class="host">northfield-s…</span>
+            <span class="path">/catalog/hex-m10-a4</span><span class="st-200">200</span>
+            <span class="strategy">selector</span><span class="st-404">0f</span></div>
+          <div class="row"><span class="ts">20:08:39</span><span class="host">orbis-compon…</span>
+            <span class="path">/p/stm32f411ceu6</span><span class="st-200">200</span>
+            <span class="strategy">jsonld</span><span>7f</span></div>
+          <div class="row"><span class="ts">20:08:38</span><span class="host">calder-indus…</span>
+            <span class="path">/parts/6205-ZZ</span><span class="st-403">403</span>
+            <span class="strategy">—</span><span>3rd — pausing</span></div>
+          <div class="row"><span class="ts">20:08:38</span><span class="host">orbis-compon…</span>
+            <span class="path">/p/esp32-wroom-32e</span><span class="st-200">200</span>
+            <span class="strategy">jsonld</span><span>7f</span></div>
+          <div class="row"><span class="ts">20:08:37</span><span class="host">mertens-hydr…</span>
+            <span class="path">/produkt/pumpe-ax-45</span><span class="st-200">200</span>
+            <span class="strategy">rendered</span><span>7f</span></div>
+          <div class="row"><span class="ts">20:08:37</span><span class="host">northfield-s…</span>
+            <span class="path">/catalog/washer-m8-din125</span><span class="st-200">200</span>
+            <span class="strategy">selector</span><span>6f</span></div>
+          <div class="row"><span class="ts">20:08:36</span><span class="host">cdn.orbis-c…</span>
+            <span class="path">/i/stm32f411_01.jpg</span><span class="st-200">200</span>
+            <span class="strategy">asset</span><span>dedupe</span></div>
+          <div class="row"><span class="ts">20:08:36</span><span class="host">cdn.orbis-c…</span>
+            <span class="path">/i/esp32_03.jpg</span><span class="st-200">200</span>
+            <span class="strategy">asset</span><span>142 KB</span></div>
+          <div class="row"><span class="ts">20:08:35</span><span class="host">orbis-compon…</span>
+            <span class="path">/p/ina219-breakout</span><span class="st-200">200</span>
+            <span class="strategy">jsonld</span><span>7f</span></div>
+          <div class="row"><span class="ts">20:08:35</span><span class="host">northfield-s…</span>
+            <span class="path">/catalog/nut-m8-nyloc</span><span class="st-404">404</span>
+            <span class="strategy">—</span><span>retry 1/3</span></div>
+        </div>
+      </div>
+      <div class="table-foot"><span>Reconnects with <span class="mono">Last-Event-ID</span>
+        and backfills — a closed laptop leaves no gap</span></div>
+    </div>
+  </div>
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: 'runs', crumbs: ['Spydra','Runs','r-2026-10-14-02'], runnable: false });</script>
+</body>
+</html>

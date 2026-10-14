@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Foundations · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+  <div class="page-head">
+    <div><h1>Foundations</h1>
+      <p class="sub">The design system, rendered. Toggle the theme in the top bar — every
+        swatch below is a token, not a hex value.</p></div>
+  </div>
+
+  <div class="stack">
+
+    <div class="card">
+      <div class="card-head"><h3>Logo</h3></div>
+      <div class="card-body">
+        <div class="grid grid-4" style="align-items:center">
+          <div style="text-align:center">
+            <img src="../logo/spydra-mark.svg" alt="Mark" style="width:96px;height:96px" />
+            <div class="metric-label" style="justify-content:center;margin-top:var(--space-2)">Mark</div>
+          </div>
+          <div style="text-align:center">
+            <img src="../logo/spydra-lockup-horizontal.svg" alt="Horizontal lockup" style="width:180px" />
+            <div class="metric-label" style="justify-content:center;margin-top:var(--space-2)">Horizontal lockup</div>
+          </div>
+          <div style="text-align:center">
+            <img src="../logo/spydra-lockup-stacked.svg" alt="Stacked lockup" style="width:110px" />
+            <div class="metric-label" style="justify-content:center;margin-top:var(--space-2)">Stacked</div>
+          </div>
+          <div style="text-align:center">
+            <div class="row-flex" style="justify-content:center;gap:var(--space-4)">
+              <img src="../logo/spydra-favicon.svg" alt="Favicon 32" style="width:32px;height:32px" />
+              <img src="../logo/spydra-favicon.svg" alt="Favicon 16" style="width:16px;height:16px" />
+            </div>
+            <div class="metric-label" style="justify-content:center;margin-top:var(--space-2)">
+              Favicon · 32 / 16 px</div>
+          </div>
+        </div>
+        <p class="muted" style="font-size:var(--text-xs);margin-bottom:0">
+          Below 24 px the silk is thinner than a pixel and the device nodes collapse into noise,
+          so the favicon drops the web entirely rather than shrinking it. All variants are
+          generated from one lattice — see <span class="mono">design/logo/build_logo.py</span>.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Colour</h3>
+        <div class="actions"><span class="tag">colour carries state, never decoration</span></div></div>
+      <div class="card-body">
+        <div class="metric-label">Domain lifecycle — the only semantic use of colour</div>
+        <div class="grid grid-6" style="margin:var(--space-2) 0 var(--space-5)">
+          <div><div style="height:44px;border-radius:var(--radius-md);background:var(--state-discovered)"></div>
+            <div style="font-size:var(--text-xs);margin-top:5px">discovered</div></div>
+          <div><div style="height:44px;border-radius:var(--radius-md);background:var(--state-pending)"></div>
+            <div style="font-size:var(--text-xs);margin-top:5px">pending</div></div>
+          <div><div style="height:44px;border-radius:var(--radius-md);background:var(--state-active)"></div>
+            <div style="font-size:var(--text-xs);margin-top:5px">active</div></div>
+          <div><div style="height:44px;border-radius:var(--radius-md);background:var(--state-broken)"></div>
+            <div style="font-size:var(--text-xs);margin-top:5px">broken</div></div>
+          <div><div style="height:44px;border-radius:var(--radius-md);background:var(--state-paused)"></div>
+            <div style="font-size:var(--text-xs);margin-top:5px">paused</div></div>
+          <div><div style="height:44px;border-radius:var(--radius-md);background:var(--state-archived)"></div>
+            <div style="font-size:var(--text-xs);margin-top:5px">archived</div></div>
+        </div>
+
+        <div class="metric-label">Brand — actions, focus and active nav only</div>
+        <div class="grid" style="grid-template-columns:repeat(10,1fr);margin:var(--space-2) 0 var(--space-5)">
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-50)"></div>
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-100)"></div>
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-200)"></div>
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-300)"></div>
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-400)"></div>
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-500)"></div>
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-600);
+            outline:2px solid var(--text-primary);outline-offset:2px"></div>
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-700)"></div>
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-800)"></div>
+          <div style="height:36px;border-radius:var(--radius-sm);background:var(--brand-900)"></div>
+        </div>
+
+        <div class="metric-label">Surfaces and text</div>
+        <div class="grid grid-6" style="margin-top:var(--space-2)">
+          <div><div style="height:36px;border-radius:var(--radius-sm);background:var(--bg-base);
+            border:1px solid var(--border)"></div><div style="font-size:var(--text-xs);margin-top:5px">bg-base</div></div>
+          <div><div style="height:36px;border-radius:var(--radius-sm);background:var(--bg-surface);
+            border:1px solid var(--border)"></div><div style="font-size:var(--text-xs);margin-top:5px">bg-surface</div></div>
+          <div><div style="height:36px;border-radius:var(--radius-sm);background:var(--bg-subtle);
+            border:1px solid var(--border)"></div><div style="font-size:var(--text-xs);margin-top:5px">bg-subtle</div></div>
+          <div><div style="height:36px;border-radius:var(--radius-sm);background:var(--text-primary)"></div>
+            <div style="font-size:var(--text-xs);margin-top:5px">text-primary</div></div>
+          <div><div style="height:36px;border-radius:var(--radius-sm);background:var(--text-secondary)"></div>
+            <div style="font-size:var(--text-xs);margin-top:5px">text-secondary</div></div>
+          <div><div style="height:36px;border-radius:var(--radius-sm);background:var(--text-muted)"></div>
+            <div style="font-size:var(--text-xs);margin-top:5px">text-muted</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Typography</h3>
+        <div class="actions"><span class="tag">base 14px</span></div></div>
+      <div class="card-body">
+        <div class="grid grid-2">
+          <div>
+            <div style="font-size:var(--text-2xl);line-height:var(--leading-2xl);font-weight:600;
+              letter-spacing:-0.01em">Page title · 28/36</div>
+            <div style="font-size:var(--text-xl);line-height:var(--leading-xl);font-weight:600">
+              Screen heading · 20/28</div>
+            <div style="font-size:var(--text-lg);line-height:var(--leading-lg);font-weight:600">
+              Card title · 16/24</div>
+            <div style="font-size:var(--text-md);line-height:var(--leading-md)">
+              Body default · 14/22 — form inputs and prose</div>
+            <div style="font-size:var(--text-sm);line-height:var(--leading-sm)">
+              Table body · 13/20 — dense lists</div>
+            <div style="font-size:var(--text-xs);line-height:var(--leading-xs);color:var(--text-secondary)">
+              Metadata · 12/18 — timestamps, helper text</div>
+            <div style="font-size:var(--text-2xs);letter-spacing:0.04em;text-transform:uppercase;
+              color:var(--text-muted);font-weight:500">Micro label · 11/16</div>
+          </div>
+          <div class="stack">
+            <div>
+              <div class="metric-label">Tabular figures — on every numeric column</div>
+              <div class="grid grid-2" style="gap:var(--space-2)">
+                <div><div style="font-size:var(--text-xs);color:var(--text-muted)">tabular</div>
+                  <div class="num" style="font-size:var(--text-lg)">18,402<br/>11,117<br/>94,881</div></div>
+                <div><div style="font-size:var(--text-xs);color:var(--text-muted)">proportional</div>
+                  <div style="font-size:var(--text-lg);font-variant-numeric:proportional-nums">
+                    18,402<br/>11,117<br/>94,881</div></div>
+              </div>
+              <p class="muted" style="font-size:var(--text-xs)">
+                SSE updates land continuously; proportional digits make the whole table shiver.</p>
+            </div>
+            <div>
+              <div class="metric-label">Monospace — selectors, URLs, log lines</div>
+              <code class="mono" style="display:block;background:var(--bg-inset);
+                padding:var(--space-2);border-radius:var(--radius-sm)">div.product-info &gt; span[itemprop='price']</code>
+              <p class="muted" style="font-size:var(--text-xs)">
+                Character-level reading is exactly what the review screen asks of you.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Components</h3></div>
+      <div class="card-body stack">
+        <div>
+          <div class="metric-label">Buttons</div>
+          <div class="row-flex" style="margin-top:var(--space-2);flex-wrap:wrap">
+            <button class="btn btn-primary">Primary</button>
+            <button class="btn">Secondary</button>
+            <button class="btn btn-ghost">Ghost</button>
+            <button class="btn btn-danger">Danger</button>
+            <button class="btn" disabled>Disabled</button>
+            <button class="btn btn-sm">Small</button>
+            <div class="btn-group"><button class="btn" aria-pressed="true">Table</button>
+              <button class="btn" aria-pressed="false">Cards</button></div>
+          </div>
+        </div>
+        <div>
+          <div class="metric-label">State pills</div>
+          <div class="row-flex" style="margin-top:var(--space-2);flex-wrap:wrap">
+            <span class="pill pill-discovered"><i class="dot"></i>Discovered</span>
+            <span class="pill pill-pending"><i class="dot"></i>Awaiting review</span>
+            <span class="pill pill-active"><i class="dot"></i>Active</span>
+            <span class="pill pill-broken"><i class="dot"></i>Broken</span>
+            <span class="pill pill-paused"><i class="dot"></i>Paused</span>
+            <span class="pill pill-archived"><i class="dot"></i>Archived</span>
+          </div>
+        </div>
+        <div>
+          <div class="metric-label">Inputs</div>
+          <div class="row-flex" style="margin-top:var(--space-2);flex-wrap:wrap">
+            <input type="text" placeholder="Text input" />
+            <select><option>Select</option></select>
+            <label class="switch"><input type="checkbox" checked /><span class="track"></span></label>
+            <span class="confidence"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>
+            <span class="confidence mid"><i class="on"></i><i class="on"></i></span>
+            <span class="confidence low"><i class="on"></i></span>
+          </div>
+        </div>
+        <div>
+          <div class="metric-label">Progress — stacked, never a percentage</div>
+          <div class="progress" style="margin-top:var(--space-2)">
+            <span class="done" style="width:46%"></span><span class="inflight" style="width:4%"></span>
+            <span class="failed" style="width:3%"></span><span class="queued" style="width:47%"></span>
+          </div>
+        </div>
+        <div>
+          <div class="metric-label">Banners</div>
+          <div class="stack" style="margin-top:var(--space-2);gap:var(--space-2)">
+            <div class="banner banner-info"><div>Informational — a fact you should know.</div></div>
+            <div class="banner banner-warn"><div>Warning — something needs a decision before it bites.</div></div>
+            <div class="banner banner-danger"><div>Danger — something is already wrong.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Anti-patterns</h3>
+        <div class="actions"><span class="tag">crawler tooling drifts here by default</span></div></div>
+      <div class="card-body">
+        <ul style="margin:0;padding-left:var(--space-5);font-size:var(--text-md);line-height:1.9">
+          <li>Terminal aesthetics — monospace everywhere, green-on-black, ASCII borders, scanlines</li>
+          <li>Neon accents, glow, glassmorphism, animated gradient backgrounds</li>
+          <li>Dark-mode-only, or a dark mode that is the light theme inverted</li>
+          <li>Decorative spider webs in the chrome — the logo carries the metaphor once</li>
+          <li>Colour used for emphasis rather than meaning; if everything is coloured,
+            the one red row stops registering</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: '', crumbs: ['Spydra','Foundations'], runnable: false });</script>
+</body>
+</html>
