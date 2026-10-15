@@ -109,7 +109,7 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   manylinux aarch64 wheel (verified on PyPI; the domain→adapters
   contract moves to a stdlib-AST pytest in 0.8, which blocks CI
   where a lint only warns). `design/tokens/*` + `docs/
-     UI_STATES.md` appeared in the tree mid-session — NOT this
+   UI_STATES.md` appeared in the tree mid-session — NOT this
   branch's work, left uncommitted for the human.
 
 - integrator — 0.6 PROVEN: 6 SSE events through :8080, arrival gaps
@@ -191,6 +191,39 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   re-proven on the real db, then 0.10 can tick. Dev-db evidence left
   pristine: runtime grant revoked, stray ui.__drizzle_migrations dropped,
   scratch db deleted.
+
+- frontend — 0.12: Vite 8 + React 19.3 + TS 7 strict + Tailwind 4.3 +
+  vitest 5. theme.css is the verbatim ADR-0018 three-@import block;
+  /design mount resolves the same relative path as a host checkout.
+  tsconfig: bundler/ES2022/strict/noUncheckedIndexedAccess, includes
+  tests + vite.config; needed @types/react(@-dom) and @types/node —
+  TS 7 ships no bundled React types. **DEVIATION (design/ edit, needs
+  design owner + integrator ack): design/tokens/tailwind-theme.css had a
+  nested CSS comment — the `/* frontend/... */` line inside the header
+  comment CLOSED it early, leaving its three example `@import` lines as
+  live CSS (incl. a self-import) → "Exceeded maximum recursion depth"
+  from the Tailwind resolver; page could not build. Fix = removed the
+  inner comment markers (doc-comment only, no functional change;
+  ADR-0018's quoted snippet was itself the bug). NOTE: the OTHER hunks
+  in `git diff design/` (skeleton/overlay/disabled tokens in both
+  tokens.css and tailwind-theme.css) pre-date this task — the design
+  owner's uncommitted work, untouched.** "Assert
+  bg-red-500 fails the build" = tests/palette-guard.test.ts: (a) fs
+  assert that tailwind-theme.css keeps `--color-*: initial;` (structural
+  — present, verified), (b) scan of src/**/*.{ts,tsx,css,html} +
+  index.html for raw palette utilities → file:line failure. Teeth
+  proven: injected `bg-red-500` into App.tsx → vitest failed naming
+  `src/App.tsx:7` → reverted → 10/10 green. Theme: data-theme="dark" on
+  <html>, inline pre-paint script (localStorage try/catch, stored choice
+  > prefers-color-scheme), pure logic in src/lib/theme.ts with 8 unit
+  tests; toggle = components/ThemeToggle.tsx + hooks/useTheme.ts.
+  eslint stays minimal (js recommended; TS 7 has no JS API — same
+  deviation as bff 0.9, comment in eslint.config.mjs). Verified:
+  `build web` + `up -d`; curl :8080/ → SPA; served theme.css contains
+  .bg-canvas/.text-ink/.text-ink-muted/.bg-surface/.border-line/.font-brand
+  and `data-theme="dark"` block, zero `red-500`; tsc --noEmit + eslint +
+  prettier clean in container. NOT verified: rendered pixels in both
+  themes — logic and CSS are proven, eyeballing left to the human.
 
 - ops — 0.11 render sidecar. Plain ESM node:http (zero new npm deps —
   two routes don't justify express; body parsing hand-rolled with the

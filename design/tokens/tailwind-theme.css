@@ -10,8 +10,7 @@
    `tokens.css` and both themes follow, because these are `var()` references
    rather than copies.
 
-   Frontend usage:
-       /* frontend/src/styles/theme.css */
+   Frontend usage (frontend/src/styles/theme.css):
        @import "tailwindcss";
        @import "../../../design/tokens/tokens.css";
        @import "../../../design/tokens/tailwind-theme.css";
@@ -32,90 +31,105 @@
   --color-*: initial;
 
   /* ---- Surfaces ------------------------------------------------------ */
-  --color-canvas:          var(--sp-bg-base);       /* bg-canvas   */
-  --color-surface:         var(--sp-bg-surface);    /* bg-surface  */
-  --color-subtle:          var(--sp-bg-subtle);     /* bg-subtle   */
-  --color-inset:           var(--sp-bg-inset);      /* bg-inset    */
-  --color-selected:        var(--sp-bg-selected);   /* bg-selected */
+  --color-canvas: var(--sp-bg-base); /* bg-canvas   */
+  --color-surface: var(--sp-bg-surface); /* bg-surface  */
+  --color-subtle: var(--sp-bg-subtle); /* bg-subtle   */
+  --color-inset: var(--sp-bg-inset); /* bg-inset    */
+  --color-selected: var(--sp-bg-selected); /* bg-selected */
 
   /* ---- Text ---------------------------------------------------------- */
-  --color-ink:             var(--sp-text-primary);    /* text-ink           */
-  --color-ink-muted:       var(--sp-text-secondary);  /* text-ink-muted     */
-  --color-ink-subtle:      var(--sp-text-muted);      /* text-ink-subtle    */
-  --color-ink-inverse:     var(--sp-text-inverse);    /* text-ink-inverse   */
-  --color-ink-brand:       var(--sp-text-brand);      /* text-ink-brand     */
+  --color-ink: var(--sp-text-primary); /* text-ink           */
+  --color-ink-muted: var(--sp-text-secondary); /* text-ink-muted     */
+  --color-ink-subtle: var(--sp-text-muted); /* text-ink-subtle    */
+  --color-ink-inverse: var(--sp-text-inverse); /* text-ink-inverse   */
+  --color-ink-brand: var(--sp-text-brand); /* text-ink-brand     */
 
   /* ---- Lines and focus ----------------------------------------------- */
-  --color-line:            var(--sp-border);          /* border-line        */
-  --color-line-strong:     var(--sp-border-strong);   /* border-line-strong */
-  --color-focus:           var(--sp-border-focus);    /* ring-focus         */
+  --color-line: var(--sp-border); /* border-line        */
+  --color-line-strong: var(--sp-border-strong); /* border-line-strong */
+  --color-focus: var(--sp-border-focus); /* ring-focus         */
 
   /* ---- Brand — actions, focus and active nav only. Never state. ------ */
-  --color-brand:           var(--sp-brand-600);
-  --color-brand-hover:     var(--sp-brand-700);
-  --color-brand-subtle:    var(--sp-brand-50);
+  --color-brand: var(--sp-brand-600);
+  --color-brand-hover: var(--sp-brand-700);
+  --color-brand-subtle: var(--sp-brand-50);
 
   /* ---- Domain lifecycle — the only semantic use of colour ------------ */
-  --color-state-discovered:      var(--sp-state-discovered);
+  --color-state-discovered: var(--sp-state-discovered);
   --color-state-discovered-tint: var(--sp-state-discovered-bg);
-  --color-state-pending:         var(--sp-state-pending);
-  --color-state-pending-tint:    var(--sp-state-pending-bg);
-  --color-state-active:          var(--sp-state-active);
-  --color-state-active-tint:     var(--sp-state-active-bg);
-  --color-state-broken:          var(--sp-state-broken);
-  --color-state-broken-tint:     var(--sp-state-broken-bg);
-  --color-state-paused:          var(--sp-state-paused);
-  --color-state-paused-tint:     var(--sp-state-paused-bg);
-  --color-state-archived:        var(--sp-state-archived);
-  --color-state-archived-tint:   var(--sp-state-archived-bg);
+  --color-state-pending: var(--sp-state-pending);
+  --color-state-pending-tint: var(--sp-state-pending-bg);
+  --color-state-active: var(--sp-state-active);
+  --color-state-active-tint: var(--sp-state-active-bg);
+  --color-state-broken: var(--sp-state-broken);
+  --color-state-broken-tint: var(--sp-state-broken-bg);
+  --color-state-paused: var(--sp-state-paused);
+  --color-state-paused-tint: var(--sp-state-paused-bg);
+  --color-state-archived: var(--sp-state-archived);
+  --color-state-archived-tint: var(--sp-state-archived-bg);
 
   /* ---- Feedback — transient, not lifecycle --------------------------- */
-  --color-info:            var(--sp-fb-info);
-  --color-info-tint:       var(--sp-fb-info-bg);
+  --color-info: var(--sp-fb-info);
+  --color-info-tint: var(--sp-fb-info-bg);
 
   /* ---- Data visualisation -------------------------------------------- */
-  --color-viz-1:           var(--sp-viz-1);
-  --color-viz-2:           var(--sp-viz-2);
-  --color-viz-3:           var(--sp-viz-3);
-  --color-viz-4:           var(--sp-viz-4);
-  --color-viz-5:           var(--sp-viz-5);
-  --color-viz-6:           var(--sp-viz-6);
-  --color-viz-grid:        var(--sp-viz-grid);
-  --color-viz-axis:        var(--sp-viz-axis);
+  --color-viz-1: var(--sp-viz-1);
+  --color-viz-2: var(--sp-viz-2);
+  --color-viz-3: var(--sp-viz-3);
+  --color-viz-4: var(--sp-viz-4);
+  --color-viz-5: var(--sp-viz-5);
+  --color-viz-6: var(--sp-viz-6);
+  --color-viz-grid: var(--sp-viz-grid);
+  --color-viz-axis: var(--sp-viz-axis);
+
+  /* ---- Skeletons ----------------------------------------------------- */
+  --color-skeleton: var(--sp-skeleton-base); /* bg-skeleton       */
+  --color-skeleton-sheen: var(--sp-skeleton-sheen); /* bg-skeleton-sheen */
+
+  /* ---- Playground overlays — translucent by construction ------------- */
+  --color-overlay-hover: var(--sp-overlay-hover);
+  --color-overlay-selected: var(--sp-overlay-selected);
+  --color-overlay-match: var(--sp-overlay-match);
+  --color-overlay-outline: var(--sp-overlay-outline);
+
+  /* ---- Disabled ------------------------------------------------------- */
+  --color-disabled: var(--sp-disabled-bg);
+  --color-disabled-ink: var(--sp-disabled-fg);
+  --color-disabled-line: var(--sp-disabled-border);
 
   /* ---- Typography ----------------------------------------------------- */
-  --font-sans:  var(--sp-font-ui);
-  --font-mono:  var(--sp-font-mono);
-  --font-brand: var(--sp-font-brand);      /* wordmark only — never in the UI */
+  --font-sans: var(--sp-font-ui);
+  --font-mono: var(--sp-font-mono);
+  --font-brand: var(--sp-font-brand); /* wordmark only — never in the UI */
 
   /* Base 14px. A dense operational interface; 16px wastes a third of
      every table row. */
-  --text-2xs:             var(--sp-text-2xs);
+  --text-2xs: var(--sp-text-2xs);
   --text-2xs--line-height: var(--sp-leading-2xs);
-  --text-xs:              var(--sp-text-xs);
-  --text-xs--line-height:  var(--sp-leading-xs);
-  --text-sm:              var(--sp-text-sm);
-  --text-sm--line-height:  var(--sp-leading-sm);
-  --text-md:              var(--sp-text-md);
-  --text-md--line-height:  var(--sp-leading-md);
-  --text-lg:              var(--sp-text-lg);
-  --text-lg--line-height:  var(--sp-leading-lg);
-  --text-xl:              var(--sp-text-xl);
-  --text-xl--line-height:  var(--sp-leading-xl);
-  --text-2xl:             var(--sp-text-2xl);
+  --text-xs: var(--sp-text-xs);
+  --text-xs--line-height: var(--sp-leading-xs);
+  --text-sm: var(--sp-text-sm);
+  --text-sm--line-height: var(--sp-leading-sm);
+  --text-md: var(--sp-text-md);
+  --text-md--line-height: var(--sp-leading-md);
+  --text-lg: var(--sp-text-lg);
+  --text-lg--line-height: var(--sp-leading-lg);
+  --text-xl: var(--sp-text-xl);
+  --text-xl--line-height: var(--sp-leading-xl);
+  --text-2xl: var(--sp-text-2xl);
   --text-2xl--line-height: var(--sp-leading-2xl);
 
-  --font-weight-normal:   var(--sp-weight-normal);
-  --font-weight-medium:   var(--sp-weight-medium);
+  --font-weight-normal: var(--sp-weight-normal);
+  --font-weight-medium: var(--sp-weight-medium);
   --font-weight-semibold: var(--sp-weight-semi);
 
   /* ---- Radius --------------------------------------------------------- */
-  --radius-xs:   var(--sp-radius-xs);
-  --radius-sm:   var(--sp-radius-sm);     /* badges           */
-  --radius-md:   var(--sp-radius-md);     /* controls, inputs */
-  --radius-lg:   var(--sp-radius-lg);     /* cards, panels    */
-  --radius-xl:   var(--sp-radius-xl);     /* modal            */
-  --radius-full: var(--sp-radius-full);   /* status dots only */
+  --radius-xs: var(--sp-radius-xs);
+  --radius-sm: var(--sp-radius-sm); /* badges           */
+  --radius-md: var(--sp-radius-md); /* controls, inputs */
+  --radius-lg: var(--sp-radius-lg); /* cards, panels    */
+  --radius-xl: var(--sp-radius-xl); /* modal            */
+  --radius-full: var(--sp-radius-full); /* status dots only */
 
   /* ---- Elevation — borders over shadows ------------------------------- */
   --shadow-sm: var(--sp-shadow-sm);
@@ -123,14 +137,14 @@
   --shadow-lg: var(--sp-shadow-lg);
 
   /* ---- Motion ---------------------------------------------------------- */
-  --ease-out:  var(--sp-ease-out);
+  --ease-out: var(--sp-ease-out);
 
   /* ---- Layout ---------------------------------------------------------- */
-  --spacing-sidebar:           var(--sp-sidebar-width);
+  --spacing-sidebar: var(--sp-sidebar-width);
   --spacing-sidebar-collapsed: var(--sp-sidebar-collapsed);
-  --spacing-topbar:            var(--sp-topbar-height);
-  --spacing-row-comfortable:   var(--sp-row-comfortable);
-  --spacing-row-compact:       var(--sp-row-compact);
+  --spacing-topbar: var(--sp-topbar-height);
+  --spacing-row-comfortable: var(--sp-row-comfortable);
+  --spacing-row-compact: var(--sp-row-compact);
 }
 
 /* ==========================================================================

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spydra</title>
+    <script>
+      // Resolve the theme before first paint so dark never flashes white
+      // (spec 006 §3). Light is the default; the stored choice wins over
+      // prefers-color-scheme, which is consulted on first visit only.
+      // localStorage throws in a private window — every access is guarded.
+      (function () {
+        var t = null;
+        try {
+          t = localStorage.getItem("spydra-theme");
+        } catch (e) {
+          /* private window: fall through to the media query */
+        }
+        if (t !== "dark" && t !== "light") {
+          t =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        }
+        if (t === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
