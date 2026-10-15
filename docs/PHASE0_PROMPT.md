@@ -10,8 +10,8 @@ are not there yet (or, before the Makefile exists,
 `python3 scripts/gen-agents.py`). The roles live in `docs/agents/` and are
 projected into each tool's format from there.
 
-Keep this file. When phase 1 starts, the prompt is the same four paragraphs
-with a different phase number and a different exit criterion.
+Keep this file. When phase 1 starts, the prompt is the same shape with a
+different phase number and a different exit criterion.
 
 ---
 
@@ -35,9 +35,13 @@ Then read the ADRs those name, at minimum 0010 (docker-native), 0013
 
 Work on one branch: chore/phase-0-scaffold. Phase 0 is scaffolding, so run it
 mostly sequentially rather than fanning out — there is nothing to parallelise
-yet and the hooks do not fully exist until task 0.6. The roles are defined in
-docs/agents/ and generated into this tool's format by `make agents`: use
-spydra-ops for Docker, the Makefile, the Caddyfile, CI and the hooks;
+yet. Build tasks 0.1–0.3 first and in order: they are the Makefile, the hooks
+and the agent definitions, they have no dependencies, and once they exist
+every later commit is gated normally.
+
+The roles are defined in docs/agents/ and generated into this tool's format by
+`make agents`: use spydra-ops for Docker, the Makefile, the Caddyfile, CI and
+the hooks;
 spydra-backend, spydra-bff and spydra-frontend for their packages;
 spydra-test for tests; spydra-reviewer before you consider a task done. If
 this tool has no subagent mechanism, read the role file yourself before
@@ -49,9 +53,12 @@ WORKFLOW §3, with the Phase 0 exit criteria copied from BUILD_PLAN.md. Then
 work the tasks top to bottom, ticking each in BUILD_PLAN.md as its definition
 of done actually holds.
 
-Four things I care about more than speed:
+Five things I care about more than speed:
 
-  - Task 0.4 and 0.5 before anything that depends on them. Buffered SSE
+  - 0.1 to 0.3 before anything else, in order. The gate has to exist before
+    the work it gates, otherwise the first third of this phase lands ungated
+    and you discover the formatting and lint rules afterwards.
+  - Task 0.6 and 0.7 before anything that depends on them. Buffered SSE
     presents as a frontend bug and a missing grant presents as nothing at
     all. Prove both: an SSE endpoint streaming unbuffered through the edge,
     and `INSERT INTO crawl.runs` from the BFF role being rejected by
@@ -62,7 +69,7 @@ Four things I care about more than speed:
   - The hooks must actually fire. Verify a long commit subject is rejected, a
     staged .env is rejected, and a push to develop is refused. These are git
     hooks on purpose — they have to work from every tool, not just this one.
-  - Finish with task 0.14 — one trivial slice through the full agent handoff.
+  - Finish with task 0.17 — one trivial slice through the full agent handoff.
     The point is to find out whether the handoff works while the stakes are a
     hello-world.
 

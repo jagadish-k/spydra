@@ -1,10 +1,11 @@
 # 0013 — Frontend API types are generated from OpenAPI
 
-**Status:** Accepted · 2026-10-15 · extended by [ADR-0015](0015-service-topology.md)
+**Status:** Accepted · 2026-10-15
 
-> There are now two OpenAPI schemas — the Python API's and the BFF's. Both
-> generate into the SPA (`api/schema.crawler.d.ts`, `api/schema.ui.d.ts`)
-> under the same rule: generated, committed, never hand-edited.
+> Two OpenAPI schemas are generated — the Python API's and the BFF's
+> ([ADR-0015](0015-service-topology.md)) — into
+> `api/schema.crawler.d.ts` and `api/schema.ui.d.ts`, under one rule:
+> generated, committed, never hand-edited.
 
 ## Context
 

@@ -82,7 +82,7 @@ nothing it needs to write.
 
 Read-write roles get the repository's own rules as permissions: no edits to
 any generated file, and `drizzle-kit push` refused outright (AGENTS.md rules
-14 and 15). The pre-commit hook already rejects both; this catches them one
+16 and 17). The pre-commit hook already rejects both; this catches them one
 step earlier, before the edit happens.
 
 **On Cursor and Antigravity, `read-only` is prose** — forceful prose at the

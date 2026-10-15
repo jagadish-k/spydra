@@ -19,8 +19,8 @@ Start with [`../AGENTS.md`](../AGENTS.md) — the operating rules — then
 
 | Doc | Content |
 | --- | --- |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | System design. The source of truth for intent. |
-| [`DATA_MODEL.md`](DATA_MODEL.md) | Core schema. **Incomplete** — [spec 001](specs/001-domain-model.md) closes the gaps. |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Why the system is shaped this way. Intent; the specs hold the exact shapes. |
+
 | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Tokens, typography, components, anti-patterns. |
 | [`SCREENS.md`](SCREENS.md) | What each of the ten screens is for. |
 | [`BRAND.md`](BRAND.md) | Logo construction, variants, usage. |
@@ -31,7 +31,7 @@ accurate. Build to match it.
 
 ## Decisions
 
-[`adr/`](adr/README.md) — twenty-two records. Read the relevant one before
+[`adr/`](adr/README.md) — twenty-one records. Read the relevant one before
 changing anything structural. Each states its cost.
 
 The four most likely to be questioned, and most likely to be wrong to change:

@@ -2,27 +2,88 @@
 
 **Phase 1** · depends on nothing · everything depends on this
 
-> **All tables in this spec live in the `crawl` schema**, owned by `api` and
-> `worker`. The BFF has `SELECT` and no write access (spec 010 §3). The
-> `ui` schema is the BFF's and is specified in [spec 011](011-bff.md).
+**This is the authoritative schema.** All tables here live in the `crawl`
+schema, owned by `api` and `worker`. The BFF has `SELECT` and no write access
+(spec 010 §3); the `ui` schema is the BFF's and is specified in
+[spec 011](011-bff.md).
 
-`docs/DATA_MODEL.md` holds the core schema and the reasoning behind its
-shapes. **That file is incomplete** — it references tables it does not define.
-This spec closes those gaps and is the authoritative schema for
-implementation.
+`ARCHITECTURE.md` explains *why* these shapes were chosen. This spec is what
+the migration implements.
 
 ---
 
-## 1. Gaps in DATA_MODEL.md to close
-
-`DATA_MODEL.md` references `runs(id)` in two foreign keys but never defines
-the table. The concurrency model in `ARCHITECTURE.md` requires an asset queue
-that does not exist. ADR-0012 requires a retained event log. ADR-0006
-specifies a column that is absent.
-
-Add these in the first migration alongside the documented tables:
+## 1. Schema
 
 ```sql
+-- Domain registry: lifecycle, politeness config, rendering mode
+CREATE TYPE domain_state AS ENUM
+  ('discovered','awaiting_approval','active','paused','broken','archived');
+
+CREATE TABLE domains (
+  id              BIGSERIAL PRIMARY KEY,
+  host            TEXT NOT NULL UNIQUE,
+  state           domain_state NOT NULL DEFAULT 'discovered',
+  render_mode     TEXT NOT NULL DEFAULT 'static',   -- static | rendered | auto
+  crawl_delay_ms  INT  NOT NULL DEFAULT 2000,
+  max_concurrency INT  NOT NULL DEFAULT 1,
+  in_flight       INT  NOT NULL DEFAULT 0,   -- see the note below
+  asset_concurrency INT NOT NULL DEFAULT 5,
+  max_depth       INT  NOT NULL DEFAULT 5,
+  deny_patterns   TEXT[] NOT NULL DEFAULT '{}',
+  respect_robots  BOOLEAN NOT NULL DEFAULT TRUE,
+  user_agent      TEXT,
+  next_eligible_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  consecutive_failures INT NOT NULL DEFAULT 0,
+  notes           TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ON domains (next_eligible_at) WHERE state = 'active';
+
+-- Templates are scoped to (domain, url_pattern), NOT domain alone.
+-- A domain commonly needs separate rules for listing vs product pages.
+CREATE TABLE templates (
+  id            BIGSERIAL PRIMARY KEY,
+  domain_id     BIGINT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  url_pattern   TEXT NOT NULL,        -- regex matched against path+query
+  page_kind     TEXT NOT NULL,        -- 'listing' | 'product'
+  version       INT  NOT NULL,
+  is_active     BOOLEAN NOT NULL DEFAULT FALSE,
+  -- discovery rules (listing pages): how to find more URLs
+  discovery     JSONB NOT NULL DEFAULT '{}',
+  --   { next_page: "a.pagination__next",
+  --     product_links: "a.product-card__link",
+  --     subcategory_links: "nav.cats a",
+  --     allow_patterns: ["^/catalog/"], deny_patterns: ["\\?sort="] }
+  -- extraction rules (product pages): field -> selector + transform
+  extraction    JSONB NOT NULL DEFAULT '{}',
+  --   { price: { sel: ".price", attr: "text", transform: "currency",
+  --              required: true },
+  --     images: { sel: ".gallery img", attr: "src", many: true } }
+  proposed_by   TEXT NOT NULL DEFAULT 'human',  -- 'human' | 'llm'
+  -- ADR-0006: hedged, never populated until a platform family appears.
+  parent_template_id BIGINT REFERENCES templates(id),
+  approved_at   TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (domain_id, url_pattern, version)
+);
+CREATE UNIQUE INDEX one_active_per_pattern
+  ON templates (domain_id, url_pattern) WHERE is_active;
+
+-- Page identity. One row per canonical URL, ever.
+CREATE TABLE pages (
+  id             BIGSERIAL PRIMARY KEY,
+  domain_id      BIGINT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+  url            TEXT NOT NULL,          -- canonicalised
+  url_hash       BYTEA NOT NULL,         -- sha256, for the unique index
+  page_kind      TEXT,
+  template_id    BIGINT REFERENCES templates(id),
+  depth          INT NOT NULL DEFAULT 0,
+  first_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_crawled_at TIMESTAMPTZ,
+  UNIQUE (domain_id, url_hash)
+);
+
 -- A crawl run. Referenced by page_observations and crawl_queue.
 CREATE TYPE run_state AS ENUM ('running','paused','completed','stopped','failed');
 
@@ -37,6 +98,86 @@ CREATE TABLE runs (
   stop_reason   TEXT
 );
 CREATE INDEX ON runs (started_at DESC);
+
+-- Append-only. One row per successful crawl. This is the history.
+CREATE TABLE page_observations (
+  id            BIGSERIAL PRIMARY KEY,
+  page_id       BIGINT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+  run_id        BIGINT NOT NULL REFERENCES runs(id),
+  template_id   BIGINT REFERENCES templates(id),
+  observed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  http_status   INT,
+  content_hash  BYTEA,          -- skip the write when nothing changed
+  strategy      TEXT,           -- 'structured' | 'selector' | 'llm'
+  -- typed core fields
+  title         TEXT,
+  price_amount  NUMERIC(14,4),
+  price_currency CHAR(3),
+  availability  TEXT,
+  vendor        TEXT,
+  category_path TEXT[],
+  description   TEXT,
+  -- everything site-specific
+  attributes    JSONB NOT NULL DEFAULT '{}',
+  supplier      JSONB NOT NULL DEFAULT '{}',
+  validation    JSONB NOT NULL DEFAULT '{}',  -- per-field pass/fail
+  raw_html_path TEXT,           -- gzipped, purged after 7 days
+  raw_html_expires_at TIMESTAMPTZ
+);
+CREATE INDEX ON page_observations (page_id, observed_at DESC);
+
+-- Current state is a view, not a table.
+CREATE VIEW page_current AS
+SELECT DISTINCT ON (page_id) *
+FROM page_observations ORDER BY page_id, observed_at DESC;
+
+-- Work queue. SKIP LOCKED does the dequeue.
+CREATE TABLE crawl_queue (
+  id          BIGSERIAL PRIMARY KEY,
+  run_id      BIGINT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  domain_id   BIGINT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+  url         TEXT NOT NULL,
+  url_hash    BYTEA NOT NULL,
+  depth       INT NOT NULL DEFAULT 0,
+  state       TEXT NOT NULL DEFAULT 'pending',
+  attempts    INT NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  enqueued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (run_id, url_hash)              -- dedupe within a run
+);
+CREATE INDEX ON crawl_queue (domain_id, state) WHERE state = 'pending';
+
+-- Assets, deduped by content hash across all pages.
+CREATE TABLE assets (
+  id            BIGSERIAL PRIMARY KEY,
+  content_hash  BYTEA NOT NULL UNIQUE,
+  path          TEXT NOT NULL,
+  mime          TEXT,
+  width         INT,
+  height        INT,
+  bytes         BIGINT,
+  downloaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE observation_assets (
+  observation_id BIGINT REFERENCES page_observations(id) ON DELETE CASCADE,
+  asset_id       BIGINT REFERENCES assets(id),
+  source_url     TEXT NOT NULL,
+  position       INT,
+  PRIMARY KEY (observation_id, asset_id, source_url)
+);
+
+-- Pages the system could not interpret. Your review inbox.
+CREATE TABLE unknown_pages (
+  id           BIGSERIAL PRIMARY KEY,
+  domain_id    BIGINT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+  url          TEXT NOT NULL,
+  reason       TEXT NOT NULL,   -- 'no_template' | 'validation_failed' | ...
+  llm_proposal JSONB,           -- selectors the model suggested
+  sample_html_path TEXT,
+  resolved_at  TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- Bounded per-run event log. Exists so an SSE client that reconnects with
 -- Last-Event-ID can be backfilled rather than shown a gap (ADR-0012).
@@ -77,47 +218,27 @@ CREATE TABLE template_samples (
   last_result JSONB NOT NULL DEFAULT '{}',   -- { field: 'pass'|'fail'|'partial' }
   UNIQUE (template_id, url)
 );
-
--- ADR-0006: hedged, never populated until a platform family appears.
-ALTER TABLE templates ADD COLUMN parent_template_id BIGINT
-  REFERENCES templates(id);
 ```
 
-### Corrections to the documented schema
+### Why these shapes
 
-`DATA_MODEL.md` and `ARCHITECTURE.md` disagree with themselves in four
-places. These are the resolutions; apply them in the first migration.
+- **`templates` keyed on `(domain_id, url_pattern)`** — a domain needs different rules for listing and product pages, and often per category section. Keying on domain alone is a painful migration later.
+- **Partial unique index on `is_active`** — guarantees exactly one live template per pattern while keeping every prior version readable.
+- **`content_hash` on observations** — a re-crawl that finds nothing changed writes no row beyond a timestamp bump, keeping history meaningful rather than noisy.
+- **`validation` JSONB per observation** — records which fields passed their rules at crawl time, so a silently broken selector surfaces in a report rather than as quiet bad data.
 
-| Problem | Resolution |
-| --- | --- |
-| `domain_state` omits **`archived`**, which appears in `ARCHITECTURE.md` §lifecycle, `DESIGN_SYSTEM.md`, the Figma State pill and every mockup | Add `archived` to the enum |
-| `render_mode` is commented `'static' \| 'browser'` in the schema but `static \| rendered \| auto` in `ARCHITECTURE.md` §concurrency | **`static \| rendered \| auto` wins.** `browser` is dead terminology from an earlier draft; do not use it anywhere |
-| `domains` has no **`in_flight`** column, but the claim query in `ARCHITECTURE.md` and spec 002 §1 requires one to enforce `max_concurrency` | Add `in_flight INT NOT NULL DEFAULT 0` |
-| `domains` has no **`asset_concurrency`**, but the Domain detail screen exposes it and the asset gate reads it | Add `asset_concurrency INT NOT NULL DEFAULT 5` |
-
-```sql
-ALTER TYPE domain_state ADD VALUE 'archived';
-
-ALTER TABLE domains
-  ADD COLUMN in_flight         INT NOT NULL DEFAULT 0,
-  ADD COLUMN asset_concurrency INT NOT NULL DEFAULT 5,
-  ADD COLUMN max_depth         INT NOT NULL DEFAULT 5,
-  ADD COLUMN deny_patterns     TEXT[] NOT NULL DEFAULT '{}';
-
-COMMENT ON COLUMN domains.render_mode IS 'static | rendered | auto';
-COMMENT ON COLUMN domains.in_flight IS
-  'Pages currently being fetched. Incremented in the claim transaction, '
-  'decremented on completion, reconciled by the lease-expiry sweep. '
-  'Never trust it without reconciliation.';
-```
-
-`max_depth` and `deny_patterns` are also added here: spec 004 reads them per
-domain, and the Domain detail screen edits them.
+**`domains.in_flight` is a cache, not a fact.** It is incremented in the
+claim transaction, decremented on completion, and reconciled by the
+lease-expiry sweep. Never trust it without reconciliation — a worker killed
+mid-fetch leaves it high until the sweep runs.
 
 Asset *host* backoff state (next-eligible time per CDN host) is deliberately
 **not** a table. It lives in process, per ADR-0003: a loose limit is a
 throughput knob, not a correctness property. It resets on restart, which is
 acceptable.
+
+`max_depth` and `deny_patterns` are per domain because spec 004 reads them
+there and the Domain detail screen edits them.
 
 ---
 
@@ -219,7 +340,7 @@ empty extraction.
 
 ---
 
-## 3a. Authoring tables (phase 4)
+## 4. Authoring tables (phase 4)
 
 Two tables support template authoring. **[Spec 013](013-template-authoring.md)
 is authoritative for their contents**; they are listed here so this spec
@@ -230,7 +351,7 @@ remains the complete picture of the `crawl` schema.
 | `crawl.template_drafts` | working state for a template being authored by form, chat or playground | until approved or discarded |
 | `crawl.field_vocabulary` | canonical field names, aliases, types and targets | permanent, seeded |
 
-Two constraints belong to this spec rather than 013:
+Two constraints belong here rather than in 013:
 
 - **A draft is not a template.** Nothing in the crawl path may read
   `template_drafts`; only `templates` rows with `is_active = true` are
@@ -246,7 +367,7 @@ by the same job that purges parsed HTML.
 
 ---
 
-## 4. Migrations
+## 5. Migrations
 
 Alembic, one migration per schema change, in `backend/migrations/`.
 
@@ -255,15 +376,16 @@ Alembic, one migration per schema change, in `backend/migrations/`.
 - Enum changes use `ALTER TYPE … ADD VALUE` where possible; where not, create
   the new type, migrate the column, drop the old.
 - Data migrations are separate from schema migrations and idempotent.
-- The first migration creates everything in `DATA_MODEL.md` plus section 1
-  above, as one unit. There is no production data to preserve.
+- The first migration creates section 1 in one unit. There is no production
+  data to preserve, so there is no reason to split it.
 
 ---
 
-## 5. Acceptance
+## 6. Acceptance
 
 - [ ] `make migrate` creates the full schema from empty; `make migrate-down`
-      returns to empty.
+      returns to empty. **On a database with nothing in it** — a migration
+      that only works against a half-built schema is not a migration.
 - [ ] Inserting two `templates` rows with `is_active = true` for the same
       `(domain_id, url_pattern)` is rejected by the partial unique index.
 - [ ] `page_current` returns exactly one row per page, the newest.

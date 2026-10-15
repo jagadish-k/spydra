@@ -1,10 +1,11 @@
 # 0003 — Three worker pools behind one per-domain gate
 
-**Status:** Accepted · 2026-10-15 · rendered pool amended by [ADR-0016](0016-render-sidecar.md)
+**Status:** Accepted · 2026-10-15
 
-> The three-pool model and the per-domain gate stand. Only the *rendered*
-> pool changed: browser contexts moved out of the worker into a sidecar.
-> A rendered fetch still claims the same per-domain lock.
+> The rendered pool runs in a sidecar service rather than in the worker
+> process ([ADR-0016](0016-render-sidecar.md)). A rendered fetch still claims
+> the same per-domain lock as a static one; only the pool's sizing and its
+> process boundary differ.
 
 ## Context
 

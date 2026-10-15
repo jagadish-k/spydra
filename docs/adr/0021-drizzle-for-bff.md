@@ -1,18 +1,17 @@
 # ADR-0021 — Drizzle for the BFF's database access
 
-**Status:** accepted · supersedes the "no ORM" convention in spec 011 §6
-**Date:** 2026-10-15
-**Context:** phase 0 · affects spec 011, spec 010, `AGENTS.md`
+**Status:** Accepted · 2026-10-15
+**Context:** phase 0 · affects spec 010, spec 011, `AGENTS.md`
 
 ---
 
 ## Context
 
-Spec 011 originally said: no ORM, hand-written SQL via `postgres` or `pg`, and
-a plain SQL migration runner. The reasoning was that `ui` is four tables and
-an ORM would be more code than it saves.
+The `ui` schema is four tables. The tempting answer is no ORM at all —
+hand-written SQL via `postgres` or `pg`, and a small migration runner — on the
+grounds that a library would be more code than it saves.
 
-Two things make that the wrong call once there are agents writing the code:
+Two things make that the wrong trade here:
 
 1. **"A plain SQL migration runner" is unbuilt work.** Up/down, ordering,
    a ledger table, a dirty-state guard, and tests for all of it. That is a
@@ -97,7 +96,7 @@ meaning. Two services, same principle.
 
 **What to watch for.** If the BFF ends up with Drizzle relations, query
 builders and a repository layer over four tables, the "more code than it
-saves" objection in spec 011 was right after all. Re-read this ADR at the
+saves" objection was right after all. Re-read this ADR at the
 end of phase 3 alongside the BFF thinness tripwire (ADR-0015) — the two
 questions are related, and if the tier collapses this ADR goes with it.
 

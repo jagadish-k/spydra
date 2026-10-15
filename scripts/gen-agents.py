@@ -43,7 +43,7 @@ CLAUDE_TOOLS = {
 }
 
 # Repository rules that every role is subject to, expressed where a tool can
-# enforce them. These mirror AGENTS.md rules 14 and 15 — the same things the
+# enforce them. These mirror AGENTS.md rules 16 and 17 — the same things the
 # pre-commit hook rejects, caught one step earlier.
 GENERATED_PATHS = (
     ".claude/agents/*",

@@ -25,9 +25,9 @@ type/NN-slug          phase/task number + what it does
 
 | Prefix | For | Example |
 | --- | --- | --- |
-| `feat/` | a build-plan task | `feat/1.3-postgres-frontier` |
+| `feat/` | a build-plan task | `feat/1.5-postgres-frontier` |
 | `fix/` | a defect | `fix/sse-buffering-through-edge` |
-| `chore/` | tooling, deps, CI | `chore/0.6-makefile` |
+| `chore/` | tooling, deps, CI | `chore/0.2-makefile` |
 | `docs/` | docs and ADRs only | `docs/adr-0023-asset-dedupe` |
 | `spike/` | throwaway. **Never merged** | `spike/drizzle-crawl-introspect` |
 
@@ -36,7 +36,7 @@ was three tasks — split it and say so in the PR rather than growing the branch
 
 **Commits:** imperative subject under 72 characters, body explaining *why* when
 the change is not obvious. Reference the task: `feat: claim query with SKIP
-LOCKED (1.3)`.
+LOCKED (1.5)`.
 
 ## 2. The two gates
 
@@ -169,12 +169,12 @@ sequential slices.
 
 ```
 # safe — different packages, no shared files
-feat/3.6-domains-screen      (frontend)
-feat/3.1b-bff-schedules      (bff)
+feat/3.10-domains-screen      (frontend)
+feat/3.5-bff-schedules      (bff)
 
 # not safe — same directory
-feat/1.3-postgres-frontier   (backend, spydra/scheduler/)
-feat/1.4-politeness-gate     (backend, spydra/scheduler/)
+feat/1.5-postgres-frontier   (backend, spydra/scheduler/)
+feat/1.6-politeness-gate     (backend, spydra/scheduler/)
 ```
 
 Whatever your tool's concurrency limit is, it is not a target. The limit here
@@ -187,9 +187,9 @@ or four.
 touches it:
 
 ```markdown
-# feat/1.3-postgres-frontier
+# feat/1.5-postgres-frontier
 
-**Task:** BUILD_PLAN 1.3 · **Spec:** specs/002-scheduler.md §1–3
+**Task:** BUILD_PLAN 1.5 · **Spec:** specs/002-scheduler.md §1–3
 **ADRs that constrain this:** 0002 (postgres as queue), 0008 (ports)
 
 ## Files this slice owns
@@ -219,7 +219,7 @@ reconstructing the reasoning from the diff.
 
 ## 4. Pull requests
 
-- Title: `feat: claim query with SKIP LOCKED (1.3)`
+- Title: `feat: claim query with SKIP LOCKED (1.5)`
 - Body: what changed, why, which acceptance criteria now pass, anything
   deliberately left out — and any `--no-verify` use.
 - Link the task file.
@@ -228,7 +228,11 @@ reconstructing the reasoning from the diff.
 
 ## 5. Where this does not apply
 
-Phase 0 is scaffolding, mostly one slice, mostly sequential, and the hooks do
-not fully exist until `0.6`. Run it as one branch (`chore/phase-0-scaffold`)
-with the planner and integrator roles and skip the ceremony. The team shape
-starts paying for itself at phase 1, when there is something to break.
+Phase 0 is scaffolding: mostly one slice, mostly sequential, nothing to
+parallelise. Run it as one branch (`chore/phase-0-scaffold`) with the planner
+and integrator roles and skip the ceremony.
+
+The gate itself is built first — Makefile, hooks and agent definitions are
+tasks `0.1`–`0.3` — so everything after that is gated normally even while the
+services are still being scaffolded. The team shape starts paying for itself
+at phase 1, when there is something to break.

@@ -30,7 +30,7 @@ scaling. Do not add them.
 | Doc | When |
 | --- | --- |
 | `docs/specs/010-service-topology.md` | **First.** Six services, routing, who owns which data. |
-| `docs/ARCHITECTURE.md` | Always. The source of truth for system design. |
+| `docs/ARCHITECTURE.md` | Always. Why the system is shaped this way. |
 | `docs/BUILD_PLAN.md` | Always. Tells you which phase you are in and what "done" means. |
 | `docs/adr/` | Before changing any structural decision. |
 | `docs/specs/` | Before implementing a component. One spec per component. |
@@ -45,13 +45,18 @@ React components to match them, not to match your own idea of the layout.
 
 ## Hard rules
 
-1. **Docker-native. Everything runs in a container.** Do not install Python
-   packages, Node packages, or Postgres on the host. If a command does not
-   work through `make`, fix the `make` target rather than running it outside.
-   The one exception is `llama-server`, which runs natively on the host
-   because Docker Desktop on macOS has no Metal GPU passthrough (ADR-0007).
-2. **Never commit secrets.** No API keys, no real supplier URLs in fixtures,
-   no `.env` files. `.env.example` only.
+1. **Docker-native.** Do not install Python packages, Node packages, or
+   Postgres on the host. If a command does not work through `make`, fix the
+   `make` target rather than running it outside. Two deliberate exceptions:
+   `llama-server`, which runs natively because Docker Desktop on macOS has no
+   Metal GPU passthrough (ADR-0009); and `make agents` / `make hooks`, which
+   are stdlib-Python and git respectively, because the gate has to work
+   before any image exists and from any tool's terminal.
+2. **Never commit secrets.** No API keys, no tokens, no credentials, no
+   `.env` files — `.env.example` only. Recorded fixture HTML from public
+   supplier pages is *not* a secret and is required: a parser cannot be
+   tested against markup nobody has seen. The target list is recorded
+   deliberately in `docs/TARGETS.md` (BUILD_PLAN `1.3`).
 3. **Do not add a message broker, a cache layer, or a second datastore.**
    Postgres is the queue and the database (ADR-0002). If you think you need
    Redis, you have misread the problem — read ADR-0002 and say so.
@@ -77,32 +82,32 @@ React components to match them, not to match your own idea of the layout.
 9. **Every LLM proposal is verified deterministically** against the real DOM
    before a human sees it. No exceptions, no "the model was probably right".
    This includes selectors produced by chat and by the playground.
-9a. **One authoring pipeline.** Form, chat and playground are three front
-   doors to one `TemplateDraft` and one verify/merge/rank path (ADR-0019).
-   A second verification implementation, or a mode that writes `templates`
-   directly, is a defect regardless of how well it works.
-9b. **No supplier HTML or script in the app document.** The page preview is a
-   screenshot plus geometry from `POST /inspect` (spec 014 §1). No iframe, no
-   `innerHTML` with fetched markup, no "just sanitised" exception.
-10. **Templates are versioned, never edited in place.** Every observation
-   records the template version that produced it.
-11. **Observations are append-only.** Never `UPDATE` a `page_observations` row.
-12. **No network calls in unit tests.** Use fixtures. `respx` for httpx,
+10. **One authoring pipeline.** Form, chat and playground are three front
+    doors to one `TemplateDraft` and one verify/merge/rank path (ADR-0019).
+    A second verification implementation, or a mode that writes `templates`
+    directly, is a defect regardless of how well it works.
+11. **No supplier HTML or script in the app document.** The page preview is a
+    screenshot plus geometry from `POST /inspect` (spec 014 §1). No iframe, no
+    `innerHTML` with fetched markup, no "just sanitised" exception.
+12. **Templates are versioned, never edited in place.** Every observation
+    records the template version that produced it.
+13. **Observations are append-only.** Never `UPDATE` a `page_observations` row.
+14. **No network calls in unit tests.** Use fixtures. `respx` for httpx,
     recorded HTML for parsers, a fake render service for the browser path.
-13. **Do not change a public API shape without updating its spec and
-    regenerating the frontend types** (`make types`). There are two schemas
-    now — the crawler's and the BFF's.
-14. **Generated files are never hand-edited.** `schema.crawler.d.ts`,
+15. **Do not change a public API shape without updating its spec and
+    regenerating the frontend types** (`make types`). Two schemas are
+    generated — the crawler's and the BFF's.
+16. **Generated files are never hand-edited.** `schema.crawler.d.ts`,
     `schema.ui.d.ts`, `bff/src/db/schema/crawl.generated.ts` and everything
     under `.claude/agents/`, `.cursor/rules/`, `.opencode/agents/` and
     `.agents/rules/` are build artifacts that happen to be committed.
     `make check` regenerates them and fails on a diff; editing one to make
     the build pass inverts the whole point (ADR-0013, ADR-0021, ADR-0022).
     Agent roles are edited in `docs/agents/`.
-15. **`drizzle-kit push` is forbidden.** The BFF uses `generate` + `migrate`
+17. **`drizzle-kit push` is forbidden.** The BFF uses `generate` + `migrate`
     so every schema change is a reviewable file with a down path. `push`
     leaves no artifact and cannot satisfy `make migrate-down` (ADR-0021).
-16. **Work on a branch, and let the gate decide.** `develop` is protected;
+18. **Work on a branch, and let the gate decide.** `develop` is protected;
     every change arrives by PR from `type/NN-slug`. `make check` is the
     contract between one agent and the next — see `docs/WORKFLOW.md`.
 
@@ -205,31 +210,31 @@ make check         # lint + test + types-is-clean. CI runs exactly this.
 ```
 backend/                   # api + worker (Python)
   spydra/
-    domain/        # entities, value objects, pure logic. No I/O, no imports
-                   # from adapters. If it touches the network or the DB it
-                   # does not belong here.
-    ports/         # Protocol classes: Frontier, Fetcher, Extractor,
-                   # LLMClient, AssetStore, Clock
-    adapters/
-      postgres/    # repositories; raw SQL where the query is the point
-      http/        # HttpxFetcher, PlaywrightFetcher
-      llm/         # LlamaServerClient
-      storage/     # LocalAssetStore
-    extraction/
-      strategies/  # structured.py, selector.py, llm_proposal.py
-      chain.py     # ordered strategy chain
-      validation.py
-    scheduler/     # politeness gate, claim loop, asset gate
-    api/           # FastAPI routers, schemas, SSE
-    worker.py
+     domain/        # entities, value objects, pure logic. No I/O, no imports
+                    # from adapters. If it touches the network or the DB it
+                    # does not belong here.
+     ports/         # Protocol classes: Frontier, Fetcher, Extractor,
+                    # LLMClient, AssetStore, Clock
+     adapters/
+       postgres/    # repositories; raw SQL where the query is the point
+       http/        # HttpxFetcher, RenderServiceFetcher (HTTP to the sidecar)
+       llm/         # LlamaServerClient
+       storage/     # LocalAssetStore
+     extraction/
+       strategies/  # structured.py, selector.py, llm_proposal.py
+       chain.py     # ordered strategy chain
+       validation.py
+     scheduler/     # politeness gate, claim loop, asset gate
+     api/           # FastAPI routers, schemas, SSE
+     worker.py
   migrations/      # alembic
   tests/
 bff/                       # Fastify — scheduling, saved views, aggregation
   src/
-    routes/
-    scheduler/     # the fire loop; see spec 011 §3
-    db/
-      schema/      # ui.ts (Drizzle) · crawl.generated.ts (GENERATED — never edit)
+     routes/
+     scheduler/     # the fire loop; see spec 011 §3
+     db/
+       schema/      # ui.ts (Drizzle) · crawl.generated.ts (GENERATED — never edit)
   drizzle/         # generated migrations. generate + migrate, never push
   tests/
 render/                    # Playwright behind HTTP (spec 012)
@@ -237,13 +242,13 @@ render/                    # Playwright behind HTTP (spec 012)
   tests/
 frontend/
   src/
-    api/           # generated types + typed client. Do not hand-edit types.
-                   #   schema.crawler.d.ts · schema.ui.d.ts
-    components/    # design-system components; one per DESIGN_SYSTEM.md entry
-    views/         # one per screen in docs/SCREENS.md
-    hooks/
-    lib/
-    styles/        # theme.css → imports tokens + tailwind-theme
+     api/           # generated types + typed client. Do not hand-edit types.
+                    #   schema.crawler.d.ts · schema.ui.d.ts
+     components/    # design-system components; one per DESIGN_SYSTEM.md entry
+     views/         # one per screen in docs/SCREENS.md
+     hooks/
+     lib/
+     styles/        # theme.css → imports tokens + tailwind-theme
   tests/
 docs/
   agents/          # agent roles — CANONICAL. Edit here, then `make agents`
@@ -252,7 +257,7 @@ docker/            # Dockerfiles + Caddyfile
 scripts/
   gen-agents.py    # docs/agents/ → the four tool formats. Stdlib only
 .claude/ .cursor/ .opencode/ .agents/
-                   # GENERATED agent definitions, one set per tool
+                    # GENERATED agent definitions, one set per tool
 .githooks/         # pre-commit · commit-msg · pre-push. `make hooks` wires them
 .tasks/            # one handoff file per branch (ADR-0022)
 compose.yaml
@@ -309,11 +314,11 @@ A task is done when all of these hold:
 - [ ] `make check` passes.
 - [ ] The behaviour is covered by a test that would fail without the change.
 - [ ] If it touched the API, `docs/specs/005-api.md` is current and
-      `make types` produced no diff.
+       `make types` produced no diff.
 - [ ] If it touched the schema, there is a migration and it runs both ways.
 - [ ] `make generated` produces no diff, and no generated file was hand-edited.
 - [ ] It is on a branch, reviewed by an agent that did not write it, and the
-      task file's handoff log is current (`docs/WORKFLOW.md`).
+       task file's handoff log is current (`docs/WORKFLOW.md`).
 - [ ] If it touched the UI, it matches the mockup and works in both themes.
 - [ ] If it changed a structural decision, there is an ADR.
 - [ ] `docs/BUILD_PLAN.md` has the task ticked.

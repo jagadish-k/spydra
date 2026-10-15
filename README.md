@@ -29,8 +29,7 @@ AGENTS.md            Operating rules for anyone — human or agent — working
 docs/
   README.md          Documentation index and reading order
   BUILD_PLAN.md      Seven phases, tasks, exit criteria. What to do next.
-  ARCHITECTURE.md    System design. The source of truth for intent.
-  DATA_MODEL.md      Core Postgres schema (specs/001 closes its gaps)
+  ARCHITECTURE.md    Why the system is shaped this way (specs hold the shapes)
   DEVELOPMENT.md     Docker-native environment, commands, macOS gotchas
   TESTING.md         Test strategy: what must be covered and why
   DESIGN_SYSTEM.md   Tokens, typography, components, anti-patterns
@@ -40,7 +39,7 @@ docs/
   agents/            Agent roles — canonical, tool-neutral. Edit these
   PHASE0_PROMPT.md   The prompt that starts a build session
   deck/              Developer briefing deck (open index.html from disk)
-  adr/               Twenty-two decision records, each with its stated cost
+  adr/               Twenty-one decision records, each with its stated cost
   specs/             Fourteen component specs with acceptance criteria
 
 design/

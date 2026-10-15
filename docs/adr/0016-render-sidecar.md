@@ -1,13 +1,13 @@
 # 0016 — Headless rendering runs in a sidecar
 
 **Status:** Accepted · 2026-10-15
-**Amends:** ADR-0003 (the rendered pool), ADR-0008 (the `Fetcher` adapter)
+**Relates to:** ADR-0003 (the rendered pool), ADR-0008 (the `Fetcher` port)
 
 ## Context
 
-ADR-0003 put Playwright in the worker process as a third pool of browser
-contexts. That works, and it has three costs that only become obvious once
-the image is built:
+The obvious place for the browser is the worker process, as a third pool of
+contexts alongside the static and asset pools. That works, and it carries
+three costs that only become obvious once the image is built:
 
 1. **Image size.** Playwright plus Chromium plus its system libraries takes
    the worker image past 1.5 GB. The actual crawler is a few megabytes of

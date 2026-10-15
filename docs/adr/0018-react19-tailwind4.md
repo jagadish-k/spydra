@@ -1,24 +1,23 @@
 # 0018 — React 19 and Tailwind v4
 
 **Status:** Accepted · 2026-10-15
-**Supersedes:** ADR-0011
 
 ## Context
 
-ADR-0011 chose React 18 and Tailwind v3. The Tailwind decision was made to
-preserve the existing `tailwind.config.ts`, which maps semantic tokens and
-removes the default palette so a raw `text-red-600` fails to compile.
+The version policy is to track the latest stable release (ADR-0017). For the
+frontend that means React 19 and Tailwind v4.
 
-The operator wants the latest versions (ADR-0017). Tailwind v4 moves
-configuration out of JavaScript and into CSS, which means re-expressing that
-mapping — the cost ADR-0011 declined to pay.
+Tailwind v4 is the one with a real cost. It moves configuration out of
+JavaScript and into CSS, so the semantic token mapping — the one that removes
+the default palette, making a raw `text-red-600` fail to compile — has to be
+re-expressed rather than carried over from a `tailwind.config.ts`.
 
 ## Decision
 
 **React 19** and **Tailwind v4**.
 
-The token mapping moves from `tailwind.config.ts` to CSS-first `@theme`
-declarations in `frontend/src/styles/theme.css`. The semantic layer is
+The token mapping is expressed as CSS-first `@theme` declarations in
+`frontend/src/styles/theme.css`. The semantic layer is
 unchanged — the same token names, the same two themes, the same rule that
 colour carries state and nothing else:
 
@@ -48,7 +47,7 @@ to remember.
 
 **The default palette is still removed.** In v4 that is
 `--color-*: initial;` as the first line inside `@theme`, before the semantic
-set is declared. This keeps the ADR-0011 guarantee intact: `text-red-600`
+set is declared. That is what makes the guarantee hold: `text-red-600`
 does not compile. It is the only thing making "colour carries state"
 structural rather than aspirational, and it is the part of the migration
 most likely to be dropped silently.
