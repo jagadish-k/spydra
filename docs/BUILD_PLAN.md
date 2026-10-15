@@ -59,12 +59,12 @@ a dozen ungated commits, is the common mistake.
 - [ ] `0.5` `compose.yaml` per `DEVELOPMENT.md` — seven services, the
       `egress` network for `render`, `shm_size: 1gb`, named volumes for both
       `node_modules` and the venv, `extra_hosts` for the host LLM.
-- [ ] `0.6` `docker/Caddyfile` with the four routes. **Verify SSE is not
+- [x] `0.6` `docker/Caddyfile` with the four routes. **Verify SSE is not
       buffered** before moving on — the rule ordering and `flush_interval -1`
       are the two ways to get this wrong (spec 010 §2).
 - [x] `0.7` `docker/init-schemas.sql` — `crawl` and `ui` schemas, two roles,
       grants. Assert the BFF role cannot write `crawl` (spec 010 §3).
-- [ ] `0.8` Backend: FastAPI with `GET /api/crawler/healthz`, ruff + mypy
+- [x] `0.8` Backend: FastAPI with `GET /api/crawler/healthz`, ruff + mypy
       strict + import-linter. The contract forbids `domain/` importing
       `adapters/`.
 - [ ] `0.9` BFF: Fastify with `GET /api/ui/healthz`, TypeBox, ESLint,

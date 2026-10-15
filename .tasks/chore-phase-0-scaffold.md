@@ -26,13 +26,15 @@ Pre-existing on `develop` (verified current): `.gitignore`, `.githooks/*`,
 ## Acceptance (Phase 0 exit criteria, copied from BUILD_PLAN)
 
 - [ ] `make up` gives a working stack reachable at `http://localhost:8080`
-- [ ] `make check` is green — the single gate, the same command CI runs
+- [x] `make check` is green — the single gate, the same command CI runs
 - [ ] the frontend renders a page using a design token and the theme toggle
       works
-- [ ] an SSE test endpoint streams through the edge **unbuffered**
-- [ ] the BFF cannot write `crawl`: `INSERT INTO crawl.runs` from the BFF
-      role is rejected by Postgres
-- [ ] the three git hooks fire and pre-commit is under 10 s
+- [x] an SSE test endpoint streams through the edge **unbuffered**
+      (6 events, gaps 1.00–1.01 s, asserted 2026-10-15)
+- [x] the BFF cannot write `crawl`: `INSERT INTO crawl.runs` from the BFF
+      role is rejected by Postgres (`permission denied for table runs`,
+      fresh-volume boot, `make verify-grants`)
+- [x] the three git hooks fire and pre-commit is under 10 s (0.9 s)
 - [ ] one slice has been through the full agent handoff (0.17)
 
 Per-task rule: a box in `BUILD_PLAN.md` is ticked only when its own
@@ -81,6 +83,25 @@ definition of done holds, not when its code is written.
   resolution = host-loopback indirection + all inspection ports
   on 127.0.0.1. Verified live: from inside render, api:8000 →
   ENOTFOUND.
+- backend — 0.8: FastAPI app factory (main.py) mounting /api/crawler;
+  healthz (liveness-only, 200 with db:"down" when DB unreachable — spec 010
+  §4 readiness arrives phase 3) via raw asyncpg SELECT 1 (asyncpg added,
+  SQLAlchemy NOT — raw connection preferred, less surface; pyproject mypy
+  override for asyncpg's missing types, no inline ignores); __smoke/sse
+  1 event/s × 6 with the mandated deletion header. Ruff (E,F,I,UP,B;
+  line 100; py315) + mypy strict clean in container. test_scaffold.py
+  replaced by test_healthz.py + test_import_contracts.py (stdlib-AST
+  domain→adapters walk; teeth proven: scratch file with 4 violation kinds
+  failed all 4, then removed). Deviations: uv distroless image cannot
+  execute (no shell/libc probe) — lock regenerated via `compose run api
+uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
+  (`make reset-deps`) before rebuild since it predated asyncpg; compose api
+  command now the real uvicorn line. One bug found+fixed in-flight:
+  `async with asyncpg.connect()` is invalid (plain coroutine) — explicit
+  connect/close with suppressed close errors. Verified: build, curl
+  healthz {"status":"ok","db":"ok"}, SSE 4 frames/4s via published port,
+  ruff+mypy clean, pytest 2 passed/1 skipped (contract skips until
+  spydra/domain exists by design).
 - integrator — 0.7 PROVEN from a fresh volume boot with the real init file:
   BFF INSERT → "permission denied for table runs"; BFF SELECT
   allowed; api writing ui rejected. `make verify-grants` is the
@@ -88,8 +109,14 @@ definition of done holds, not when its code is written.
   manylinux aarch64 wheel (verified on PyPI; the domain→adapters
   contract moves to a stdlib-AST pytest in 0.8, which blocks CI
   where a lint only warns). `design/tokens/*` + `docs/
-             UI_STATES.md` appeared in the tree mid-session — NOT this
+           UI_STATES.md` appeared in the tree mid-session — NOT this
   branch's work, left uncommitted for the human.
+
+- integrator — 0.6 PROVEN: 6 SSE events through :8080, arrival gaps
+  1.00–1.01 s (spec 010 §6 asserts on arrival times — streaming,
+  not batched). 0.6/0.7/0.8 ticked; 0.8's "import-linter"
+  wording satisfied by the AST pytest instead — grimp wheel
+  evidence in pyproject comments.
 
 ## Open questions
 
