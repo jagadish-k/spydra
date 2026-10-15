@@ -80,12 +80,12 @@ a dozen ungated commits, is the common mistake.
       **Assert `bg-red-500` fails the build** (ADR-0018).
 - [x] `0.13` Alembic initialised for `crawl`; empty baselines run both ways
       under `make migrate` / `make migrate-down` alongside the Drizzle chain.
-- [ ] `0.14` `make generated` produces `schema.crawler.d.ts`,
+- [x] `0.14` `make generated` produces `schema.crawler.d.ts`,
       `schema.ui.d.ts`, `bff/src/db/schema/crawl.generated.ts` and the four
       sets of agent adapters, and `make check` fails when any is stale.
       **Prove it twice**: change a `crawl` column and watch the BFF build
       break; edit a role in `docs/agents/` without regenerating.
-- [ ] `0.15` pytest + vitest + the BFF suite wired, one trivial test each.
+- [x] `0.15` pytest + vitest + the BFF suite wired, one trivial test each.
       `make check` now actually runs them instead of skipping.
 - [ ] `0.16` CI running `make check` on a clean checkout, plus
       `make migrate-down`.
