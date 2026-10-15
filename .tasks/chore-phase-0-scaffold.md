@@ -301,6 +301,51 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   frontend/ carry other agents' WIP and would pollute the signal. BUILD_PLAN
   0.13 tick left to integrator after review, per the per-task rule.
 
+- ops — 0.14 via subagent. `make types` real for both schemas: api's
+  OpenAPI exported by an INLINE container import
+  (`docker compose run --rm --no-deps -T api python -c "...app.openapi()"`)
+  redirected host-side to gitignored `frontend/src/api/openapi.*.json`;
+  bff's via new `bff/scripts/export-openapi.ts` — which required splitting
+  `bff/src/server.ts` (it listened at module top level, no build export)
+  into `bff/src/app.ts` exporting `buildApp()` + a thin server entry. No
+  listener, no ports (ADR-0013 mechanism). openapi-typescript **cannot live
+  in web's devDeps**: it is hard-wired to the typescript JS AST API
+  (`ts.factory`), which typescript@7 (the Go port, ADR-0017) does not
+  ship — and npm cannot nest a peer override (overrides don't apply to
+  peerDependencies). Solution: isolated tool package
+  `frontend/tools/types-gen/` (openapi-typescript + typescript@5.9.3 as
+  DIRECT deps, committed lockfile, node_modules on the bind mount). Banners
+  prepended by sed in the Makefile recipe, never by hand.
+  `make drizzle-pull` real: `bff/drizzle.crawl.config.ts` (schemaFilter
+  ['crawl'], out `.crawl-introspect` — deliberately NOT under ./drizzle,
+  the drizzle-guard test walks that tree and forbids any crawl mention) +
+  `bff/scripts/write-crawl-generated.ts` banners+copies to
+  `crawl.generated.ts`; deterministic on the zero-user-tables edge —
+  though crawl is never actually empty: alembic's own ledger
+  (`crawl.alembic_version`, version_table_schema) introspects too, and the
+  committed artifact honestly carries it. Both scratch dirs gitignored AND
+  prettier-ignored (prettier does not read .gitignore; both
+  .prettierignore files pre-existed and were MERGED, not replaced).
+  PROOF A (crawl change breaks BFF): throwaway alembic revision creating
+  `crawl.proof` → make migrate → make drizzle-pull picked it up
+  (`proofInCrawl` in crawl.generated.ts) → `make check` FAILED at
+  generated-check naming `M bff/src/db/schema/crawl.generated.ts` →
+  migrate-down + revision deleted + re-pull → clean. Gotchas hit: alembic
+  `revision` (no --autogenerate) emits an unsorted import block — ruff
+  I001 — fixed in-place, not a repo change; `op.create_table` needs
+  explicit `schema="crawl"` (include_schemas=False + spydra_api has CREATE
+  only in crawl). PROOF B (role edit): one word added to
+  docs/agents/spydra-ops.md → `make check` FAILED naming all four adapter
+  sets → edit reverted, `make agents`, clean. Final full `make check` GREEN
+  (demonstrated under a temporary commit because generated-check reads
+  `git status` and brand-new uncommitted artifacts read as drift by
+  definition; the commit was `git reset --soft` back — hooks were honored,
+  including SPYDRA_REGEN=1 on the artifact commit and the commit-msg
+  subject format). lint+bff+web tests + tsc in both containers green;
+  generated .d.ts carry /api/crawler/healthz, the SSE smoke route and
+  /api/ui/healthz. BUILD_PLAN 0.14 tick left to integrator per the
+  per-task rule.
+
 ## Open questions
 
 - ADR-0023 (drizzle down-migrations) to be written and verified before 0.10

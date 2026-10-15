@@ -1,1 +1,9 @@
 package-lock.json
+# openapi-typescript owns the formatting of its output; reformatting would
+# make `make generated` nondeterministic (ADR-0013).
+src/api/schema.crawler.d.ts
+src/api/schema.ui.d.ts
+# gitignored scratch the Makefile redirects into (prettier does not read
+# .gitignore) — not artifacts, not formatted.
+src/api/openapi.crawler.json
+src/api/openapi.ui.json

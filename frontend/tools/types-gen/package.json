@@ -1,0 +1,10 @@
+{
+  "name": "spydra-types-gen",
+  "private": true,
+  "type": "module",
+  "comment": "Isolated toolchain for `make types` (ADR-0013). openapi-typescript is hard-wired to the typescript JS API (ts.factory), which typescript@7 — the Go port the app packages pin, ADR-0017 — does not ship; npm cannot nest a peer override. Here typescript@5 is a direct dependency, so the peer resolves naturally while every app package keeps tsc 7.",
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3"
+  }
+}

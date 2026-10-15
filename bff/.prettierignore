@@ -1,3 +1,8 @@
 # drizzle-kit output is generated (ADR-0021) — formatting it would hand-edit
 # an artifact that make/regenerate must reproduce byte-for-byte.
 drizzle/
+# Same rule for the introspection scratch + its committed artifact:
+# their producer owns the formatting, reformatting would make
+# `make generated` nondeterministic.
+.crawl-introspect/
+src/db/schema/crawl.generated.ts

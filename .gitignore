@@ -36,6 +36,11 @@ dist/
 .vite/
 *.tsbuildinfo
 
+# generated-artifact scratch: the COMMITTED artifacts are the .d.ts files
+# (ADR-0013) and crawl.generated.ts (ADR-0021); these intermediates are not
+frontend/src/api/openapi.*.json
+bff/.crawl-introspect/
+
 # playwright
 test-results/
 playwright-report/
