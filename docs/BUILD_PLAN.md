@@ -67,9 +67,9 @@ a dozen ungated commits, is the common mistake.
 - [x] `0.8` Backend: FastAPI with `GET /api/crawler/healthz`, ruff + mypy
       strict + import-linter. The contract forbids `domain/` importing
       `adapters/`.
-- [ ] `0.9` BFF: Fastify with `GET /api/ui/healthz`, TypeBox, ESLint,
+- [x] `0.9` BFF: Fastify with `GET /api/ui/healthz`, TypeBox, ESLint,
       OpenAPI document published.
-- [ ] `0.10` Drizzle wiring (ADR-0021): `bff/drizzle.config.ts` with
+- [x] `0.10` Drizzle wiring (ADR-0021): `bff/drizzle.config.ts` with
       `schemaFilter: ['ui']`, `make revision-ui`, `make drizzle-pull`, one
       trivial `ui` table proving generate → migrate → migrate-down, and the
       test asserting every file in `bff/drizzle/` mentions only `ui.`.
