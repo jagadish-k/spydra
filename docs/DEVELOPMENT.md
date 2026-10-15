@@ -162,18 +162,23 @@ name: spydra
 
 x-py-env: &py-env
   DATABASE_URL: postgresql+asyncpg://spydra_api:spydra@db:5432/spydra
-  RENDER_BASE_URL: http://render:3001
+  RENDER_BASE_URL: http://host.docker.internal:3001   # via host loopback — ADR-0023
   LLM_BASE_URL: http://host.docker.internal:8080
   ASSET_ROOT: /data/assets
   HTML_CACHE_ROOT: /data/html
   LOG_LEVEL: ${LOG_LEVEL:-info}
+
+# Every inspection port binds to 127.0.0.1 only. On Docker Desktop a
+# container can probe the host's published ports via host.docker.internal;
+# loopback-only binding is what keeps the render sidecar's isolation real
+# (ADR-0023). Binding any of these to 0.0.0.0 reopens the boundary.
 
 services:
   edge:
     image: caddy:2-alpine
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-    ports: ["8080:8080"]
+    ports: ["127.0.0.1:8080:8080"]
     depends_on: [api, bff, web]
 
   db:
@@ -185,7 +190,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data           # named volume: performance
       - ./docker/init-schemas.sql:/docker-entrypoint-initdb.d/10-schemas.sql:ro
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U spydra"]
       interval: 5s
@@ -202,8 +207,8 @@ services:
       - ./backend:/app                            # bind: source, hot reload
       - venv:/app/.venv                           # named: never the bind mount
       - ${SPYDRA_DATA:-./.data}:/data
-    extra_hosts: ["host.docker.internal:host-gateway"]
-    ports: ["8000:8000"]
+    extra_hosts: ["host.docker.internal:host-gateway"]   # llama-server AND render (ADR-0023)
+    ports: ["127.0.0.1:8000:8000"]
 
   worker:
     build: { context: ., dockerfile: docker/worker.Dockerfile }
@@ -227,8 +232,10 @@ services:
       RENDER_CONTEXTS: ${RENDER_CONTEXTS:-3}
       RECYCLE_AFTER_PAGES: 500
     shm_size: 1gb        # Chromium crashes oddly on the 64 MB default
-    networks: [egress]   # NOT on the internal network — see below
-    ports: ["3001:3001"]
+    networks: [egress]   # alone. api/worker reach it via the host loopback
+                         # (ADR-0023) — a shared network would give a crawled
+                         # page a route back to api
+    ports: ["127.0.0.1:3001:3001"]   # loopback publish IS the fetch path
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3001/healthz').then(r=>process.exit(r.ok?0:1))"]
       interval: 10s
@@ -244,8 +251,10 @@ services:
       db: { condition: service_healthy }
     volumes:
       - ./bff:/app
+      - .:/repo            # prettier over root-level docs and yaml, via make
+                           # fmt-staged-js — no other container sees them
       - bff_modules:/app/node_modules       # named: platform binaries
-    ports: ["3000:3000"]
+    ports: ["127.0.0.1:3000:3000"]
 
   web:
     build: { context: ., dockerfile: docker/web.Dockerfile }
@@ -255,11 +264,11 @@ services:
     volumes:
       - ./frontend:/app
       - web_modules:/app/node_modules
-    ports: ["5173:5173"]
+    ports: ["127.0.0.1:5173:5173"]
 
 networks:
   default:              # api, worker, bff, db, edge, web
-  egress:               # render only — no route to db/api/bff
+  egress:               # render only — no route inward, none needed outward-in
 
 volumes:
   pgdata:

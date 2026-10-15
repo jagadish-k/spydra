@@ -36,3 +36,4 @@ shape everything else sits inside.
 | [0020](0020-best-of-n-verification.md) | Best-of-N sampling, ranked by deterministic verification | Accepted |
 | [0021](0021-drizzle-for-bff.md) | Drizzle for the BFF's database access | Accepted |
 | [0022](0022-agent-team.md) | Specialised agents, sequential within a slice | Accepted |
+| [0023](0023-render-egress-isolation.md) | The render sidecar is reached through the host, not a shared network | Accepted |
