@@ -1,0 +1,29 @@
+[project]
+name = "spydra"
+version = "0.1.0"
+requires-python = ">=3.15"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    # NOTE: import-linter is deliberately absent. Its compiled core (grimp)
+    # publishes no cp315 manylinux aarch64 wheels as of 2026-10-15
+    # (verified on PyPI; x86_64 and cp315t exist, plain aarch64 does not),
+    # and this project's dev and target machines are arm64 — the ADR-0017
+    # readiness gate fails. The domain→adapters contract is enforced instead
+    # by a stdlib-AST pytest (task 0.8), which blocks CI where a lint only
+    # warns. Re-evaluate import-linter if grimp ships the wheel.
+    "httpx",
+]
+
+[tool.uv]
+# Virtual project until task 0.8 lands the package source: lock/sync resolve
+# dependencies only and never build or install the spydra package itself —
+# the bind mount and PYTHONPATH=/app make it importable at runtime.
+package = false

@@ -1,0 +1,19 @@
+# Shared by every image (build context is the repo root). Keeps contexts
+# small and keeps host platform binaries out of the linux containers
+# (DEVELOPMENT.md § Five details, no. 3).
+.git
+.data
+.tasks
+docs
+design
+**/node_modules
+**/.venv
+**/__pycache__
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+**/.vite
+**/dist
+test-results
+playwright-report
+.DS_Store

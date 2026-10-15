@@ -1,0 +1,137 @@
+# Spydra — dev topology per docs/DEVELOPMENT.md § Compose topology.
+#
+# render is ALONE on the egress network: api/worker reach it through the host
+# loopback (RENDER_BASE_URL), and every inspection port binds 127.0.0.1 —
+# that binding is part of the isolation boundary, not a style choice
+# (ADR-0023). Do not "fix" this by sharing a network.
+name: spydra
+
+x-py-env: &py-env
+  DATABASE_URL: postgresql+asyncpg://spydra_api:spydra@db:5432/spydra
+  RENDER_BASE_URL: http://host.docker.internal:3001 # via host loopback — ADR-0023
+  LLM_BASE_URL: http://host.docker.internal:8080
+  ASSET_ROOT: /data/assets
+  HTML_CACHE_ROOT: /data/html
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+# Every inspection port binds to 127.0.0.1 only. On Docker Desktop a
+# container can probe the host's published ports via host.docker.internal;
+# loopback-only binding is what keeps the render sidecar's isolation real
+# (ADR-0023). Binding any of these to 0.0.0.0 reopens the boundary.
+
+services:
+  edge:
+    image: caddy:2-alpine
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on: [api, bff, web]
+
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: spydra
+      POSTGRES_PASSWORD: spydra
+      POSTGRES_DB: spydra
+    volumes:
+      # postgres 18 requires the mount at the parent, not .../data — mounting
+      # the old path is a hard error from the image itself
+      # (docker-library/postgres#1259). Same pgdata volume, same intent as
+      # DEVELOPMENT.md § Compose topology.
+      - pgdata:/var/lib/postgresql
+      - ./docker/init-schemas.sql:/docker-entrypoint-initdb.d/10-schemas.sql:ro
+    ports: ["127.0.0.1:5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spydra"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: { context: ., dockerfile: docker/api.Dockerfile }
+    # PLACEHOLDER until task 0.8 lands spydra.api.main. Replaced by:
+    #   uvicorn spydra.api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/spydra
+    command: python -c "print('api placeholder — task 0.8'); import time; time.sleep(1e9)"
+    environment: *py-env
+    depends_on:
+      db: { condition: service_healthy }
+    volumes:
+      - ./backend:/app # bind: source, hot reload
+      - venv:/app/.venv # named: never the bind mount
+      - ${SPYDRA_DATA:-./.data}:/data
+    extra_hosts: ["host.docker.internal:host-gateway"] # llama-server AND render (ADR-0023)
+    ports: ["127.0.0.1:8000:8000"]
+
+  worker:
+    build: { context: ., dockerfile: docker/worker.Dockerfile }
+    # PLACEHOLDER until the worker loop arrives. Replaced by (task 1.11):
+    #   python -m spydra.worker
+    command: python -c "print('worker placeholder — task 1.11'); import time; time.sleep(1e9)"
+    environment: *py-env
+    depends_on:
+      db: { condition: service_healthy }
+    volumes:
+      - ./backend:/app
+      - venv:/app/.venv
+      - ${SPYDRA_DATA:-./.data}:/data
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    deploy:
+      replicas: 1 # politeness is enforced in the DB; raise freely
+    # NOTE: no depends_on render. A rendered domain stalls honestly when the
+    # sidecar is down; static crawling is unaffected (ADR-0016).
+
+  render:
+    build: { context: ., dockerfile: docker/render.Dockerfile }
+    environment:
+      RENDER_CONTEXTS: ${RENDER_CONTEXTS:-3}
+      RECYCLE_AFTER_PAGES: 500
+    shm_size: 1gb # Chromium crashes oddly on the 64 MB default
+    networks:
+      [egress] # alone. api/worker reach it via the host loopback
+      # (ADR-0023) — a shared network would give a crawled
+      # page a route back to api. No extra_hosts either.
+    ports: ["127.0.0.1:3001:3001"] # loopback publish IS the fetch path
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3001/healthz').then(r=>process.exit(r.ok?0:1))",
+        ]
+      interval: 10s
+
+  bff:
+    build: { context: ., dockerfile: docker/bff.Dockerfile }
+    command: npm run dev
+    environment:
+      DATABASE_URL: postgres://spydra_bff:spydra@db:5432/spydra
+      CRAWLER_API_BASE: http://api:8000 # direct, not through the edge
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      db: { condition: service_healthy }
+    volumes:
+      - ./bff:/app
+      - .:/repo # prettier over root-level docs and yaml, via make
+        # fmt-staged-js — no other container sees them
+      - bff_modules:/app/node_modules # named: platform binaries
+    ports: ["127.0.0.1:3000:3000"]
+
+  web:
+    build: { context: ., dockerfile: docker/web.Dockerfile }
+    command: npm run dev -- --host 0.0.0.0
+    environment:
+      VITE_API_BASE: "" # same origin via the edge
+    volumes:
+      - ./frontend:/app
+      - web_modules:/app/node_modules
+    ports: ["127.0.0.1:5173:5173"]
+
+networks:
+  default: # api, worker, bff, db, edge, web
+  egress: # render only — no route inward, none needed outward-in
+
+volumes:
+  pgdata:
+  venv:
+  bff_modules:
+  web_modules:

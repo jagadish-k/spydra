@@ -12,7 +12,7 @@ Docker Desktop on macOS has no Metal GPU passthrough (ADR-0009).
 
 - Docker Desktop (macOS). Give it at least **10 GB RAM and 6 CPUs** — seven
   containers, one of which runs Chromium. On a 16 GB machine see
-  *Developing on a smaller machine* below before setting this, because
+  _Developing on a smaller machine_ below before setting this, because
   Docker and `llama-server` are competing for the same memory.
 - `make`.
 - `llama-server` built from llama.cpp, and a GGUF model. Optional until
@@ -33,15 +33,15 @@ make seed-dev                 # optional: two fixture domains, offline
 origin, and it is what the SPA talks to. The ports below are published in
 development for direct inspection only.
 
-| What | URL |
-| --- | --- |
-| **The app** | **http://localhost:8080** |
-| Crawler API through the edge | http://localhost:8080/api/crawler |
-| BFF through the edge | http://localhost:8080/api/ui |
-| Crawler OpenAPI docs | http://localhost:8000/docs |
-| BFF OpenAPI docs | http://localhost:3000/docs |
-| Render sidecar health | http://localhost:3001/healthz |
-| Postgres | localhost:5432 (`spydra` / `spydra`) |
+| What                         | URL                                  |
+| ---------------------------- | ------------------------------------ |
+| **The app**                  | **http://localhost:8080**            |
+| Crawler API through the edge | http://localhost:8080/api/crawler    |
+| BFF through the edge         | http://localhost:8080/api/ui         |
+| Crawler OpenAPI docs         | http://localhost:8000/docs           |
+| BFF OpenAPI docs             | http://localhost:3000/docs           |
+| Render sidecar health        | http://localhost:3001/healthz        |
+| Postgres                     | localhost:5432 (`spydra` / `spydra`) |
 
 `make down` stops and keeps data. `make reset` drops the database volume.
 
@@ -74,11 +74,11 @@ generous, and the two consumers fight each other.
 On 16 GB, roughly **9–11 GB** is available to everything you care about, with
 macOS taking the rest.
 
-| Consumer | Target machine | 16 GB machine |
-| --- | --- | --- |
-| Docker Desktop | 10 GB | **6 GB** |
-| Model weights | ~20 GB | ~5 GB |
-| KV cache / context | generous | **the thing you will actually run out of** |
+| Consumer           | Target machine | 16 GB machine                              |
+| ------------------ | -------------- | ------------------------------------------ |
+| Docker Desktop     | 10 GB          | **6 GB**                                   |
+| Model weights      | ~20 GB         | ~5 GB                                      |
+| KV cache / context | generous       | **the thing you will actually run out of** |
 
 **Lower Docker's allocation before blaming the model.** The default
 prerequisite of 10 GB plus a 5 GB model does not fit, and the symptom is not
@@ -88,11 +88,11 @@ ways that look like random timeouts. If you are not working on rendering,
 
 ### Which model
 
-| Use | Model | Q4_K_M | Note |
-| --- | --- | --- | --- |
-| Target (ADR-0020) | Qwen3-Coder 30B-A3B | ~20 GB | MoE; ~3 B active params |
-| Escalation | Qwen 3.6 27B dense | ~22 GB | fields scoring below 60 |
-| **Development** | **Qwen3-Coder 8B** | **~5 GB** | or Qwen 3.5 9B if the coder build is unavailable |
+| Use               | Model               | Q4_K_M    | Note                                             |
+| ----------------- | ------------------- | --------- | ------------------------------------------------ |
+| Target (ADR-0020) | Qwen3-Coder 30B-A3B | ~20 GB    | MoE; ~3 B active params                          |
+| Escalation        | Qwen 3.6 27B dense  | ~22 GB    | fields scoring below 60                          |
+| **Development**   | **Qwen3-Coder 8B**  | **~5 GB** | or Qwen 3.5 9B if the coder build is unavailable |
 
 ```sh
 llama-server -m ~/models/qwen3-coder-8b-q4_k_m.gguf \
@@ -162,7 +162,7 @@ name: spydra
 
 x-py-env: &py-env
   DATABASE_URL: postgresql+asyncpg://spydra_api:spydra@db:5432/spydra
-  RENDER_BASE_URL: http://host.docker.internal:3001   # via host loopback — ADR-0023
+  RENDER_BASE_URL: http://host.docker.internal:3001 # via host loopback — ADR-0023
   LLM_BASE_URL: http://host.docker.internal:8080
   ASSET_ROOT: /data/assets
   HTML_CACHE_ROOT: /data/html
@@ -188,7 +188,10 @@ services:
       POSTGRES_PASSWORD: spydra
       POSTGRES_DB: spydra
     volumes:
-      - pgdata:/var/lib/postgresql/data           # named volume: performance
+      # postgres 18 requires the mount at the parent, not .../data — the old
+      # path is a hard error from the image itself
+      # (docker-library/postgres#1259)
+      - pgdata:/var/lib/postgresql
       - ./docker/init-schemas.sql:/docker-entrypoint-initdb.d/10-schemas.sql:ro
     ports: ["127.0.0.1:5432:5432"]
     healthcheck:
@@ -199,15 +202,15 @@ services:
   api:
     build: { context: ., dockerfile: docker/api.Dockerfile }
     command: uvicorn spydra.api.main:app --host 0.0.0.0 --port 8000
-             --reload --reload-dir /app/spydra
+      --reload --reload-dir /app/spydra
     environment: *py-env
     depends_on:
       db: { condition: service_healthy }
     volumes:
-      - ./backend:/app                            # bind: source, hot reload
-      - venv:/app/.venv                           # named: never the bind mount
+      - ./backend:/app # bind: source, hot reload
+      - venv:/app/.venv # named: never the bind mount
       - ${SPYDRA_DATA:-./.data}:/data
-    extra_hosts: ["host.docker.internal:host-gateway"]   # llama-server AND render (ADR-0023)
+    extra_hosts: ["host.docker.internal:host-gateway"] # llama-server AND render (ADR-0023)
     ports: ["127.0.0.1:8000:8000"]
 
   worker:
@@ -222,7 +225,7 @@ services:
       - ${SPYDRA_DATA:-./.data}:/data
     extra_hosts: ["host.docker.internal:host-gateway"]
     deploy:
-      replicas: 1        # politeness is enforced in the DB; raise freely
+      replicas: 1 # politeness is enforced in the DB; raise freely
     # NOTE: no depends_on render. A rendered domain stalls honestly when the
     # sidecar is down; static crawling is unaffected (ADR-0016).
 
@@ -231,13 +234,20 @@ services:
     environment:
       RENDER_CONTEXTS: ${RENDER_CONTEXTS:-3}
       RECYCLE_AFTER_PAGES: 500
-    shm_size: 1gb        # Chromium crashes oddly on the 64 MB default
-    networks: [egress]   # alone. api/worker reach it via the host loopback
-                         # (ADR-0023) — a shared network would give a crawled
-                         # page a route back to api
-    ports: ["127.0.0.1:3001:3001"]   # loopback publish IS the fetch path
+    shm_size: 1gb # Chromium crashes oddly on the 64 MB default
+    networks:
+      [egress] # alone. api/worker reach it via the host loopback
+      # (ADR-0023) — a shared network would give a crawled
+      # page a route back to api
+    ports: ["127.0.0.1:3001:3001"] # loopback publish IS the fetch path
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/healthz').then(r=>process.exit(r.ok?0:1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3001/healthz').then(r=>process.exit(r.ok?0:1))",
+        ]
       interval: 10s
 
   bff:
@@ -245,30 +255,30 @@ services:
     command: npm run dev
     environment:
       DATABASE_URL: postgres://spydra_bff:spydra@db:5432/spydra
-      CRAWLER_API_BASE: http://api:8000      # direct, not through the edge
+      CRAWLER_API_BASE: http://api:8000 # direct, not through the edge
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       db: { condition: service_healthy }
     volumes:
       - ./bff:/app
-      - .:/repo            # prettier over root-level docs and yaml, via make
-                           # fmt-staged-js — no other container sees them
-      - bff_modules:/app/node_modules       # named: platform binaries
+      - .:/repo # prettier over root-level docs and yaml, via make
+        # fmt-staged-js — no other container sees them
+      - bff_modules:/app/node_modules # named: platform binaries
     ports: ["127.0.0.1:3000:3000"]
 
   web:
     build: { context: ., dockerfile: docker/web.Dockerfile }
     command: npm run dev -- --host 0.0.0.0
     environment:
-      VITE_API_BASE: ""                     # same origin via the edge
+      VITE_API_BASE: "" # same origin via the edge
     volumes:
       - ./frontend:/app
       - web_modules:/app/node_modules
     ports: ["127.0.0.1:5173:5173"]
 
 networks:
-  default:              # api, worker, bff, db, edge, web
-  egress:               # render only — no route inward, none needed outward-in
+  default: # api, worker, bff, db, edge, web
+  egress: # render only — no route inward, none needed outward-in
 
 volumes:
   pgdata:
@@ -289,7 +299,7 @@ This is cheap and it is the only real isolation boundary in the stack.
 causes crashes that present as random timeouts and will cost you a day.
 
 **3. Dependency directories live in named volumes.** `node_modules` (twice)
-and the Python venv are *never* on the bind mount. `esbuild`, Pillow and
+and the Python venv are _never_ on the bind mount. `esbuild`, Pillow and
 `selectolax` ship platform-specific binaries; if the host's copy is visible
 to the container they fight, and the failure looks like a corrupted install
 rather than a mount problem.
@@ -381,18 +391,18 @@ Antigravity have no equivalent, so there `read-only` is prose. Full table in
 
 Two chains, two owners, one database.
 
-| Schema | Owner | Tool | Migrations |
-| --- | --- | --- | --- |
+| Schema  | Owner            | Tool            | Migrations                     |
+| ------- | ---------------- | --------------- | ------------------------------ |
 | `crawl` | `api` / `worker` | SQLAlchemy Core | Alembic, `backend/migrations/` |
-| `ui` | `bff` | **Drizzle** | `drizzle-kit`, `bff/drizzle/` |
+| `ui`    | `bff`            | **Drizzle**     | `drizzle-kit`, `bff/drizzle/`  |
 
 ```ts
 // bff/drizzle.config.ts — schemaFilter is load-bearing
 export default defineConfig({
-  schema: './src/db/schema/ui.ts',
-  out: './drizzle',
-  dialect: 'postgresql',
-  schemaFilter: ['ui'],          // a generated migration can never touch crawl
+  schema: "./src/db/schema/ui.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  schemaFilter: ["ui"], // a generated migration can never touch crawl
   dbCredentials: { url: process.env.DATABASE_URL! },
 });
 ```
@@ -449,29 +459,29 @@ are the same command in the same images.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| Vite does not reload | inotify not delivered over the bind mount | `usePolling: true` (above) |
-| `esbuild`/`lxml` "invalid ELF header" | host `node_modules` or venv leaked into the container | `make reset-deps`; check the named volumes |
-| `host.docker.internal` unresolved | missing `extra_hosts` | add it to the service |
-| `llama-server` refused | not running on the host, or bound to something other than 127.0.0.1:8080 | start it; check the port |
-| API reloads on every file touch | `--reload` watching `/data` | keep `--reload-dir /app/spydra` |
-| Postgres slow | data on a bind mount | it must be the `pgdata` named volume |
-| Disk fills fast | asset and HTML accumulation | `make purge-html`; check the 7-day TTL sweep |
-| SSE arrives all at once at the end | `flush_interval -1` missing or the SSE rule is below the general one in the Caddyfile | fix the Caddyfile ordering |
-| Render times out randomly | `/dev/shm` too small | `shm_size: 1gb` on `render` |
-| Render times out randomly **on a 16 GB machine** | Docker and `llama-server` are fighting for RAM | lower Docker's allocation, or stop `render` while working on the model |
-| `llama-server` fails to allocate on Apple silicon | GPU-wired memory capped below physical | raise `iogpu.wired_limit_mb`, or use a smaller quant |
-| Proposals score far lower than the spec implies | developing against an 8B | expected — see *Developing on a smaller machine*. Do not lower the threshold |
-| BFF cannot write `crawl.*` | **working as designed** | call the crawler API; do not loosen the grant |
-| `rendered` domains stall, static fine | sidecar down | `docker compose ps render`; check `/healthz` |
-| Chromium driver mismatch | npm Playwright version ≠ image tag | pin them together |
-| `make check` fails on a `crawl.generated.ts` diff | an Alembic migration changed `crawl` | `make drizzle-pull` and commit it. **Do not edit the generated file** |
-| A drizzle migration contains `crawl` DDL | `schemaFilter` missing from `drizzle.config.ts` | add it; delete and regenerate the migration |
-| Pre-commit is slow | it is running the full suite | it should not — pre-commit is format + lint + typecheck; `make check` belongs on pre-push. See `WORKFLOW.md` |
-| A hook blocks a commit you believe is fine | the gate is doing its job | fix it, or `--no-verify` **and say so in the PR**. Do not disable the hook |
-| An agent role change seems to have no effect | you edited a generated copy | roles are edited in `docs/agents/`, then `make agents` (`WORKFLOW.md` §3) |
-| `make check` fails on `.cursor/` or `.agents/` | `docs/agents/` changed without regenerating | `make agents` and commit the result |
+| Symptom                                           | Cause                                                                                 | Fix                                                                                                          |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Vite does not reload                              | inotify not delivered over the bind mount                                             | `usePolling: true` (above)                                                                                   |
+| `esbuild`/`lxml` "invalid ELF header"             | host `node_modules` or venv leaked into the container                                 | `make reset-deps`; check the named volumes                                                                   |
+| `host.docker.internal` unresolved                 | missing `extra_hosts`                                                                 | add it to the service                                                                                        |
+| `llama-server` refused                            | not running on the host, or bound to something other than 127.0.0.1:8080              | start it; check the port                                                                                     |
+| API reloads on every file touch                   | `--reload` watching `/data`                                                           | keep `--reload-dir /app/spydra`                                                                              |
+| Postgres slow                                     | data on a bind mount                                                                  | it must be the `pgdata` named volume                                                                         |
+| Disk fills fast                                   | asset and HTML accumulation                                                           | `make purge-html`; check the 7-day TTL sweep                                                                 |
+| SSE arrives all at once at the end                | `flush_interval -1` missing or the SSE rule is below the general one in the Caddyfile | fix the Caddyfile ordering                                                                                   |
+| Render times out randomly                         | `/dev/shm` too small                                                                  | `shm_size: 1gb` on `render`                                                                                  |
+| Render times out randomly **on a 16 GB machine**  | Docker and `llama-server` are fighting for RAM                                        | lower Docker's allocation, or stop `render` while working on the model                                       |
+| `llama-server` fails to allocate on Apple silicon | GPU-wired memory capped below physical                                                | raise `iogpu.wired_limit_mb`, or use a smaller quant                                                         |
+| Proposals score far lower than the spec implies   | developing against an 8B                                                              | expected — see _Developing on a smaller machine_. Do not lower the threshold                                 |
+| BFF cannot write `crawl.*`                        | **working as designed**                                                               | call the crawler API; do not loosen the grant                                                                |
+| `rendered` domains stall, static fine             | sidecar down                                                                          | `docker compose ps render`; check `/healthz`                                                                 |
+| Chromium driver mismatch                          | npm Playwright version ≠ image tag                                                    | pin them together                                                                                            |
+| `make check` fails on a `crawl.generated.ts` diff | an Alembic migration changed `crawl`                                                  | `make drizzle-pull` and commit it. **Do not edit the generated file**                                        |
+| A drizzle migration contains `crawl` DDL          | `schemaFilter` missing from `drizzle.config.ts`                                       | add it; delete and regenerate the migration                                                                  |
+| Pre-commit is slow                                | it is running the full suite                                                          | it should not — pre-commit is format + lint + typecheck; `make check` belongs on pre-push. See `WORKFLOW.md` |
+| A hook blocks a commit you believe is fine        | the gate is doing its job                                                             | fix it, or `--no-verify` **and say so in the PR**. Do not disable the hook                                   |
+| An agent role change seems to have no effect      | you edited a generated copy                                                           | roles are edited in `docs/agents/`, then `make agents` (`WORKFLOW.md` §3)                                    |
+| `make check` fails on `.cursor/` or `.agents/`    | `docs/agents/` changed without regenerating                                           | `make agents` and commit the result                                                                          |
 
 ## Configuration
 

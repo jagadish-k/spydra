@@ -67,7 +67,7 @@ reset: ## stop and DROP every volume, database included
 
 reset-deps: ## drop the venv/node_modules volumes only (corrupt-install fix, DEVELOPMENT.md)
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) stop && \
-	$(COMPOSE) volume rm -f spydra_venv spydra_bff_modules spydra_web_modules || true
+	docker volume rm -f spydra_venv spydra_bff_modules spydra_web_modules || true
 
 logs: ## follow all service logs
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) logs -f --tail=50
@@ -146,7 +146,10 @@ seed-dev: ## two offline fixture domains (arrives with BUILD_PLAN 5.1)
 lint: lint-api lint-bff lint-web ## ruff + mypy + import-linter + eslint + prettier
 
 lint-api:
-	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm --no-deps api sh -c "ruff check . && mypy . && lint-imports"
+	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm --no-deps api sh -c "ruff check . && mypy ."
+	# The domain→adapters import contract is enforced by a stdlib-AST pytest
+	# (task 0.8), not import-linter: grimp ships no cp315 aarch64 wheels
+	# (ADR-0017 readiness gate), and a test blocks CI where a lint warns.
 
 lint-bff:
 	$(call skip_if_missing,bff/package.json) && $(COMPOSE) run --rm --no-deps bff npm run lint
@@ -173,7 +176,7 @@ fmt-staged:
 # files (docs, compose.yaml) go to the bff container via its /repo mount.
 fmt-staged-js:
 	@if [ ! -f compose.yaml ]; then echo "·  skip $@ — no compose stack yet"; exit 0; fi; \
-	files='$(call flat,$(FILES))'; \
+	files=$$(printf '%s\n' '$(call flat,$(FILES))' | tr ' ' '\n'); \
 	bff=$$(printf '%s\n' "$$files" | grep '^bff/' | sed 's|^bff/|/app/|' | tr '\n' ' '); \
 	web=$$(printf '%s\n' "$$files" | grep '^frontend/' | sed 's|^frontend/|/app/|' | tr '\n' ' '); \
 	root=$$(printf '%s\n' "$$files" | grep -v '^bff/\|^frontend/' | sed 's|^|/repo/|' | tr '\n' ' '); \
@@ -189,10 +192,11 @@ fmt-staged-js:
 
 typecheck-changed:
 	@if [ ! -f bff/package.json ] && [ ! -f frontend/package.json ]; then echo "·  skip $@ — no TS packages yet"; exit 0; fi; \
-	if printf '%s\n' '$(call flat,$(FILES))' | grep -q '^bff/' && [ -f bff/package.json ]; then \
+	files=$$(printf '%s\n' '$(call flat,$(FILES))' | tr ' ' '\n'); \
+	if printf '%s\n' "$$files" | grep -q '^bff/' && [ -f bff/package.json ]; then \
 	  $(COMPOSE) run --rm --no-deps -T bff tsc --noEmit; \
 	fi; \
-	if printf '%s\n' '$(call flat,$(FILES))' | grep -q '^frontend/' && [ -f frontend/package.json ]; then \
+	if printf '%s\n' "$$files" | grep -q '^frontend/' && [ -f frontend/package.json ]; then \
 	  $(COMPOSE) run --rm --no-deps -T web tsc --noEmit; \
 	fi
 
@@ -208,15 +212,17 @@ typecheck-changed-py:
 
 types: types-crawler types-ui ## regenerate BOTH frontend API schemas
 
+# Wiring arrives with BUILD_PLAN 0.14; until then these skip so `make check`
+# stays green on the scaffold (BUILD_PLAN 0.2).
 types-crawler:
-	$(call skip_if_missing,frontend/package.json) && $(COMPOSE) run --rm --no-deps web sh -c \
-	  "test -f ../backend/pyproject.toml" && echo "·  types-crawler arrives with BUILD_PLAN 0.14" && exit 0 \
-	  || { echo "·  skip $@ — not wired until 0.14"; exit 0; }
+	@test -f backend/pyproject.toml && test -f frontend/package.json \
+	  || { echo "·  skip $@ — wired by BUILD_PLAN 0.14"; exit 0; }
+	@echo "·  types-crawler placeholder — replaced by BUILD_PLAN 0.14"; exit 0
 
 types-ui:
-	$(call skip_if_missing,frontend/package.json) && $(COMPOSE) run --rm --no-deps web sh -c \
-	  "test -f ../bff/package.json" && echo "·  types-ui arrives with BUILD_PLAN 0.14" && exit 0 \
-	  || { echo "·  skip $@ — not wired until 0.14"; exit 0; }
+	@test -f bff/package.json && test -f frontend/package.json \
+	  || { echo "·  skip $@ — wired by BUILD_PLAN 0.14"; exit 0; }
+	@echo "·  types-ui placeholder — replaced by BUILD_PLAN 0.14"; exit 0
 
 generated: types drizzle-pull agents ## regenerate every committed artifact
 

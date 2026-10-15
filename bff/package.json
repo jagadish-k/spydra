@@ -1,0 +1,17 @@
+{
+  "name": "spydra-bff",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "lint": "eslint .",
+    "test": "echo 'bff tests arrive with BUILD_PLAN 0.15'",
+    "migrate:down": "echo 'migrate:down arrives with BUILD_PLAN 0.10 (drizzle)'"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "eslint": "^10.12.0",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
