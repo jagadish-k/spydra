@@ -1,11 +1,18 @@
 {
   "name": "spydra-bff",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "lint": "eslint .",
-    "test": "echo 'bff tests arrive with BUILD_PLAN 0.15'",
+    "lint": "eslint . && prettier --check .",
+    "test": "echo 'PLACEHOLDER: bff test suite arrives with BUILD_PLAN 0.15' && exit 0",
     "migrate:down": "echo 'migrate:down arrives with BUILD_PLAN 0.10 (drizzle)'"
+  },
+  "dependencies": {
+    "@fastify/swagger": "^9.9.0",
+    "@fastify/swagger-ui": "^6.1.0",
+    "@sinclair/typebox": "^0.34.0",
+    "fastify": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

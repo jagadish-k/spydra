@@ -109,7 +109,7 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   manylinux aarch64 wheel (verified on PyPI; the domain→adapters
   contract moves to a stdlib-AST pytest in 0.8, which blocks CI
   where a lint only warns). `design/tokens/*` + `docs/
-           UI_STATES.md` appeared in the tree mid-session — NOT this
+         UI_STATES.md` appeared in the tree mid-session — NOT this
   branch's work, left uncommitted for the human.
 
 - integrator — 0.6 PROVEN: 6 SSE events through :8080, arrival gaps
@@ -117,6 +117,24 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   not batched). 0.6/0.7/0.8 ticked; 0.8's "import-linter"
   wording satisfied by the AST pytest instead — grimp wheel
   evidence in pyproject comments.
+- bff — 0.9: Fastify 5 skeleton (server.ts). GET /api/ui/healthz →
+  {status:"ok", api:"ok"|"down"}; api = fetch of the api's healthz,
+  2 s AbortSignal.timeout, liveness-only (200 with api:"down" while
+  api stopped — verified, then api restarted). db field arrives with
+  0.10 (comment in server.ts). TypeBox schema as the route's response
+  schema — the wiring 0.9 exists for. OpenAPI: @fastify/swagger
+  (spec) + @fastify/swagger-ui (UI split out since swagger v9) →
+  /docs HTML + own /openapi.json route (plugin's json is /docs/json;
+  DEVELOPMENT.md promises /openapi.json). Both reachable via :8080
+  edge route. package.json: +fastify/@fastify/swagger/@fastify/
+  swagger-ui/@sinclair/typebox; "type":"module" (NodeNext top-level
+  await); lock regenerated in-container; image rebuilt (Dockerfile
+  unchanged — npm ci covers it). tsconfig: +skipLibCheck (thread-
+  stream's d.ts vs TS7, dep-only). Deviation: typescript-eslint
+  CANNOT be added — TS 7 (Go port) has no JS API; tseslint peers
+  <6.1.0 only and ERESOLVE blocks install (npm ci would fail).
+  eslint stays empty-config on purpose (comment in eslint.config.mjs);
+  tsc --noEmit + prettier cover src. All verified in-container.
 
 ## Open questions
 

@@ -5,6 +5,7 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
     "noEmit": true
   },
   "include": ["src"]
