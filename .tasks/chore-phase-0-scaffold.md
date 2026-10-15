@@ -40,7 +40,7 @@ definition of done holds, not when its code is written.
 
 ## Sequencing decisions (planner)
 
-- 0.6 and 0.7 are *written* in order, but their proofs need the stack:
+- 0.6 and 0.7 are _written_ in order, but their proofs need the stack:
   unbuffered SSE needs a streaming origin (nothing emits until the API
   exists), and the grant proof needs a `crawl` table (none until 1.1).
   Both are proved right after 0.8, before anything depends on them.
@@ -58,17 +58,38 @@ definition of done holds, not when its code is written.
 
 ## Handoff log
 
-- planner    — task file, sequencing decisions above. Found 0.1/0.3 partial
-               work already on `develop` (hooks, gen-agents, adapters,
-               .gitignore); verified `gen-agents.py --check` green. 0.2
-               (Makefile) is the first real build task; 0.3 is wire+verify.
+- planner — task file, sequencing decisions above. Found 0.1/0.3 partial
+  work already on `develop` (hooks, gen-agents, adapters,
+  .gitignore); verified `gen-agents.py --check` green. 0.2
+  (Makefile) is the first real build task; 0.3 is wire+verify.
 - integrator — 0.1–0.3 done. `make check` green on the empty project
-               (skip-guards + agents drift check are the only live parts).
-               Hooks wired via `make hooks`; verified: 119-char subject
-               rejected, staged `.env` rejected, push to `develop` refused
-               (temp bare remote, removed after). Feature-branch push ran
-               `make check` under pre-push. Pre-commit timing: **0.9 s**
-               (budget 10 s). 0.2/0.3 DoD held before ticking.
+  (skip-guards + agents drift check are the only live parts).
+  Hooks wired via `make hooks`; verified: 119-char subject
+  rejected, staged `.env` rejected, push to `develop` refused
+  (temp bare remote, removed after). Feature-branch push ran
+  `make check` under pre-push. Pre-commit timing: **0.9 s**
+  (budget 10 s). 0.2/0.3 DoD held before ticking.
+- ops — 0.4/0.5 via subagent: five Dockerfiles + compose + package
+  manifests. Images: python:3.15-slim, node:26-slim,
+  postgres:18, caddy:2-alpine, playwright v1.64.1-noble pinned
+  to npm playwright@1.64.1, uv 0.13.1. Found+fixed two Makefile
+  bugs (fmt-staged-js re-split, reset-deps volume rm), one
+  postgres-18 reality (pgdata mounts at /var/lib/postgresql,
+  not .../data — DEVELOPMENT sketch updated). ADR-0023 written
+  BEFORE compose: sketch had render unreachable (alone on
+  egress, no DNS) and any shared net breaks spec 012 isolation;
+  resolution = host-loopback indirection + all inspection ports
+  on 127.0.0.1. Verified live: from inside render, api:8000 →
+  ENOTFOUND.
+- integrator — 0.7 PROVEN from a fresh volume boot with the real init file:
+  BFF INSERT → "permission denied for table runs"; BFF SELECT
+  allowed; api writing ui rejected. `make verify-grants` is the
+  repeatable proof. import-linter dropped — grimp has no cp315
+  manylinux aarch64 wheel (verified on PyPI; the domain→adapters
+  contract moves to a stdlib-AST pytest in 0.8, which blocks CI
+  where a lint only warns). `design/tokens/*` + `docs/
+             UI_STATES.md` appeared in the tree mid-session — NOT this
+  branch's work, left uncommitted for the human.
 
 ## Open questions
 

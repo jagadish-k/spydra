@@ -30,9 +30,9 @@ into ports that already exist.
 
 ## Phase 0 — Scaffold
 
-*Nothing works yet. The goal is that `make check` passes on an empty project,
+_Nothing works yet. The goal is that `make check` passes on an empty project,
 so every later phase has a gate to pass — and that the gate exists before the
-work it gates.*
+work it gates._
 
 **The gate comes first.** Tasks `0.1`–`0.3` build the Makefile, the hooks and
 the agent definitions before any service exists. They are plain host commands
@@ -62,7 +62,7 @@ a dozen ungated commits, is the common mistake.
 - [ ] `0.6` `docker/Caddyfile` with the four routes. **Verify SSE is not
       buffered** before moving on — the rule ordering and `flush_interval -1`
       are the two ways to get this wrong (spec 010 §2).
-- [ ] `0.7` `docker/init-schemas.sql` — `crawl` and `ui` schemas, two roles,
+- [x] `0.7` `docker/init-schemas.sql` — `crawl` and `ui` schemas, two roles,
       grants. Assert the BFF role cannot write `crawl` (spec 010 §3).
 - [ ] `0.8` Backend: FastAPI with `GET /api/crawler/healthz`, ruff + mypy
       strict + import-linter. The contract forbids `domain/` importing
@@ -116,8 +116,8 @@ through the full agent handoff.
 
 ## Phase 1 — Crawl one domain, both fetch paths
 
-*No UI, no model. The scheduler and the data model are the two things most
-expensive to get wrong, so they come first and are proven in isolation.*
+_No UI, no model. The scheduler and the data model are the two things most
+expensive to get wrong, so they come first and are proven in isolation._
 
 - [ ] `1.1` Full schema migration per [spec 001 §1](specs/001-domain-model.md).
       One migration, one unit — there is no production data to preserve.
@@ -161,8 +161,8 @@ the `render` service leaves static crawling unaffected.
 
 ## Phase 2 — Discovery and the queue
 
-*Turn a seed into a full product set without wandering off-site or exploding
-on facets.*
+_Turn a seed into a full product set without wandering off-site or exploding
+on facets._
 
 - [ ] `2.1` URL canonicalisation and `url_hash` (spec 004 §2).
 - [ ] `2.2` Link extraction from discovery rules; allow/deny patterns; depth.
@@ -187,8 +187,8 @@ what would be enqueued, grouped by matching rule.
 
 ## Phase 3 — API, UI and review
 
-*The operator can onboard a domain without touching the filesystem.
-Selectors are still hand-written; the model comes next.*
+_The operator can onboard a domain without touching the filesystem.
+Selectors are still hand-written; the model comes next._
 
 **3a — the draft model, before anything renders it**
 
@@ -251,9 +251,9 @@ running crawl. No YAML templates remain.
 
 ## Phase 4 — LLM proposals and chat authoring
 
-*The model enters. The scheduler, the chain, the draft pipeline and the
+_The model enters. The scheduler, the chain, the draft pipeline and the
 review screen all exist by now, so this adds a rung, an adapter and two new
-ways to fill a draft that already works.*
+ways to fill a draft that already works._
 
 - [ ] `4.1` `LLMClient` port + `LlamaServerClient`, with the fake used by
       tests.
@@ -293,7 +293,7 @@ page and says why. With `llama-server` stopped, crawling is unaffected.
 
 ## Phase 5 — Assets, reports and hardening
 
-*Everything that is additive and benefits from real data to tune against.*
+_Everything that is additive and benefits from real data to tune against._
 
 - [ ] `5.1` `make seed-dev` — two offline fixture domains, so a fresh clone
       has something to look at without crawling anything. Small, and the
@@ -320,10 +320,10 @@ coverage number. The crawl-politeness report is defensible evidence.
 
 ## Phase 6 — Visual playground
 
-*Last because it is the most build for the least risk, and because it needs
+_Last because it is the most build for the least risk, and because it needs
 the draft pipeline and the sidecar to already be solid. It is also the phase
 most likely to change shape once phases 4–5 have shown where the review time
-actually goes — so do not start it early.*
+actually goes — so do not start it early._
 
 - [ ] `6.1` `POST /inspect` on the sidecar (spec 014 §2) — full-page
       screenshot, element geometry, skeleton, **sharing the existing context
@@ -364,28 +364,28 @@ from clicks on two sample pages survives a positional change on a third.
 
 Not in the plan; revisit only with a reason.
 
-| Item | Why deferred |
-| --- | --- |
-| Full-text search over descriptions | Postgres `tsvector` when there is a query to serve |
-| Export pipeline | Build the exporter when the target format is known |
-| Template inheritance resolution | Column exists, logic does not (ADR-0006) |
-| Tiered coverage / best-effort mode | Until the coverage report shows the backlog growing faster than it clears |
-| Proxy rotation | If it is needed, the polite-crawling assumptions have already failed |
-| Free-threaded Python (`cp315t`) | Dependencies ship it; nothing needs it yet (ADR-0017) |
-| Replacing the render sidecar with browserless | The HTTP contract makes it a swap, not a rewrite |
+| Item                                            | Why deferred                                                                                                |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Full-text search over descriptions              | Postgres `tsvector` when there is a query to serve                                                          |
+| Export pipeline                                 | Build the exporter when the target format is known                                                          |
+| Template inheritance resolution                 | Column exists, logic does not (ADR-0006)                                                                    |
+| Tiered coverage / best-effort mode              | Until the coverage report shows the backlog growing faster than it clears                                   |
+| Proxy rotation                                  | If it is needed, the polite-crawling assumptions have already failed                                        |
+| Free-threaded Python (`cp315t`)                 | Dependencies ship it; nothing needs it yet (ADR-0017)                                                       |
+| Replacing the render sidecar with browserless   | The HTTP contract makes it a swap, not a rewrite                                                            |
 | Scripted interaction recorder in the playground | Large build, large failure surface; bounded `reveal` and Skeleton mode cover nearly all of it (spec 014 §7) |
 
 ---
 
 ## Known risks
 
-| Risk | Signal | Response |
-| --- | --- | --- |
-| **Review throughput, not technology, is the constraint.** At one template per domain and ~6 domains/month, 1,200 domains is ~16 years. | Coverage report backlog trend | Batch review ships in phase 3 for this reason. If the backlog still grows, tiered coverage becomes real work. |
-| JS rendering more common than expected | Share of domains needing `rendered` after phase 1 | Rendered pool caps at 3 contexts against 12 static workers, so page throughput drops ~4×. Sizing problem, not a design problem. |
-| Supplier data shape varies wildly | `attributes`/`supplier` JSONB diverging across domains | JSONB absorbs it; a normalisation pass is unscoped work if cross-supplier querying is needed. |
-| Postgres queue contention | `crawl_queue` index bloat, slow claims | Not expected at this scale. The `Frontier` port is the escape hatch (ADR-0002). |
-| **The BFF turns out to be a thin proxy** | After phase 3, count its routes that do real work vs forward | Collapse it; move scheduling into Python (ADR-0015). ADR-0021 goes with it |
-| The review screen gets rebuilt in phase 4 | Any phase-4 task touching its state management | The draft model lands in phase 3 (`3.1`–`3.3`) precisely to prevent this. If it happens anyway, say so rather than absorbing it |
-| Bleeding-edge stack has thin community knowledge | Time lost to first-encounter problems on Python 3.15 / Tailwind v4 | Budget for it. The docker-native constraint makes a revert one tag away (ADR-0017). |
-| Legal posture | — | Check the ToS of the first targets. A real input to which domains get onboarded. |
+| Risk                                                                                                                                   | Signal                                                             | Response                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Review throughput, not technology, is the constraint.** At one template per domain and ~6 domains/month, 1,200 domains is ~16 years. | Coverage report backlog trend                                      | Batch review ships in phase 3 for this reason. If the backlog still grows, tiered coverage becomes real work.                   |
+| JS rendering more common than expected                                                                                                 | Share of domains needing `rendered` after phase 1                  | Rendered pool caps at 3 contexts against 12 static workers, so page throughput drops ~4×. Sizing problem, not a design problem. |
+| Supplier data shape varies wildly                                                                                                      | `attributes`/`supplier` JSONB diverging across domains             | JSONB absorbs it; a normalisation pass is unscoped work if cross-supplier querying is needed.                                   |
+| Postgres queue contention                                                                                                              | `crawl_queue` index bloat, slow claims                             | Not expected at this scale. The `Frontier` port is the escape hatch (ADR-0002).                                                 |
+| **The BFF turns out to be a thin proxy**                                                                                               | After phase 3, count its routes that do real work vs forward       | Collapse it; move scheduling into Python (ADR-0015). ADR-0021 goes with it                                                      |
+| The review screen gets rebuilt in phase 4                                                                                              | Any phase-4 task touching its state management                     | The draft model lands in phase 3 (`3.1`–`3.3`) precisely to prevent this. If it happens anyway, say so rather than absorbing it |
+| Bleeding-edge stack has thin community knowledge                                                                                       | Time lost to first-encounter problems on Python 3.15 / Tailwind v4 | Budget for it. The docker-native constraint makes a revert one tag away (ADR-0017).                                             |
+| Legal posture                                                                                                                          | —                                                                  | Check the ToS of the first targets. A real input to which domains get onboarded.                                                |
