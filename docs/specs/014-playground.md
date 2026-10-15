@@ -36,7 +36,11 @@ POST /inspect
   "viewport": {"width": 1440, "height": 900},
   "full_page": true,
   "wait_until": "networkidle",
-  "max_elements": 4000
+  "max_elements": 4000,
+  "reveal": [                                 // §2a
+    {"selector": "details:not([open])", "action": "click", "all": true},
+    {"selector": "nav.mega > li", "action": "hover", "all": true, "wait_ms": 150}
+  ]
 }
 → 200
 {
@@ -56,7 +60,13 @@ POST /inspect
      "interactive": false,
      "occluded": false}
   ],
-  "skeleton": "[12] div.product-info\n[13]   h1.product-title \"…\"\n…"
+  "skeleton": "[12] div.product-info\n[13]   h1.product-title \"…\"\n…",
+  "revealed": {"attempted": 14, "succeeded": 12, "capped": false},
+  "network": [                                 // §2a
+    {"method": "GET", "url": "https://example.com/api/nav/children?id=42",
+     "status": 200, "content_type": "application/json", "bytes": 4210,
+     "during": "reveal"}
+  ]
 }
 ```
 
@@ -90,6 +100,47 @@ Response size is the risk: a full-page WebP at 1x plus 4,000 elements runs
 1–3 MB. Cap at 8 MB, serve the screenshot as a separate
 `GET /inspect/{token}/screenshot` when it exceeds 2 MB, and never log the
 body.
+
+## 2a. `reveal` — content behind interaction
+
+Tab panels, accordions, "show more specs" and cascading menus. A bounded
+pre-capture step, not a scripted interaction recorder.
+
+```jsonc
+{"selector": "nav.mega > li",   // what to act on
+ "action": "hover",             // hover | click
+ "all": true,                   // every match, or just the first
+ "wait_ms": 150}                // settle time after each
+```
+
+| Bound | Value | Why |
+| --- | --- | --- |
+| Elements per capture | 20 | past this it is a crawl, not a capture |
+| Total reveal time | 3 s | a slow menu is a worse discovery rule than no menu |
+| Steps per request | 5 | five ordered steps describe any real menu |
+| Nesting | none | a reveal cannot depend on a previous reveal's output |
+
+The last bound is the one that keeps this from growing into a scripting
+language. Two-level cascades are reachable by two *independent* selectors
+(`nav.mega > li` then `nav.mega .submenu > li`), because the first step's
+hover is still in effect when the second runs. A reveal that genuinely needs
+output from an earlier step is a case for a hand-written selector, not for a
+bigger reveal grammar.
+
+`revealed` reports what happened; `capped: true` means the bound was hit and
+the capture is incomplete, which the UI must say rather than silently showing
+a partial page.
+
+**The network log is the useful half.** `network[]` lists requests issued
+during the capture, flagged `during: "reveal"` when a reveal step caused
+them. A menu that fetches its children over XHR therefore hands the operator
+the endpoint instead of a selector — a far more durable discovery rule than
+any hover (spec 004 §3a, case C).
+
+**Reveal steps are stored on the template** when the operator approves one,
+so a run reproduces exactly the capture that was reviewed. A reveal invented
+at crawl time would mean the run discovering from a page the operator never
+saw.
 
 ## 3. Attribute filtering
 
@@ -220,18 +271,20 @@ fields whose target is `discovery` (spec 004).
 Unreachable in the overlay model: tab panels, accordions, "show more specs",
 anything requiring a click. Three escapes, in order:
 
-1. **Pre-expand.** `/inspect` accepts `expand: ["[aria-expanded=false]",
-   "details:not([open])"]` and clicks those before capture, up to 20
-   elements and 2 s. Covers most accordions and `<details>` with no bespoke
-   work.
+1. **Reveal (§2a).** A bounded hover/click pass before capture. Covers
+   accordions, `<details>`, tab panels and most cascading menus with no
+   bespoke work.
 2. **Skeleton mode.** Hidden-but-present DOM appears in the skeleton even
    when it is not in the screenshot, and is clickable there. Most "hidden"
    spec tables are in the markup already.
 3. **Hand-written selector.** The form mode of the same draft, verified
    identically.
 
-Not planned: a scripted interaction recorder. It is a large build for a case
-that escapes 1 and 2 rarely, and the hand-written path already works.
+Not planned: a scripted interaction recorder — ordered, nested, conditional
+steps with state between them. It is a large build with a large failure
+surface for a case that escapes 1–3 rarely, and when it does, the honest
+answer is usually that the site wants an API call rather than a crawl
+(spec 004 §3a, case C).
 
 ## 8. Caching
 
@@ -262,8 +315,14 @@ misses do**, like any other fetch.
 - [ ] Container detection finds a product grid of 24 cards and rejects a
       sidebar filter list of 24 checkboxes.
 - [ ] A lazy-loaded image below the fold has a non-zero box.
-- [ ] `expand` opens a `<details>` spec table and its rows appear in
+- [ ] A `reveal` step opens a `<details>` spec table and its rows appear in
       `elements[]`.
+- [ ] A hover reveal on a two-level mega-menu exposes both levels via two
+      independent selectors.
+- [ ] A reveal set of 40 elements stops at 20 and returns `capped: true`,
+      and the UI says the capture is partial.
+- [ ] An XHR fired during reveal appears in `network[]` with
+      `during: "reveal"`.
 - [ ] Re-inspecting the same URL within 30 minutes issues no network request
       and claims no politeness lock.
 - [ ] A playground-authored draft and a chat-authored draft merge into one

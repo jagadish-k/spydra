@@ -11,7 +11,9 @@ Docker Desktop on macOS has no Metal GPU passthrough (ADR-0009).
 ## Prerequisites
 
 - Docker Desktop (macOS). Give it at least **10 GB RAM and 6 CPUs** — seven
-  containers, one of which runs Chromium.
+  containers, one of which runs Chromium. On a 16 GB machine see
+  *Developing on a smaller machine* below before setting this, because
+  Docker and `llama-server` are competing for the same memory.
 - `make`.
 - `llama-server` built from llama.cpp, and a GGUF model. Optional until
   phase 4; everything else works without it.
@@ -58,6 +60,94 @@ reports it.
 
 **It is not required for crawling.** If it is down, onboarding blocks and
 crawling is unaffected (ADR-0005).
+
+---
+
+## Developing on a smaller machine
+
+The target machine is a Mac Studio Ultra. Development happens on whatever you
+have, and a 16 GB MacBook Pro is fine — but the memory budget stops being
+generous, and the two consumers fight each other.
+
+### The budget
+
+On 16 GB, roughly **9–11 GB** is available to everything you care about, with
+macOS taking the rest.
+
+| Consumer | Target machine | 16 GB machine |
+| --- | --- | --- |
+| Docker Desktop | 10 GB | **6 GB** |
+| Model weights | ~20 GB | ~5 GB |
+| KV cache / context | generous | **the thing you will actually run out of** |
+
+**Lower Docker's allocation before blaming the model.** The default
+prerequisite of 10 GB plus a 5 GB model does not fit, and the symptom is not
+an out-of-memory error — it is Chromium in the `render` container dying in
+ways that look like random timeouts. If you are not working on rendering,
+`docker compose stop render` and get 1–2 GB back.
+
+### Which model
+
+| Use | Model | Q4_K_M | Note |
+| --- | --- | --- | --- |
+| Target (ADR-0020) | Qwen3-Coder 30B-A3B | ~20 GB | MoE; ~3 B active params |
+| Escalation | Qwen 3.6 27B dense | ~22 GB | fields scoring below 60 |
+| **Development** | **Qwen3-Coder 8B** | **~5 GB** | or Qwen 3.5 9B if the coder build is unavailable |
+
+```sh
+llama-server -m ~/models/qwen3-coder-8b-q4_k_m.gguf \
+  --host 127.0.0.1 --port 8080 \
+  --ctx-size 16384 \
+  --cache-type-k q8_0 --cache-type-v q8_0 \
+  --flash-attn --n-gpu-layers 999
+```
+
+Set `LLM_MODEL=qwen3-coder-8b` in `.env` so proposals record which model
+produced them (spec 013 §2) — a drawer full of 8B-authored templates is worth
+being able to find later.
+
+### Context is the real constraint, not parameters
+
+A 3,000-node skeleton is 15–25k tokens. At 32k context the KV cache alone
+costs more than the weights of an 8B model, so the two settings above —
+`--ctx-size 16384` and a quantised KV cache — matter more than the model
+choice does.
+
+Cap the skeleton lower while developing:
+
+```sh
+SKELETON_MAX_NODES=1200        # spec 007 §2; 3000 on the target machine
+LLM_SAMPLES=3                  # ADR-0020 says 5; 3 while iterating
+```
+
+Both are environment overrides precisely so the defaults stay honest in the
+code and the laptop does not quietly become the specification.
+
+### A weak model is a good test, within limits
+
+Best-of-N plus deterministic verification exists to turn mediocre proposals
+into usable templates by discarding most of them. An 8B produces more junk,
+which exercises the discard path, the escalation path and the
+"no candidate survived verification" UI state far harder than a 30B that is
+usually right first time. Develop against it deliberately.
+
+**What you must not do is calibrate on it.** `N=5`, `temperature 0.7` and the
+score-60 escalation threshold were chosen for a 30B-class model (ADR-0020).
+On an 8B the scores sit lower, and "fixing" the threshold to make the laptop
+behave bakes a laptop constant into the product.
+
+- Tests assert that ranking **works** — that a better selector outscores a
+  worse one — never that a particular field clears 60.
+- The constants are read from config, and the test suite fails if a test
+  hard-codes one.
+- Calibrate on the Studio, with the real model, once there is real traffic.
+
+### Most of the build needs no model at all
+
+Phases 0–3 are roughly two thirds of `BUILD_PLAN.md` and use the `LLMClient`
+fake (task `4.1`). `make check` never starts `llama-server`. If you are
+working on the scheduler, discovery, the API or the UI, do not run a model —
+you will get the RAM back and the tests will be faster and deterministic.
 
 ---
 
@@ -298,6 +388,9 @@ are the same command in the same images.
 | Disk fills fast | asset and HTML accumulation | `make purge-html`; check the 7-day TTL sweep |
 | SSE arrives all at once at the end | `flush_interval -1` missing or the SSE rule is below the general one in the Caddyfile | fix the Caddyfile ordering |
 | Render times out randomly | `/dev/shm` too small | `shm_size: 1gb` on `render` |
+| Render times out randomly **on a 16 GB machine** | Docker and `llama-server` are fighting for RAM | lower Docker's allocation, or stop `render` while working on the model |
+| `llama-server` fails to allocate on Apple silicon | GPU-wired memory capped below physical | raise `iogpu.wired_limit_mb`, or use a smaller quant |
+| Proposals score far lower than the spec implies | developing against an 8B | expected — see *Developing on a smaller machine*. Do not lower the threshold |
 | BFF cannot write `crawl.*` | **working as designed** | call the crawler API; do not loosen the grant |
 | `rendered` domains stall, static fine | sidecar down | `docker compose ps render`; check `/healthz` |
 | Chromium driver mismatch | npm Playwright version ≠ image tag | pin them together |
@@ -312,7 +405,9 @@ the secret does not go in the repo.
 LOG_LEVEL=info
 SPYDRA_DATA=./.data            # host path for /data
 LLM_BASE_URL=http://host.docker.internal:8080
-LLM_MODEL=qwen3-30b-a3b
+LLM_MODEL=qwen3-coder-30b-a3b  # qwen3-coder-8b when developing on a laptop
+LLM_SAMPLES=5                  # ADR-0020; 3 while iterating on a laptop
+SKELETON_MAX_NODES=3000        # spec 007 §2; 1200 on a laptop
 RENDER_BASE_URL=http://render:3001
 RENDER_CONTEXTS=3              # the sidecar's hard cap
 ASSET_BOX=1200x1200

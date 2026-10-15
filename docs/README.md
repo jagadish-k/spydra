@@ -21,13 +21,14 @@ Start with [`../AGENTS.md`](../AGENTS.md) — the operating rules — then
 | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Tokens, typography, components, anti-patterns. |
 | [`SCREENS.md`](SCREENS.md) | What each of the ten screens is for. |
 | [`BRAND.md`](BRAND.md) | Logo construction, variants, usage. |
+| [`deck/index.html`](deck/index.html) | **Developer briefing deck.** Sixteen slides: the problem, the five decisions worth arguing about, the screens, and where to start. Open it from disk; arrow keys, `o` for an overview, `p` for presenter notes, Cmd-P prints to PDF. |
 
 The UI specification is `design/mockups/` — static HTML, opens from disk,
 accurate. Build to match it.
 
 ## Decisions
 
-[`adr/`](adr/README.md) — fourteen records. Read the relevant one before
+[`adr/`](adr/README.md) — twenty records. Read the relevant one before
 changing anything structural. Each states its cost.
 
 The four most likely to be questioned, and most likely to be wrong to change:

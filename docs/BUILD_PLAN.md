@@ -116,6 +116,10 @@ on facets.*
 - [ ] `2.3` Dedupe within a run; enqueue with breadth-first ordering.
 - [ ] `2.4` Trap defences: per-run URL cap, depth cap, repeating-path
       detection, scheme and length rejects (spec 004 §3).
+- [ ] `2.4b` Mega-menu containment: a `subcategory_links` rule is scoped to
+      its container, and the dry-run reports when a rule discovers the whole
+      tree at depth 0 (spec 004 §3a). This is the discovery bug that looks
+      like a working rule.
 - [ ] `2.5` Run lifecycle — create, pause, stop, complete; `runs.stats`.
 - [ ] `2.6` `run_events` writer (needed by phase 3's SSE, built here because
       the worker emits them).
@@ -273,7 +277,12 @@ actually goes — so do not start it early.*
 - [ ] `6.9` `POST /drafts/{id}/select`; examples persisted in provenance.
 - [ ] `6.10` Select and Skeleton modes on the review screen's left pane,
       ancestor walk on `[` / `]`, all matches highlighted.
-- [ ] `6.11` `expand` option for `<details>` and `aria-expanded` content.
+- [ ] `6.11` `reveal` steps (spec 014 §2a) with every bound enforced, plus
+      `network[]` capture. The bounds are the feature; an unbounded version
+      is a different program.
+- [ ] `6.11b` Promote a network-log endpoint to a discovery rule
+      (spec 004 §3a, case C), and a `json_source` discovery rule for menus
+      whose data ships as inline JSON.
 - [ ] `6.12` Re-generalisation from stored examples, for a template broken by
       a redesign. This is the payoff for storing provenance.
 
@@ -297,7 +306,7 @@ Not in the plan; revisit only with a reason.
 | Proxy rotation | If it is needed, the polite-crawling assumptions have already failed |
 | Free-threaded Python (`cp315t`) | Dependencies ship it; nothing needs it yet (ADR-0017) |
 | Replacing the render sidecar with browserless | The HTTP contract makes it a swap, not a rewrite |
-| Scripted interaction recorder in the playground | Large build; `expand` and Skeleton mode cover nearly all of it (spec 014 §7) |
+| Scripted interaction recorder in the playground | Large build, large failure surface; bounded `reveal` and Skeleton mode cover nearly all of it (spec 014 §7) |
 
 ---
 

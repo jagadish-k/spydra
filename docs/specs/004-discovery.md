@@ -73,6 +73,90 @@ Also reject: `mailto:`, `tel:`, `javascript:`, URLs over 2,000 characters,
 and anything matching a calendar pattern (`/20\d\d/\d\d/`) unless explicitly
 allowed.
 
+## 3a. Navigation the crawler cannot see
+
+Cascading menus, mega-menus and hover-revealed category trees. Three cases
+that look identical in a browser and are completely different to a crawler.
+**Diagnose before building anything** — the cheap case is the common one.
+
+| Case | What is in the fetched HTML | Cost |
+| --- | --- | --- |
+| **A — hidden by CSS** | the `<a href>` is there, `display:none` until hover | free |
+| **B — injected on interaction** | the data is there (inline JSON, a JS bundle), the links are not | small |
+| **C — fetched on interaction** | nothing; hovering fires an XHR | moderate |
+
+### Case A is free, and the risk runs the other way
+
+`selectolax` parses markup; it does not compute styles, so a link hidden by
+`display:none` is an ordinary match. Most bespoke supplier sites are
+server-rendered and land here. **Nothing needs building.**
+
+The real hazard is the opposite one: a mega-menu often lists *the entire
+category tree on every page*. A `subcategory_links` rule scoped to `nav a`
+therefore discovers the whole site from depth 0, defeats the depth cap, and
+looks like a working rule right up until the URL cap halts the domain. Scope
+the selector to the menu's own container and let `allow_patterns` and the
+dry-run (§4) confirm the count before approval.
+
+### Prefer the path already in the crawl
+
+Before reaching for B or C: **a cascading menu is usually a shortcut to pages
+that are reachable anyway.** Category pages carry subcategory tiles and
+pagination; the menu is a faster route to the same URLs, not a different set.
+If depth 5 from the seed reaches them through listing pages, discovering them
+from the menu adds fragility and no coverage.
+
+Check this with the dry-run before building anything: crawl one category page
+with `subcategory_links` unset and compare `projected_urls_at_depth_5` against
+the run with it set. **If the two sets match, delete the rule.** Most of the
+time they do.
+
+### Case B — reveal, then read
+
+When the links genuinely only exist after interaction, the sidecar gets a
+`reveal` step (spec 014 §2a): a bounded list of selectors to hover or click
+before capture. Same mechanism as `expand`, extended from `<details>` and
+`aria-expanded` to arbitrary elements with an explicit action.
+
+```json
+"reveal": [
+  {"selector": "nav.mega > li", "action": "hover", "all": true, "wait_ms": 150}
+]
+```
+
+Bounded at 20 elements and 3 s total, and **the reveal set is stored on the
+template** so the run reproduces exactly what the operator approved. An
+unbounded "click everything" pass is a different program with different
+failure modes; do not write one.
+
+Often there is a cheaper route in this case: the menu data frequently ships
+as inline JSON (`<script type="application/json">`, a `__NEXT_DATA__` blob, a
+`window.__NAV__` assignment). A `discovery.json_source` rule — a selector plus
+a JSONPath to an array of hrefs — is more durable than any amount of hovering,
+because it does not depend on the menu's markup at all.
+
+### Case C — record the request, do not replay the hover
+
+When hovering fires `GET /api/nav/children?id=42`, the sidecar already has
+the answer: it holds the network log for the render. So capture it.
+
+`/inspect` returns `network[]` — requests issued during reveal, with method,
+URL, status and content type. In the playground, hovering a menu surfaces
+*"this produced 3 requests; one returned JSON containing 24 URLs"*, and the
+operator can promote that endpoint to a discovery rule.
+
+**An endpoint is a better discovery rule than an interaction.** It survives
+redesigns that rewrite the menu markup, costs one request instead of a full
+render, and is reviewable as a URL rather than as a script. The cost is that
+it is an undocumented internal API that can change without notice — so it is
+versioned on the template like any other rule, and a rule whose endpoint
+starts returning non-JSON fails loudly rather than silently discovering
+nothing.
+
+**Politeness applies unchanged.** A revealed render is one page fetch against
+the per-domain gate, and a promoted endpoint is a normal queued URL. Neither
+gets a side channel.
+
 ## 4. Dry-run discovery
 
 Exposed on the template review screen as a button. It crawls **one** listing
@@ -109,3 +193,13 @@ is far cheaper than catching it mid-run.
 - [ ] A `rel="canonical"` pointing elsewhere on the same host collapses two
       URLs into one page row.
 - [ ] Discovery never leaves the registrable domain.
+- [ ] A fixture whose subcategory links are `display:none` is discovered by a
+      static fetch with no reveal step.
+- [ ] A `nav a` rule on a mega-menu fixture is caught by the dry-run as
+      discovering the whole tree at depth 0.
+- [ ] A reveal step bounded at 20 elements stops at 20 and says so.
+- [ ] A template's reveal set is stored and replayed identically on the run.
+- [ ] A `json_source` rule extracts hrefs from an inline JSON blob without a
+      browser.
+- [ ] An endpoint promoted from the network log enqueues as an ordinary URL
+      against the per-domain gate.

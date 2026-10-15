@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spydra — developer briefing</title>
+<link rel="icon" href="assets/mark.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<style>
+/* ==========================================================================
+   Spydra — developer briefing deck
+
+   Deliberately self-contained: the tokens below are copied from
+   design/tokens/tokens.css rather than imported, so this file can be sent to
+   someone as one attachment and still look right. If the palette changes,
+   this copy is the one that goes stale — it is a deck, not a component.
+
+   Fixed 1280x720 stage, scaled to the viewport. Cmd-P prints one slide per
+   page if you need a PDF.
+   ========================================================================== */
+:root {
+  --brand-50:#EEF0FB; --brand-100:#DDE1F7; --brand-400:#727FDF;
+  --brand-500:#4F56D9; --brand-600:#4338CA; --brand-700:#3730A3;
+
+  --bg-base:#F7F8FA; --bg-surface:#FFFFFF; --bg-subtle:#F1F3F6;
+  --bg-inset:#F7F8FA; --bg-selected:#EEF0FB;
+  --border:#E3E6EB; --border-strong:#CDD2DA;
+  --text-primary:#16191F; --text-secondary:#5A616D; --text-muted:#878E9A;
+  --text-inverse:#FFFFFF;
+
+  --pending:#B45309; --pending-bg:#FEF3C7;
+  --active:#047857;  --active-bg:#D1FAE5;
+  --broken:#B91C1C;  --broken-bg:#FEE2E2;
+  --info:#1D4ED8;    --info-bg:#DBEAFE;
+  --viz-1:#4F56D9; --viz-2:#0E9F6E; --viz-3:#D97706; --viz-4:#9333EA;
+
+  --font-ui:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --font-brand:"Space Grotesk",var(--font-ui);
+}
+:root[data-theme="dark"] {
+  --bg-base:#0F1115; --bg-surface:#171A21; --bg-subtle:#1E222B;
+  --bg-inset:#0F1115; --bg-selected:rgba(79,86,217,0.16);
+  --border:#272C36; --border-strong:#39404D;
+  --text-primary:#E8EAEE; --text-secondary:#A2A9B6; --text-muted:#6E7684;
+  --pending:#F59E0B; --pending-bg:rgba(245,158,11,0.14);
+  --active:#34D399;  --active-bg:rgba(52,211,153,0.14);
+  --broken:#F87171;  --broken-bg:rgba(248,113,113,0.14);
+  --info:#60A5FA;    --info-bg:rgba(96,165,250,0.14);
+  --brand-50:rgba(79,86,217,0.16);
+}
+
+* { box-sizing:border-box; }
+html,body { margin:0; height:100%; }
+body {
+  background:var(--bg-inset); color:var(--text-primary);
+  font-family:var(--font-ui); -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+
+/* ------------------------------------------------------------- the stage */
+#viewport { position:fixed; inset:0; display:grid; place-items:center; }
+#stage {
+  width:1280px; height:720px; position:relative; flex-shrink:0;
+  transform:scale(var(--k,1)); transform-origin:center center;
+  background:var(--bg-surface); border:1px solid var(--border);
+  border-radius:10px; overflow:hidden;
+  box-shadow:0 18px 50px rgba(22,25,31,0.10);
+}
+:root[data-theme="dark"] #stage { box-shadow:0 18px 50px rgba(0,0,0,0.45); }
+
+.slide {
+  position:absolute; inset:0; padding:56px 64px 60px;
+  display:none; flex-direction:column;
+  background:var(--bg-surface);
+}
+.slide.on { display:flex; animation:in 180ms ease-out; }
+@keyframes in { from { opacity:0; transform:translateY(4px);} to {opacity:1;transform:none;} }
+@media (prefers-reduced-motion:reduce){ .slide.on{animation:none;} }
+
+/* -------------------------------------------------------------- typography */
+h1 { font-size:52px; line-height:1.1; margin:0 0 16px; font-weight:600; letter-spacing:-0.02em; }
+h2 { font-size:34px; line-height:1.18; margin:0 0 6px; font-weight:600; letter-spacing:-0.015em; }
+.kicker {
+  font-size:12px; font-weight:500; letter-spacing:0.09em; text-transform:uppercase;
+  color:var(--brand-600); margin:0 0 14px;
+}
+:root[data-theme="dark"] .kicker { color:var(--brand-400); }
+.lede { font-size:19px; line-height:1.5; color:var(--text-secondary); margin:0 0 20px; max-width:62ch; }
+p { font-size:17px; line-height:1.55; margin:0 0 12px; }
+strong { font-weight:600; color:var(--text-primary); }
+code, .mono { font-family:var(--font-mono); font-size:0.88em; }
+code { background:var(--bg-subtle); padding:1px 5px; border-radius:4px; }
+a { color:var(--brand-600); }
+.sub { color:var(--text-secondary); }
+.muted { color:var(--text-muted); }
+.small { font-size:14px; }
+
+/* ------------------------------------------------------------------ layout */
+.body { flex:1; min-height:0; display:flex; flex-direction:column; gap:18px; }
+.cols { display:grid; gap:24px; min-height:0; align-items:start; }
+.c2 { grid-template-columns:1fr 1fr; }
+.c2w { grid-template-columns:1.25fr 1fr; }
+.c2n { grid-template-columns:1fr 1.5fr; }
+.c3 { grid-template-columns:repeat(3,1fr); }
+.center { justify-content:center; }
+
+ul { margin:0 0 12px; padding-left:20px; }
+li { font-size:17px; line-height:1.5; margin-bottom:8px; }
+li::marker { color:var(--text-muted); }
+ul.tight li { margin-bottom:5px; font-size:16px; }
+
+.card {
+  background:var(--bg-surface); border:1px solid var(--border);
+  border-radius:8px; padding:16px 18px; min-width:0;
+}
+.card.sub-bg { background:var(--bg-subtle); }
+.card h3 { font-size:15px; margin:0 0 8px; font-weight:600; }
+.card p { font-size:15px; line-height:1.45; margin:0; color:var(--text-secondary); }
+
+.note {
+  border-left:3px solid var(--brand-500); padding:10px 0 10px 16px;
+  font-size:17px; line-height:1.5; color:var(--text-primary);
+}
+.note.warn { border-color:var(--pending); }
+.note.good { border-color:var(--active); }
+
+table { width:100%; border-collapse:collapse; font-size:15px; }
+th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+th { font-size:12px; font-weight:500; text-transform:uppercase; letter-spacing:0.05em;
+     color:var(--text-secondary); background:var(--bg-subtle); }
+td.n { font-variant-numeric:tabular-nums; }
+
+pre {
+  background:var(--bg-subtle); border:1px solid var(--border); border-radius:8px;
+  padding:14px 16px; margin:0; overflow:hidden;
+  font-family:var(--font-mono); font-size:13px; line-height:1.6;
+  color:var(--text-primary);
+}
+pre .c { color:var(--text-muted); }
+pre .k { color:var(--brand-600); }
+:root[data-theme="dark"] pre .k { color:var(--brand-400); }
+pre .s { color:var(--active); }
+
+.pill {
+  display:inline-flex; align-items:center; gap:6px; padding:3px 9px;
+  border-radius:999px; font-size:12px; font-weight:500;
+}
+.pill.p-pending { background:var(--pending-bg); color:var(--pending); }
+.pill.p-active  { background:var(--active-bg);  color:var(--active); }
+.pill.p-broken  { background:var(--broken-bg);  color:var(--broken); }
+.pill.p-info    { background:var(--info-bg);    color:var(--info); }
+
+.shot {
+  border:1px solid var(--border); border-radius:8px; overflow:hidden;
+  background:var(--bg-inset); display:block; width:100%;
+}
+.shot img { display:block; width:100%; height:auto; }
+.shot.crop { height:260px; }
+.shot.crop img { height:100%; object-fit:cover; object-position:top left; }
+.caption { font-size:13px; color:var(--text-muted); margin-top:7px; }
+
+/* chain / flow */
+.flow { display:flex; align-items:stretch; gap:10px; }
+.flow .step {
+  flex:1; border:1px solid var(--border); border-radius:8px; padding:12px 13px;
+  background:var(--bg-surface); min-width:0;
+}
+.flow .step .n { font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted); }
+.flow .step .t { font-size:15px; font-weight:600; margin:3px 0 4px; }
+.flow .step .d { font-size:13px; line-height:1.4; color:var(--text-secondary); }
+.flow .step.hot { border-color:var(--brand-500); background:var(--bg-selected); }
+.flow .arrow { display:grid; place-items:center; color:var(--text-muted); font-size:18px; }
+
+/* ------------------------------------------------------------------ chrome */
+.slide-foot {
+  position:absolute; left:64px; right:64px; bottom:22px;
+  display:flex; align-items:center; gap:10px;
+  font-size:12px; color:var(--text-muted);
+}
+.slide-foot .spacer { margin-left:auto; }
+.slide-foot .ref { font-family:var(--font-mono); font-size:11px; }
+#bar { position:absolute; left:0; right:0; top:0; height:3px; background:var(--bg-subtle); z-index:5; }
+#bar i { display:block; height:100%; width:0; background:var(--brand-600); transition:width 180ms ease-out; }
+
+#hud {
+  position:fixed; right:16px; bottom:14px; display:flex; gap:6px; align-items:center;
+  font-size:12px; color:var(--text-muted); z-index:20;
+}
+#hud button {
+  font:inherit; font-size:12px; cursor:pointer; color:var(--text-secondary);
+  background:var(--bg-surface); border:1px solid var(--border);
+  border-radius:6px; padding:4px 9px;
+}
+#hud button:hover { background:var(--bg-subtle); color:var(--text-primary); }
+
+/* overview grid */
+#grid {
+  position:fixed; inset:0; background:var(--bg-inset); z-index:30;
+  display:none; grid-template-columns:repeat(4,1fr); gap:14px;
+  padding:28px; overflow:auto; align-content:start;
+}
+#grid.on { display:grid; }
+#grid .thumb {
+  border:1px solid var(--border); border-radius:8px; background:var(--bg-surface);
+  padding:12px 13px; cursor:pointer; min-height:92px;
+}
+#grid .thumb:hover { border-color:var(--brand-500); }
+#grid .thumb .i { font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+#grid .thumb .t { font-size:14px; font-weight:500; margin-top:4px; line-height:1.3; }
+
+/* presenter notes */
+.notes { display:none; }
+#notepane {
+  position:fixed; left:0; right:0; bottom:0; max-height:36vh; overflow:auto;
+  background:var(--bg-surface); border-top:1px solid var(--border);
+  padding:14px 20px 18px; font-size:14px; line-height:1.5; color:var(--text-secondary);
+  z-index:25;
+}
+#notepane[hidden] { display:none; }
+#notepane b { color:var(--text-primary); }
+
+/* title slide */
+.title-slide { justify-content:center; }
+.wordmark { font-family:var(--font-brand); font-size:56px; letter-spacing:-0.02em; font-weight:500; }
+.title-row { display:flex; align-items:center; gap:18px; margin-bottom:10px; }
+.title-row svg { width:62px; height:62px; color:var(--brand-600); }
+:root[data-theme="dark"] .title-row svg { color:var(--brand-400); }
+.meta-row { display:flex; gap:26px; margin-top:28px; font-size:14px; color:var(--text-muted); }
+.meta-row b { display:block; color:var(--text-primary); font-size:15px; font-weight:500; margin-bottom:2px; }
+
+@media print {
+  body, #viewport { overflow:visible; height:auto; display:block; }
+  #hud, #grid, #notepane, #bar { display:none !important; }
+  #stage { transform:none !important; width:1280px; height:720px;
+           box-shadow:none; border:0; page-break-after:always; }
+  .slide { display:flex !important; position:relative; page-break-after:always; }
+}
+</style>
+</head>
+<body>
+
+<div id="viewport">
+  <div id="stage">
+    <div id="bar"><i></i></div>
+
+<!-- ======================================================== 1 · title === -->
+<section class="slide title-slide" data-title="Spydra — title">
+  <div class="title-row">
+    <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+      <g opacity="0.38" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M32,28 L32,6"/><path d="M35.46,30 L54.52,19"/><path d="M35.46,34 L54.52,45"/>
+        <path d="M32,36 L32,58"/><path d="M28.54,34 L9.48,45"/><path d="M28.54,30 L9.48,19"/>
+        <polygon points="32,20 42.39,26 42.39,38 32,44 21.61,38 21.61,26"/>
+        <polygon points="32,12 49.32,22 49.32,42 32,52 14.68,42 14.68,22"/>
+      </g>
+      <g opacity="0.38" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
+        <rect x="28.8" y="2.8" width="6.4" height="6.4" rx="1.6"/>
+        <rect x="51.32" y="15.8" width="6.4" height="6.4" rx="1.6"/>
+        <rect x="51.32" y="41.8" width="6.4" height="6.4" rx="1.6"/>
+        <rect x="28.8" y="54.8" width="6.4" height="6.4" rx="1.6"/>
+        <rect x="6.28" y="41.8" width="6.4" height="6.4" rx="1.6"/>
+        <rect x="6.28" y="15.8" width="6.4" height="6.4" rx="1.6"/>
+      </g>
+      <g fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M31.03,28.19 L28.56,22.07 L23.29,20.05"/><path d="M32.97,28.19 L35.44,22.07 L40.71,20.05"/>
+        <path d="M29.77,29.26 L24.0,27.21 L18.78,29.46"/><path d="M34.23,29.26 L40.0,27.21 L45.22,29.46"/>
+        <path d="M29.43,31.01 L23.48,31.98 L19.11,35.58"/><path d="M34.57,31.01 L40.52,31.98 L44.89,35.58"/>
+        <path d="M29.84,32.44 L25.33,35.27 L22.87,40.52"/><path d="M34.16,32.44 L38.67,35.27 L41.13,40.52"/>
+      </g>
+      <circle cx="32" cy="36.4" r="4.6" fill="currentColor"/>
+      <circle cx="32" cy="29" r="2.4" fill="currentColor"/>
+    </svg>
+    <span class="wordmark">Spydra</span>
+  </div>
+  <p class="lede" style="font-size:23px;max-width:46ch">
+    A politeness-first crawler for 1,200 bespoke supplier catalogues, with a
+    local model proposing the extraction rules and a human approving every one.
+  </p>
+  <p class="small muted" style="max-width:62ch">
+    A developer briefing: what it is, the five decisions worth arguing about,
+    and where the interesting problems are. No code written yet — the design
+    is finished and the first phase is open.
+  </p>
+  <div class="meta-row">
+    <div><b>Python 3.15 · FastAPI</b>api &amp; worker</div>
+    <div><b>Node 26 · Fastify · React 19</b>bff &amp; web</div>
+    <div><b>PostgreSQL 18</b>database and queue</div>
+    <div><b>llama.cpp</b>on the host, authoring only</div>
+  </div>
+  <aside class="notes"><b>Framing.</b> This is not a product pitch. The audience is
+  someone deciding whether the problems here are interesting enough to work on.
+  Lead with the constraint that makes it unusual: being blocked is the worst
+  outcome, which inverts most crawler advice.</aside>
+</section>
+
+<!-- ====================================================== 2 · the loop === -->
+<section class="slide" data-title="What it actually does">
+  <p class="kicker">The whole system in one slide</p>
+  <h2>A seed goes in. A reviewed template comes out. Then it crawls.</h2>
+  <div class="body">
+    <div class="flow">
+      <div class="step"><div class="n">1 · seed</div><div class="t">A category URL</div>
+        <div class="d">Pasted or uploaded as CSV. The domain is registered <span class="mono">discovered</span> and crawls nothing yet.</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">2 · sample</div><div class="t">1–5 pages fetched</div>
+        <div class="d">The only fetching an unapproved domain does, through the same politeness gate as a real run.</div></div>
+      <div class="arrow">→</div>
+      <div class="step hot"><div class="n">3 · propose</div><div class="t">The model suggests selectors</div>
+        <div class="d">Never values. Every suggestion is then resolved against the real DOM and discarded if it does not match.</div></div>
+      <div class="arrow">→</div>
+      <div class="step hot"><div class="n">4 · review</div><div class="t">A human approves</div>
+        <div class="d">The bottleneck, and the screen the whole UI is built around.</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">5 · crawl</div><div class="t">Deterministic extraction</div>
+        <div class="d">Approved CSS selectors only. <strong>The model is not in this path at all.</strong></div></div>
+    </div>
+    <div class="cols c2" style="margin-top:4px">
+      <div class="note good">
+        <strong>An unapproved domain cannot wander.</strong> Discovery rules are part
+        of the approved template, not heuristics — so a domain nobody has reviewed
+        has no rules and finds no links. The safety property falls out of the data
+        model rather than being enforced by a check.
+      </div>
+      <div class="note">
+        <strong>Inference runs once per template, not once per page.</strong> That one
+        fact removes nearly all performance pressure and is why a 30B model on one
+        desktop is a sensible choice rather than an extravagant one.
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>The loop</span><span class="spacer"></span><span class="ref">ARCHITECTURE.md</span></div>
+  <aside class="notes"><b>Key beat:</b> step 3→5. People assume an "AI crawler" calls a
+  model per page. This one does not, and almost every other design decision follows
+  from that.</aside>
+</section>
+
+<!-- ================================================= 3 · the constraint === -->
+<section class="slide" data-title="The constraint that shapes everything">
+  <p class="kicker">Constraints</p>
+  <h2>One user, one machine, and one failure that matters</h2>
+  <p class="lede">Every constraint points away from the usual web-scale crawler architecture.</p>
+  <div class="body">
+    <table>
+      <thead><tr><th style="width:22%">Constraint</th><th style="width:30%">Value</th><th>Consequence</th></tr></thead>
+      <tbody>
+        <tr><td>Users</td><td>One, local only</td><td>No auth, no multi-tenancy, no horizontal scaling. Do not add them.</td></tr>
+        <tr><td>Domains</td><td>2–3 onboarded at a time, toward ~1,200</td><td>Onboarding is the primary interface; crawling is the batch job</td></tr>
+        <tr><td><strong>Worst failure</strong></td><td><strong>Being blocked by a site</strong></td><td><strong>Politeness is a correctness requirement, not etiquette</strong></td></tr>
+        <tr><td>Sites</td><td>Bespoke supplier catalogues</td><td>Thin <span class="mono">schema.org</span> coverage; per-domain templates are unavoidable</td></tr>
+        <tr><td>Cadence</td><td>Manual, infrequent</td><td>Throughput barely matters. Correctness and auditability do</td></tr>
+        <tr><td>Host</td><td>Mac Studio Ultra</td><td>Unified memory fits a 30B model, so the model can be good rather than fast</td></tr>
+      </tbody>
+    </table>
+    <div class="note warn">
+      <strong>The consequence people miss:</strong> at one page every two seconds per
+      host, the per-domain limit is nearly free once the domain count is high. 1,200
+      domains at a 2 s delay saturates a worker pool long before it troubles any
+      single site. <em>Politeness costs almost nothing here — which is exactly why
+      there is no excuse for skipping it.</em>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Constraints</span><span class="spacer"></span><span class="ref">ARCHITECTURE.md · Overview</span></div>
+  <aside class="notes">If someone pushes on "why not just crawl faster" — the answer is
+  that speed buys nothing (runs are infrequent) and risks the one thing that ends the
+  project.</aside>
+</section>
+
+<!-- =================================================== 4 · the inversion === -->
+<section class="slide" data-title="The bottleneck is review, not crawling">
+  <p class="kicker">The thing that makes this project interesting</p>
+  <h2>The bottleneck is a human, and the arithmetic is brutal</h2>
+  <div class="body">
+    <div class="cols c2n">
+      <div>
+        <div class="card sub-bg" style="margin-bottom:14px">
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:4px">At ~6 domains reviewed per month</div>
+          <div style="font-size:46px;font-weight:600;letter-spacing:-0.02em;line-height:1">~16 years</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:4px">to reach 1,200 domains</div>
+        </div>
+        <p class="small sub">Crawling 1,200 domains is a solved problem that fits on one
+        machine. <strong>Approving 1,200 templates is not.</strong></p>
+      </div>
+      <div>
+        <p>So the engineering effort goes where the constraint actually is:</p>
+        <ul class="tight">
+          <li><strong>Batch review ships with the review screen</strong>, not after it —
+            20 templates as a grid, approve in one confirm. Retrofitting it later means
+            reworking state management, not adding a view.</li>
+          <li><strong>A sample strip on every review.</strong> A selector that works on
+            the page in front of you and fails on the next product is the most common
+            error there is, and it is invisible in a one-page review.</li>
+          <li><strong>Three ways to author a template</strong> — a form, a chat, and
+            click-to-select on a rendered page — because the fastest route differs by
+            site and by how much you already know.</li>
+          <li><strong>A coverage report</strong> that plots onboarding pace against
+            backlog growth. It is the instrument that says whether any of this worked.</li>
+        </ul>
+        <div class="note" style="margin-top:4px">
+          Every feature in this project is judged against that number. If it does not
+          move it, it is decoration.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>The real constraint</span><span class="spacer"></span><span class="ref">BUILD_PLAN.md · Known risks</span></div>
+  <aside class="notes">This is the slide to linger on. It reframes the project from
+  "a crawler" to "a review tool that happens to crawl", which is what makes the UI
+  work substantial rather than incidental.</aside>
+</section>
+
+<!-- ======================================================= 5 · decision 1 == -->
+<section class="slide" data-title="Decision 1 — Postgres is the queue">
+  <p class="kicker">Decision 1 of 5 · ADR-0002</p>
+  <h2>Postgres is the queue. Not Kafka, not Redis.</h2>
+  <div class="body">
+    <div class="cols c2">
+      <div>
+        <p>The claim query is the whole scheduler:</p>
+<pre><span class="k">WITH</span> eligible <span class="k">AS</span> (
+  <span class="k">SELECT</span> id <span class="k">FROM</span> domains
+  <span class="k">WHERE</span> state = <span class="s">'active'</span>
+    <span class="k">AND</span> next_eligible_at &lt;= now()
+  <span class="k">ORDER BY</span> next_eligible_at <span class="k">LIMIT</span> 1
+)
+<span class="k">UPDATE</span> crawl_queue q
+<span class="k">SET</span> state = <span class="s">'in_flight'</span>,
+    locked_until = now() + <span class="s">'120s'</span>
+<span class="k">WHERE</span> q.id = (
+  <span class="k">SELECT</span> q2.id <span class="k">FROM</span> crawl_queue q2
+  <span class="k">JOIN</span> eligible e <span class="k">ON</span> e.id = q2.domain_id
+  <span class="k">WHERE</span> q2.state = <span class="s">'pending'</span>
+  <span class="k">ORDER BY</span> q2.depth, q2.id
+  <span class="k">FOR UPDATE SKIP LOCKED LIMIT</span> 1
+)
+<span class="k">RETURNING</span> q.*;</pre>
+      </div>
+      <div>
+        <h3 style="font-size:15px;margin:0 0 8px">Why a broker loses here</h3>
+        <ul class="tight">
+          <li><strong>Dual-write.</strong> With a broker the crawled row lands in
+            Postgres and the offset lands in the broker. A crash between them gives
+            duplicate crawls or dropped URLs. <span class="mono">SKIP LOCKED</span>
+            makes dequeue-and-write one transaction.</li>
+          <li><strong>Kafka's model fights the requirement.</strong> Politeness is
+            per-key rate limiting. Kafka offers ordered partitions and consumer
+            offsets. The domain scheduler would live outside the broker anyway, so
+            the broker contributes nothing to the hard part.</li>
+          <li><strong>Scale does not justify it.</strong> Frontier queues exist for
+            crawls spread across many machines.</li>
+        </ul>
+        <div class="note good" style="margin-top:2px">
+          <strong>The hedge, and its price.</strong> The queue sits behind a
+          <span class="mono">Frontier</span> port. If one node is ever outgrown,
+          that interface is the swap point. One <span class="mono">Protocol</span>
+          class — which is the correct cost for an option you do not expect to
+          exercise.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Decision 1 · the queue</span><span class="spacer"></span><span class="ref">adr/0002 · specs/002</span></div>
+  <aside class="notes">Expect pushback here from anyone who has run Kafka. The dual-write
+  argument is the one that holds; the scale argument alone sounds like laziness.</aside>
+</section>
+
+<!-- ======================================================= 6 · decision 2 == -->
+<section class="slide" data-title="Decision 2 — three pools, one gate">
+  <p class="kicker">Decision 2 of 5 · ADR-0003, ADR-0016</p>
+  <h2>Three worker pools. One politeness gate.</h2>
+  <div class="body">
+    <table>
+      <thead><tr><th>Pool</th><th>Workers</th><th>Per host</th><th>Gated by</th><th>On a block</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Static pages</strong></td><td class="n">12</td><td class="n">1 concurrent, 2 s gap</td><td><span class="mono">domains.next_eligible_at</span></td><td>pause the domain</td></tr>
+        <tr><td><strong>Rendered pages</strong></td><td class="n">3 in flight</td><td class="n">1 concurrent, same gap</td><td>the same lock</td><td>pause the domain</td></tr>
+        <tr><td><strong>Assets</strong></td><td class="n">24</td><td class="n">5 concurrent, 200 ms gap</td><td>in-process semaphore</td><td>pause assets only</td></tr>
+      </tbody>
+    </table>
+    <div class="cols c2" style="margin-top:2px">
+      <div class="note">
+        <strong>Why images may be parallelised within a host and pages may not.</strong>
+        A product page is a dynamic request: it hits application code, touches a
+        database, costs the origin real CPU and shows up in their logs as a crawl
+        pattern. An image is a static byte range, usually from a CDN edge. Six
+        concurrent image fetches is <em>ordinary browser behaviour</em> — a real
+        browser opens about that many connections per host to render one page.
+      </div>
+      <div class="note">
+        <strong>One page every two seconds plus bursty asset fetches looks like a
+        visitor. Sequential everything looks like a crawler.</strong> The traffic
+        shape is the point, not the request count.
+        <div style="margin-top:8px" class="small muted">
+          Page politeness lives in Postgres because it must hold across worker
+          replicas and restarts. Asset concurrency is a throughput knob and lives in
+          process — a few extra connections is not a correctness problem.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Decision 2 · concurrency</span><span class="spacer"></span><span class="ref">adr/0003 · specs/002 · specs/008</span></div>
+  <aside class="notes">The asymmetry is counterintuitive and usually lands well — it is a
+  concrete, defensible reason rather than a vibe about being polite.</aside>
+</section>
+
+<!-- ======================================================= 7 · decision 3 == -->
+<section class="slide" data-title="Decision 3 — a block stops the crawler">
+  <p class="kicker">Decision 3 of 5 · ADR-0004</p>
+  <h2>A block stops the crawler. It is never retried through.</h2>
+  <div class="body">
+    <div class="cols c2">
+      <div>
+        <table>
+          <thead><tr><th>Signal</th><th>Response</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill p-pending">429 / 503</span></td><td>Exponential backoff on that domain, 2×, capped at 15 minutes</td></tr>
+            <tr><td><span class="pill p-broken">403 × 3</span></td><td><strong>Domain auto-paused</strong> and raised in the UI. A human decides what happens next</td></tr>
+            <tr><td><span class="pill p-info">robots.txt</span></td><td><span class="mono">Crawl-delay</span> raises the configured delay if higher. <strong>It never lowers it</strong></td></tr>
+            <tr><td><span class="pill p-active">304</span></td><td>A free observation, via stored <span class="mono">ETag</span> / <span class="mono">If-None-Match</span></td></tr>
+          </tbody>
+        </table>
+        <p class="small muted" style="margin-top:12px">Default delay 2,000 ms, jittered ±30%
+        so request timing is not machine-regular. The User-Agent is real and descriptive,
+        with contact information — pretending to be Chrome is both less honest and, in
+        practice, more likely to be fingerprinted.</p>
+      </div>
+      <div>
+        <div class="note warn">
+          <strong>A retry loop against a site that has decided to block you is how a
+          temporary block becomes a permanent one.</strong> So the default behaviour on
+          a block is to stop and tell someone, which is the opposite of what a crawler
+          usually does.
+        </div>
+        <div class="note" style="margin-top:14px">
+          <strong>Stopping is cheap here, which is why it is affordable.</strong> A
+          paused domain consumes no crawl budget and sends no requests. A stalled review
+          queue costs nothing operationally — so "block until a human approves" is a
+          cheap guarantee rather than an expensive one.
+        </div>
+        <div class="note good" style="margin-top:14px">
+          There is a standing report — requests per domain, 429/403 counts, average
+          effective delay — whose purpose is to be <strong>defensible evidence that the
+          crawler behaved</strong>. It is the first place to look after a block.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Decision 3 · blocks</span><span class="spacer"></span><span class="ref">adr/0004 · specs/002</span></div>
+  <aside class="notes">Worth saying out loud: this is also the slide about legal and ethical
+  posture. Crawling supplier catalogues raises ToS questions that are separate from the
+  technical ones, and the project treats that as a real input.</aside>
+</section>
+
+<!-- ======================================================= 8 · decision 4 == -->
+<section class="slide" data-title="Decision 4 — the model proposes, never extracts">
+  <p class="kicker">Decision 4 of 5 · ADR-0005</p>
+  <h2>The model proposes selectors. It never extracts values.</h2>
+  <div class="body">
+    <div class="flow">
+      <div class="step"><div class="n">rung 1 · free</div><div class="t">Structured data</div>
+        <div class="d">JSON-LD and microdata via <span class="mono">extruct</span>. Costs one parse; occasionally eliminates a template entirely.</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">rung 2 · free</div><div class="t">Approved selectors</div>
+        <div class="d">The normal path. Deterministic, versioned, attributable.</div></div>
+      <div class="arrow">→</div>
+      <div class="step hot"><div class="n">rung 3 · once per template</div><div class="t">Model proposal</div>
+        <div class="d">Produces a <em>proposal</em>, not data. Goes to a human, never to the database.</div></div>
+      <div class="arrow">→</div>
+      <div class="step"><div class="n">rung 4</div><div class="t">Unknown queue</div>
+        <div class="d">Nothing worked. Grouped by root cause so one fix clears dozens.</div></div>
+    </div>
+    <div class="cols c2" style="margin-top:6px">
+      <div>
+<pre><span class="c">// every proposal, before a human sees it</span>
+nodes = real_dom.select(selector)
+<span class="k">if</span> nodes is empty         → discard <span class="c">'no_match'</span>
+<span class="k">if</span> text(nodes[0]) != claim → discard <span class="c">'claim_mismatch'</span>
+<span class="k">if</span> !many <span class="k">and</span> len(nodes) &gt; 1 → keep, flag <span class="c">'ambiguous'</span>
+<span class="k">else</span>                       → keep, verified</pre>
+      </div>
+      <div class="note good">
+        <strong>This verification step matters more than the model choice.</strong> It
+        converts a probabilistic suggestion into a checked candidate, and it makes a
+        weak proposal fail loudly instead of producing plausible-looking wrong data.
+        <div style="margin-top:8px" class="small">
+          Only rungs 1 and 2 write observations. Which is why an unapproved domain can
+          never generate data, no matter how confident the model was.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Decision 4 · the model's role</span><span class="spacer"></span><span class="ref">adr/0005 · specs/003 · specs/007</span></div>
+  <aside class="notes">If one idea survives the deck, make it this one. "LLM proposes,
+  deterministic code verifies, human approves" is the pattern, and it generalises well
+  beyond crawling.</aside>
+</section>
+
+<!-- ======================================================= 9 · decision 5 == -->
+<section class="slide" data-title="Decision 5 — best-of-N ranked by verification">
+  <p class="kicker">Decision 5 of 5 · ADR-0020</p>
+  <h2>Five samples at temperature 0.7 — not one at 0.1</h2>
+  <div class="body">
+    <div class="cols c2w">
+      <div>
+        <div class="note">
+          <strong>The usual advice for structured output is a greedy decode.</strong> It
+          is wrong here, and the reason generalises: <strong>sampling diversity is free
+          accuracy whenever a cheap deterministic oracle can rank the samples.</strong>
+          One exists — resolve the selector against the real DOM.
+        </div>
+        <p style="margin-top:14px">A greedy decode gives one answer and no way to tell
+        whether it is good. Five varied answers can be <em>scored</em>:</p>
+<pre>score(selector, field) =
+  + 40  resolves on every sample URL
+  + 25  resolves to the claimed text
+  + 15  semantic hook (id, itemprop, data-*, aria-*)
+  + 10  cardinality matches intent
+  +  5  short (&lt; 4 combinators)
+  - 30  uses nth-child / nth-of-type
+  - 20  depends on a utility or hashed class
+  - 15  resolves on this page only</pre>
+      </div>
+      <div>
+        <h3 style="font-size:15px;margin:0 0 8px">Two consequences</h3>
+        <div class="card" style="margin-bottom:12px">
+          <h3>Merge per field, not per sample</h3>
+          <p>The best <span class="mono">price</span> may come from sample 1 and the
+          best <span class="mono">images</span> from sample 4. There is no reason to
+          take one model answer whole.</p>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <h3>A mixture-of-experts model earns its place</h3>
+          <p>Qwen3-Coder 30B-A3B activates ~3 B parameters per token, which is what
+          makes N=5 affordable. The dense 27B is kept for escalation when no sample
+          clears 60.</p>
+        </div>
+        <div class="note warn">
+          <strong>Do not calibrate the constants on a laptop model.</strong> N, the
+          temperature and the score-60 threshold were chosen for a 30B. On an 8B the
+          scores sit lower, and "fixing" the threshold bakes a laptop constant into
+          the product. Tests assert that ranking <em>works</em>, never that a field
+          clears 60.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Decision 5 · sampling</span><span class="spacer"></span><span class="ref">adr/0020 · specs/007</span></div>
+  <aside class="notes">The transferable idea: look for a cheap oracle before reaching for a
+  bigger model. If you can verify, you can sample.</aside>
+</section>
+
+<!-- =================================================== 10 · authoring ==== -->
+<section class="slide" data-title="Authoring — three front doors, one pipeline">
+  <p class="kicker">Template authoring · ADR-0019</p>
+  <h2>Three front doors. One pipeline behind them.</h2>
+  <div class="body">
+    <div class="cols c2n">
+      <div>
+        <div class="flow" style="flex-direction:column;gap:8px">
+          <div class="step"><div class="t" style="margin:0">Form</div><div class="d">Hand-written selectors. Fastest when you already know the site.</div></div>
+          <div class="step"><div class="t" style="margin:0">Chat</div><div class="d">Paste URLs, describe what you want in plain language, watch the draft fill in.</div></div>
+          <div class="step"><div class="t" style="margin:0">Playground</div><div class="d">Click elements on a rendered page.</div></div>
+        </div>
+        <p style="margin-top:14px">All three produce the same
+        <span class="mono">TemplateDraft</span> and go through the same
+        <strong>verify → merge-per-field → rank</strong> path. A second verification
+        implementation is a defect regardless of how well it works.</p>
+        <div class="note warn" style="margin-top:12px">
+          <strong>The chat produces a template, never data.</strong> Ask it for "the
+          prices on these pages" and you get a verified selector and what it resolves
+          to on each sample — not a table. Returning values would be per-page model
+          extraction through the back door.
+        </div>
+      </div>
+      <div>
+        <a class="shot" href="../../design/mockups/authoring-chat.html">
+          <img src="assets/chat.webp" alt="Authoring chat screen: conversation pane on the left, live draft with provenance badges on the right" />
+        </a>
+        <p class="caption">Chat authoring. Note the refusal: it cannot start a run and
+        cannot fetch a sixth sample page — and it says so rather than quietly complying.
+        Limits are visible, not hidden.</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Authoring</span><span class="spacer"></span><span class="ref">adr/0019 · specs/013</span></div>
+  <aside class="notes">The canonical field vocabulary is the unglamorous part worth
+  mentioning: without it, forty domains end up with price, cost and unit_price meaning
+  the same thing and no cross-domain report can be written.</aside>
+</section>
+
+<!-- =================================================== 11 · playground === -->
+<section class="slide" data-title="The playground — no iframe">
+  <p class="kicker">The visual playground · spec 014</p>
+  <h2>Click-to-select, with no supplier HTML in the page</h2>
+  <div class="body">
+    <div class="cols c2n">
+      <div>
+        <p>Supplier pages carry third-party script. An iframe would run it in the app
+        origin; <span class="mono">sandbox</span> blocks the script but renders the page
+        wrong; cross-origin framing gives no DOM access anyway — which was the point.</p>
+        <p><strong>So the sidecar flattens the page into a screenshot plus a geometry
+        list.</strong> The browser gets an image and an array of rectangles.</p>
+<pre><span class="c">// cursor → element, in one line of hit-testing</span>
+elements
+  .filter(e =&gt; contains(e.box, x, y))
+  .sort((a,b) =&gt; area(a.box) - area(b.box))[0]</pre>
+        <p class="small sub" style="margin-top:12px">Smallest containing rectangle is the
+        deepest element. <span class="mono">[</span> / <span class="mono">]</span> walk
+        the ancestor chain via a parent pointer. A click records an
+        <em>example</em>; generalisation runs server-side.</p>
+        <div class="note good">
+          The DOM is still being queried — in Chromium on the server, not in your
+          origin. <strong>The screen is a projection of it.</strong>
+        </div>
+      </div>
+      <div>
+        <a class="shot" href="../../design/mockups/playground.html">
+          <img src="assets/playground.webp" alt="Playground select mode: page canvas with overlay boxes, field vocabulary and candidate selectors" />
+        </a>
+        <p class="caption">Every match is drawn, not just the clicked one — six boxes
+        where you expected one is instant feedback. Rejected hashed and utility classes
+        are struck through in the ancestry bar.</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Playground</span><span class="spacer"></span><span class="ref">specs/014</span></div>
+  <aside class="notes"><b>Multi-example is the feature.</b> Clicking the same field on a
+  second sample page eliminates positional steps — a differing nth-of-type index across
+  two examples proves the index is not part of the pattern. The UI asks for the second
+  click rather than waiting for the operator to discover why it matters.</aside>
+</section>
+
+<!-- ============================================= 12 · open problem ======= -->
+<section class="slide" data-title="An open problem — cascading menus">
+  <p class="kicker">An open problem, if you like this kind of thing</p>
+  <h2>Links hidden behind cascading menus</h2>
+  <div class="body">
+    <table>
+      <thead><tr><th style="width:26%">Case</th><th style="width:34%">In the fetched HTML</th><th>What it costs</th></tr></thead>
+      <tbody>
+        <tr><td><strong>A — hidden by CSS</strong></td><td>the <span class="mono">&lt;a href&gt;</span> is there, <span class="mono">display:none</span> until hover</td><td><span class="pill p-active">free</span> a parser does not compute styles</td></tr>
+        <tr><td><strong>B — injected on hover</strong></td><td>the data is there (inline JSON, a bundle); the links are not</td><td><span class="pill p-pending">small</span> a bounded reveal step, or read the JSON</td></tr>
+        <tr><td><strong>C — fetched on hover</strong></td><td>nothing; hovering fires an XHR</td><td><span class="pill p-info">moderate</span> record the request, do not replay the hover</td></tr>
+      </tbody>
+    </table>
+    <div class="cols c3" style="margin-top:4px">
+      <div class="card">
+        <h3>The risk runs the other way in case A</h3>
+        <p>A mega-menu usually lists the whole category tree on <em>every</em> page. A
+        rule scoped to <span class="mono">nav a</span> discovers the entire site at
+        depth 0, defeats the depth cap, and looks like it works until the URL cap halts
+        the domain.</p>
+      </div>
+      <div class="card">
+        <h3>Prefer the path already in the crawl</h3>
+        <p>A menu is usually a <em>shortcut</em> to pages reachable anyway through
+        category tiles and pagination. Run the dry-run with and without the rule: if the
+        projected URL sets match, delete the rule.</p>
+      </div>
+      <div class="card">
+        <h3>An endpoint beats an interaction</h3>
+        <p>If hovering fires <span class="mono">/api/nav/children?id=42</span>, the
+        sidecar already has it in the network log. Promote it to a discovery rule — it
+        survives redesigns that rewrite the menu markup.</p>
+      </div>
+    </div>
+    <div class="note warn">
+      <strong>What is deliberately not being built:</strong> a scripted interaction
+      recorder with ordered, nested, conditional steps. Large build, large failure
+      surface, and when a site genuinely needs it the honest answer is usually that it
+      wants an API call rather than a crawl.
+    </div>
+  </div>
+  <div class="slide-foot"><span>Open problem</span><span class="spacer"></span><span class="ref">specs/004 §3a · specs/014 §2a</span></div>
+  <aside class="notes">Good slide for a conversation rather than a statement. The bounded
+  reveal grammar — 20 elements, 3 s, 5 steps, no nesting — is where the design judgement
+  is, and it is genuinely arguable.</aside>
+</section>
+
+<!-- =================================================== 13 · the screens == -->
+<section class="slide" data-title="The screens">
+  <p class="kicker">Ten screens, all mocked up before any React was written</p>
+  <h2>The mockups are the UI specification</h2>
+  <div class="body">
+    <div class="cols c3">
+      <div>
+        <a class="shot crop" href="../../design/mockups/domains.html"><img src="assets/domains.webp" alt="Domains screen" /></a>
+        <p class="caption"><strong>Domains.</strong> Sorted by extraction health
+        ascending — the degrading domains are why you opened the screen.</p>
+      </div>
+      <div>
+        <a class="shot crop" href="../../design/mockups/template-review.html"><img src="assets/review.webp" alt="Template review screen" /></a>
+        <p class="caption"><strong>Template review.</strong> The bottleneck made visible.
+        Page view, field list, sample matrix.</p>
+      </div>
+      <div>
+        <a class="shot crop" href="../../design/mockups/run-monitor.html"><img src="assets/run-monitor.webp" alt="Run monitor screen" /></a>
+        <p class="caption"><strong>Run monitor.</strong> SSE-driven, with two throughput
+        series that should look different.</p>
+      </div>
+    </div>
+    <p class="small muted" style="margin-top:4px">
+      Static HTML, no build step, opens from disk. They are accurate, they are the thing
+      React is built to match, and they are checked in both themes. Also: reports,
+      products, seeds, domain detail, runs history, unknown pages, foundations —
+      <span class="mono">design/mockups/index.html</span>.
+    </p>
+  </div>
+  <div class="slide-foot"><span>Screens</span><span class="spacer"></span><span class="ref">SCREENS.md · design/mockups/</span></div>
+  <aside class="notes">Click any screenshot to open the real mockup, if the deck is being
+  read from the repository.</aside>
+</section>
+
+<!-- ======================================================== 14 · topology = -->
+<section class="slide" data-title="Topology and stack">
+  <p class="kicker">Six services, one origin</p>
+  <h2>How it is put together</h2>
+  <div class="body">
+    <div class="cols c2w">
+      <div>
+<pre>browser → <span class="k">edge</span>  Caddy, :8080
+            ├── /                   → <span class="k">web</span>     React 19 SPA
+            ├── /api/ui/*           → <span class="k">bff</span>     Fastify · owns <span class="s">ui</span>
+            └── /api/crawler/*      → <span class="k">api</span>     FastAPI · owns <span class="s">crawl</span>
+                                           │
+                 <span class="k">worker</span> (crawls, scales) ──┤
+                 <span class="k">render</span> (Playwright sidecar)┘
+                 <span class="k">db</span>     PostgreSQL 18
+
+<span class="c">+ llama-server on the host — authoring only</span></pre>
+        <div class="note" style="margin-top:14px">
+          <strong>A service owns its data and nobody else writes it.</strong> Two schemas
+          in one Postgres, enforced by <span class="mono">GRANT</span> rather than by
+          convention. The BFF starts a crawl by calling the API, never by inserting a
+          <span class="mono">runs</span> row — and an attempted write fails at the
+          database.
+        </div>
+      </div>
+      <div>
+        <ul class="tight">
+          <li><strong>Caddy, not an API gateway.</strong> ~20 lines. A gateway sells auth
+            termination, rate limiting and multi-team routing; there is one user, no auth
+            and one team.</li>
+          <li><strong>SSE bypasses the BFF entirely</strong> and needs
+            <span class="mono">flush_interval -1</span>. Without it the stream buffers and
+            looks exactly like a frontend bug.</li>
+          <li><strong>Playwright is a sidecar</strong>, on its own network with no route to
+            <span class="mono">db</span>, <span class="mono">api</span> or
+            <span class="mono">bff</span>. It fetches arbitrary URLs with a real browser
+            and is the largest attack surface here.</li>
+          <li><strong>Docker-native.</strong> Nothing installs on the host except
+            <span class="mono">llama-server</span>, which has to be native because Docker
+            on macOS has no Metal passthrough.</li>
+        </ul>
+        <div class="note warn">
+          <strong>A tripwire is written into the plan:</strong> re-read the topology ADR at
+          the end of phase 3, and if the BFF turned out to be &gt;80% pass-through,
+          collapse it and move scheduling into Python. Answering that honestly is part of
+          the work.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Topology</span><span class="spacer"></span><span class="ref">adr/0015 · adr/0016 · specs/010</span></div>
+  <aside class="notes">The BFF tripwire usually earns credit — it is a pre-committed
+  decision to delete your own work if it did not pay off.</aside>
+</section>
+
+<!-- ======================================================= 15 · the plan == -->
+<section class="slide" data-title="Where it stands">
+  <p class="kicker">Status</p>
+  <h2>Design complete. No application code yet.</h2>
+  <div class="body">
+    <table>
+      <thead><tr><th style="width:10%">Phase</th><th style="width:34%">What ships</th><th>Exit criterion</th></tr></thead>
+      <tbody>
+        <tr><td><strong>0</strong></td><td>Scaffold</td><td><span class="mono">make check</span> green on an empty project; SSE unbuffered through the edge; the BFF cannot write <span class="mono">crawl</span></td></tr>
+        <tr><td><strong>1</strong></td><td>Crawl one domain, both fetch paths</td><td>A static and a JS-rendered domain crawled politely from a YAML template. Stopping <span class="mono">render</span> leaves static crawling unaffected</td></tr>
+        <tr><td><strong>2</strong></td><td>Discovery and the queue</td><td>A category seed yields the full product set without leaving the site or exploding on facets</td></tr>
+        <tr><td><strong>3</strong></td><td>API, UI and review</td><td>Seed → crawled data entirely through the UI. Close the laptop mid-run and reopen: no gap</td></tr>
+        <tr><td><strong>4</strong></td><td>Model proposals and chat authoring</td><td>A new domain reaches an approved template with no selector written by hand</td></tr>
+        <tr><td><strong>5</strong></td><td>Assets, reports, hardening</td><td>A full run produces images, reports and a coverage number</td></tr>
+        <tr><td><strong>6</strong></td><td>Visual playground</td><td>A template authored entirely by clicking, indistinguishable from a hand-written one</td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      <strong>The order follows risk, not interest.</strong> Phases 0–2 hold everything
+      expensive to change later: queue semantics, the politeness model, URL
+      canonicalisation, the observation schema. The common failure mode is building the
+      model integration first because it is the novel part, then discovering the
+      scheduler cannot support it.
+    </div>
+  </div>
+  <div class="slide-foot"><span>Status</span><span class="spacer"></span><span class="ref">BUILD_PLAN.md · STATUS.md</span></div>
+  <aside class="notes">~90 tasks with per-phase exit criteria. Phase 6 is explicitly
+  flagged as the most build for the least risk and may be re-scoped once 4–5 show where
+  review time actually goes.</aside>
+</section>
+
+<!-- ========================================================= 16 · close === -->
+<section class="slide" data-title="Where to start">
+  <p class="kicker">If you want to work on this</p>
+  <h2>Three honest things, and where to start</h2>
+  <div class="body">
+    <div class="cols c3">
+      <div class="card">
+        <h3>The interesting problems</h3>
+        <ul class="tight" style="margin:0">
+          <li>Selector generalisation from two clicks (phase 6, layer 2)</li>
+          <li>Repeating-container inference that rejects a filter list</li>
+          <li>Re-generalising a broken selector from stored examples after a redesign</li>
+          <li>Cascading-menu discovery — slide 12</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>The honest warnings</h3>
+        <ul class="tight" style="margin:0">
+          <li>Bleeding-edge stack: Python 3.15, Tailwind v4, Node 26. Thin community
+            knowledge; budget for first-encounter problems</li>
+          <li>Review throughput may not be fixable by software at all</li>
+          <li>ToS questions are real and unresolved</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Start here</h3>
+        <ul class="tight" style="margin:0">
+          <li><span class="mono">AGENTS.md</span> — 15 rules, read first</li>
+          <li><span class="mono">docs/BUILD_PLAN.md</span> — phase 0, top to bottom</li>
+          <li><span class="mono">docs/specs/010</span> — the six services</li>
+          <li><span class="mono">design/mockups/index.html</span> — open from disk</li>
+          <li>20 ADRs, each with its stated cost. Disagree in a new one rather than
+            quietly working around it</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note good">
+      <strong>A 16 GB laptop is enough.</strong> Phases 0–3 are two thirds of the plan and
+      need no model at all — <span class="mono">LLMClient</span> has a fake and
+      <span class="mono">make check</span> never starts a model. When you do want one,
+      an 8B at Q4 is the development target.
+      <span class="muted">See DEVELOPMENT.md → Developing on a smaller machine.</span>
+    </div>
+  </div>
+  <div class="slide-foot"><span>Spydra</span><span class="spacer"></span><span class="ref">docs/deck/index.html</span></div>
+  <aside class="notes">Close on the laptop line — the most common silent objection to a
+  local-model project is "I can't run it", and that is answerable.</aside>
+</section>
+
+  </div><!-- /#stage -->
+</div><!-- /#viewport -->
+
+<div id="hud">
+  <button id="btn-grid" title="Overview (o)">Overview</button>
+  <button id="btn-notes" title="Presenter notes (p)">Notes</button>
+  <button id="btn-theme" title="Toggle theme (t)">Theme</button>
+  <span id="count" style="font-variant-numeric:tabular-nums;margin-left:4px"></span>
+</div>
+
+<div id="grid"></div>
+<div id="notepane" hidden></div>
+
+<script>
+/* ==========================================================================
+   Deck mechanics. Classic script, no modules: this file is opened from disk
+   over file://, where module imports are CORS-blocked.
+   ========================================================================== */
+(function () {
+  var slides = [].slice.call(document.querySelectorAll('.slide'));
+  var stage  = document.getElementById('stage');
+  var bar    = document.querySelector('#bar i');
+  var count  = document.getElementById('count');
+  var grid   = document.getElementById('grid');
+  var notes  = document.getElementById('notepane');
+  var i = 0, notesOn = false;
+
+  /* Fit the fixed 1280x720 stage to whatever window it is opened in. */
+  function fit() {
+    var pad = 48;
+    var k = Math.min((innerWidth - pad) / 1280,
+                     (innerHeight - pad - (notesOn ? innerHeight * 0.36 : 0)) / 720);
+    stage.style.setProperty('--k', Math.max(0.2, k));
+  }
+
+  function show(n, push) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function (s, j) { s.classList.toggle('on', j === i); });
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    count.textContent = (i + 1) + ' / ' + slides.length;
+    var note = slides[i].querySelector('.notes');
+    notes.innerHTML = note ? note.innerHTML : '<span style="opacity:.6">No notes for this slide.</span>';
+    if (push !== false) {
+      try { history.replaceState(null, '', '?s=' + (i + 1)); } catch (e) {}
+    }
+    fit();
+  }
+
+  /* Overview grid, built once from the slides' own titles. */
+  slides.forEach(function (s, j) {
+    var d = document.createElement('div');
+    d.className = 'thumb';
+    d.innerHTML = '<div class="i">' + (j + 1) + '</div><div class="t">' +
+                  (s.dataset.title || 'Slide ' + (j + 1)) + '</div>';
+    d.onclick = function () { grid.classList.remove('on'); show(j); };
+    grid.appendChild(d);
+  });
+
+  function toggleNotes() {
+    notesOn = !notesOn;
+    notes.hidden = !notesOn;
+    fit();
+  }
+
+  document.getElementById('btn-grid').onclick  = function () { grid.classList.toggle('on'); };
+  document.getElementById('btn-notes').onclick = toggleNotes;
+  document.getElementById('btn-theme').onclick = function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    /* Wrapped: localStorage throws in a private window and the deck must still run. */
+    try { localStorage.setItem('spydra.deck.theme', next); } catch (e) {}
+  };
+
+  addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { show(i + 1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { show(i - 1); e.preventDefault(); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length - 1);
+    else if (e.key === 'o' || e.key === 'O') grid.classList.toggle('on');
+    else if (e.key === 'p' || e.key === 'P') toggleNotes();
+    else if (e.key === 't' || e.key === 'T') document.getElementById('btn-theme').click();
+    else if (e.key === 'Escape') grid.classList.remove('on');
+  });
+
+  /* Click to advance, but never swallow a click on a link. */
+  stage.addEventListener('click', function (e) {
+    if (e.target.closest('a')) return;
+    show(i + (e.clientX < stage.getBoundingClientRect().left + stage.offsetWidth * 0.18 ? -1 : 1));
+  });
+
+  addEventListener('resize', fit);
+
+  try {
+    var saved = localStorage.getItem('spydra.deck.theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  } catch (e) {}
+
+  var start = parseInt((location.search.match(/[?&]s=(\d+)/) || [])[1], 10);
+  show(isNaN(start) ? 0 : start - 1, false);
+})();
+</script>
+</body>
+</html>
