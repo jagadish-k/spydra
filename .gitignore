@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Spydra
+#
+# Note what is NOT here: generated API types and crawl.generated.ts are
+# committed on purpose (ADR-0013, ADR-0021). They are build artifacts, but
+# `make check` regenerates them and fails on a diff, which only works if they
+# are in version control.
+# ---------------------------------------------------------------------------
+
+# macOS
+.DS_Store
+
+# secrets and local config
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# crawled data, assets, html snapshots — never in git
+/.data/
+/data/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# playwright
+test-results/
+playwright-report/
+blob-report/
+
+# editors
+.idea/
+.vscode/
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*

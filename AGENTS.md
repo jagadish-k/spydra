@@ -3,6 +3,16 @@
 Operating rules for any agent working in this repository. Read this first,
 every session. It is deliberately short; the detail lives in `docs/`.
 
+**This file is the anchor.** Claude Code, Cursor, OpenCode and Antigravity all
+read it without configuration, so it is the one place rules can live and be
+seen by every tool. Whatever you are driving, start here.
+
+**Working as part of the agent team?** Read [`docs/WORKFLOW.md`](docs/WORKFLOW.md)
+too — it defines the branch model, the handoff protocol and which role owns
+which part of a change. The roles themselves are in
+[`docs/agents/`](docs/agents/), and `make agents` generates them into your
+tool's format.
+
 ---
 
 ## What this is
@@ -82,6 +92,19 @@ React components to match them, not to match your own idea of the layout.
 13. **Do not change a public API shape without updating its spec and
     regenerating the frontend types** (`make types`). There are two schemas
     now — the crawler's and the BFF's.
+14. **Generated files are never hand-edited.** `schema.crawler.d.ts`,
+    `schema.ui.d.ts`, `bff/src/db/schema/crawl.generated.ts` and everything
+    under `.claude/agents/`, `.cursor/rules/`, `.opencode/agents/` and
+    `.agents/rules/` are build artifacts that happen to be committed.
+    `make check` regenerates them and fails on a diff; editing one to make
+    the build pass inverts the whole point (ADR-0013, ADR-0021, ADR-0022).
+    Agent roles are edited in `docs/agents/`.
+15. **`drizzle-kit push` is forbidden.** The BFF uses `generate` + `migrate`
+    so every schema change is a reviewable file with a down path. `push`
+    leaves no artifact and cannot satisfy `make migrate-down` (ADR-0021).
+16. **Work on a branch, and let the gate decide.** `develop` is protected;
+    every change arrives by PR from `type/NN-slug`. `make check` is the
+    contract between one agent and the next — see `docs/WORKFLOW.md`.
 
 ---
 
@@ -115,7 +138,8 @@ live in the lockfiles; these are the majors.
 (async, asyncpg) · Alembic · httpx · selectolax · extruct · Pillow ·
 structlog. **No Playwright** — rendering is a sidecar (ADR-0016).
 
-**BFF** — Node 26 · Fastify 5 · TypeScript strict · TypeBox · plain SQL
+**BFF** — Node 26 · Fastify 5 · TypeScript strict · TypeBox · **Drizzle ORM**
+(`ui` schema only; `crawl` is read-only and introspected — ADR-0021)
 
 **Frontend** — React 19 · TypeScript strict · Vite · Tailwind v4 (CSS-first)
 · TanStack Query · TanStack Table · React Router · react-hook-form + zod ·
@@ -138,7 +162,9 @@ Python major, check that every compiled dependency publishes a wheel for it
 
 ## Commands
 
-Every command is a `make` target and every target runs in Docker.
+Every command is a `make` target. All of them run in Docker except
+`make agents` and `make hooks`, which are plain host commands on purpose —
+they have to work from any tool's terminal before the images exist.
 
 ```sh
 make up            # start edge, db, api, worker, render, bff, web
@@ -149,9 +175,11 @@ make shell-api     # shell inside the api container
 make shell-bff
 make psql          # psql into the dev database (both schemas)
 
-make migrate       # both chains: alembic (crawl) + the BFF's (ui)
+make hooks         # wire .githooks/ — run once per clone
+make migrate       # both chains: alembic (crawl) + drizzle (ui)
 make revision m="add asset_queue"   # autogenerate a crawl migration
-make revision-ui m="add schedules"  # a ui migration
+make revision-ui m="add schedules"  # generate a ui migration (drizzle-kit)
+make drizzle-pull  # re-introspect crawl → crawl.generated.ts
 
 make test          # everything
 make test-api      # pytest
@@ -162,6 +190,8 @@ make e2e           # Playwright against the running stack
 make lint          # ruff + mypy + eslint + prettier --check
 make fmt           # ruff format + prettier --write
 make types         # regenerate BOTH frontend API schemas from OpenAPI
+make agents        # docs/agents/ → claude · cursor · opencode · antigravity
+make generated     # types + drizzle-pull + agents. check fails on any diff
 
 make check         # lint + test + types-is-clean. CI runs exactly this.
 ```
@@ -198,7 +228,9 @@ bff/                       # Fastify — scheduling, saved views, aggregation
   src/
     routes/
     scheduler/     # the fire loop; see spec 011 §3
-    db/            # ui schema, plain SQL + migrations
+    db/
+      schema/      # ui.ts (Drizzle) · crawl.generated.ts (GENERATED — never edit)
+  drizzle/         # generated migrations. generate + migrate, never push
   tests/
 render/                    # Playwright behind HTTP (spec 012)
   src/
@@ -214,8 +246,15 @@ frontend/
     styles/        # theme.css → imports tokens + tailwind-theme
   tests/
 docs/
+  agents/          # agent roles — CANONICAL. Edit here, then `make agents`
 design/            # tokens, logo, mockups. Treat as read-only reference.
 docker/            # Dockerfiles + Caddyfile
+scripts/
+  gen-agents.py    # docs/agents/ → the four tool formats. Stdlib only
+.claude/ .cursor/ .opencode/ .agents/
+                   # GENERATED agent definitions, one set per tool
+.githooks/         # pre-commit · commit-msg · pre-push. `make hooks` wires them
+.tasks/            # one handoff file per branch (ADR-0022)
 compose.yaml
 Makefile
 ```
@@ -272,6 +311,9 @@ A task is done when all of these hold:
 - [ ] If it touched the API, `docs/specs/005-api.md` is current and
       `make types` produced no diff.
 - [ ] If it touched the schema, there is a migration and it runs both ways.
+- [ ] `make generated` produces no diff, and no generated file was hand-edited.
+- [ ] It is on a branch, reviewed by an agent that did not write it, and the
+      task file's handoff log is current (`docs/WORKFLOW.md`).
 - [ ] If it touched the UI, it matches the mockup and works in both themes.
 - [ ] If it changed a structural decision, there is an ADR.
 - [ ] `docs/BUILD_PLAN.md` has the task ticked.

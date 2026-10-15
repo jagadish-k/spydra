@@ -11,6 +11,9 @@ Start with [`../AGENTS.md`](../AGENTS.md) — the operating rules — then
 | [`BUILD_PLAN.md`](BUILD_PLAN.md) | Every session. Which phase you are in and what "done" means. |
 | [`DEVELOPMENT.md`](DEVELOPMENT.md) | Before running anything. Docker topology, commands, macOS gotchas. |
 | [`TESTING.md`](TESTING.md) | Before writing tests. What must be covered and why. |
+| [`WORKFLOW.md`](WORKFLOW.md) | Before your first commit. Branches, the two gates, and which agent owns which part of a change. |
+| [`agents/`](agents/README.md) | Changing how an agent role behaves. Canonical, tool-neutral; `make agents` generates the rest. |
+| [`PHASE0_PROMPT.md`](PHASE0_PROMPT.md) | Starting a build session. The prompt to paste, and why it is shaped that way. |
 
 ## Design
 
@@ -28,7 +31,7 @@ accurate. Build to match it.
 
 ## Decisions
 
-[`adr/`](adr/README.md) — twenty records. Read the relevant one before
+[`adr/`](adr/README.md) — twenty-two records. Read the relevant one before
 changing anything structural. Each states its cost.
 
 The four most likely to be questioned, and most likely to be wrong to change:

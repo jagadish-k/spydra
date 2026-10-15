@@ -341,6 +341,65 @@ find yourself adding one, read ADR-0016 — rendering goes over HTTP to
 
 ---
 
+## Working from a different tool
+
+The repository is not tied to one coding tool. `AGENTS.md` is the anchor —
+Claude Code, Cursor, OpenCode and Antigravity all read it with no
+configuration — and the agent roles in `docs/agents/` are generated into each
+tool's own format by `make agents` (`docs/WORKFLOW.md` §3).
+
+```sh
+make agents          # after editing any role in docs/agents/
+```
+
+Everything that actually enforces anything is tool-independent: `make check`,
+the git hooks in `.githooks/`, and the Postgres grants. A tool's own hook
+system can catch a mistake earlier — the Claude Code `PreToolUse` guard stops
+an edit to a generated file before it happens — but nothing depends on it.
+
+The one place tools genuinely differ is per-role permissions. Claude Code
+takes a tool allowlist; **OpenCode v2 takes ordered `permissions` rules and
+is the strictest of the four** — its model covers the shell as well as the
+filesystem, so the reviewer is denied `edit` and `shell` outright with
+`git diff`/`log`/`show`/`status` allowed back, and every read-write role is
+denied edits to generated files and `drizzle-kit push`. Cursor and
+Antigravity have no equivalent, so there `read-only` is prose. Full table in
+`docs/agents/README.md`.
+
+---
+
+## Database access
+
+Two chains, two owners, one database.
+
+| Schema | Owner | Tool | Migrations |
+| --- | --- | --- | --- |
+| `crawl` | `api` / `worker` | SQLAlchemy Core | Alembic, `backend/migrations/` |
+| `ui` | `bff` | **Drizzle** | `drizzle-kit`, `bff/drizzle/` |
+
+```ts
+// bff/drizzle.config.ts — schemaFilter is load-bearing
+export default defineConfig({
+  schema: './src/db/schema/ui.ts',
+  out: './drizzle',
+  dialect: 'postgresql',
+  schemaFilter: ['ui'],          // a generated migration can never touch crawl
+  dbCredentials: { url: process.env.DATABASE_URL! },
+});
+```
+
+**The BFF reads `crawl` through generated types it must never hand-edit.**
+`make drizzle-pull` introspects the live schema into
+`bff/src/db/schema/crawl.generated.ts`; `make check` regenerates it and fails
+on a diff. An Alembic migration that changes `crawl` therefore breaks the BFF
+build, which is the correct moment to find out rather than the alternative.
+
+`drizzle-kit push` is forbidden (ADR-0021). It applies a diff with no
+migration file, no down path and nothing to review, and `make migrate-down`
+is part of the test suite.
+
+---
+
 ## Commands
 
 Every target runs in Docker.
@@ -352,10 +411,12 @@ make shell-bff
 make shell-web
 make psql                 # psql into the dev database
 
-make migrate              # both chains: alembic (crawl) + the BFF's (ui)
+make migrate              # both chains: alembic (crawl) + drizzle (ui)
 make migrate-down         # one step back, both; CI asserts this works
-make revision m="..."     # autogenerate a crawl migration
-make revision-ui m="..."  # a ui migration
+make revision m="..."     # autogenerate a crawl migration (alembic)
+make revision-ui m="..."  # generate a ui migration (drizzle-kit generate)
+make drizzle-pull         # re-introspect crawl → crawl.generated.ts
+make drizzle-studio       # optional: browse the ui schema
 
 make test                 # everything
 make test-api             # pytest
@@ -365,7 +426,9 @@ make e2e                  # Playwright against the running stack
 
 make lint                 # ruff + mypy + import-linter + eslint + prettier
 make fmt                  # ruff format + prettier --write
-make types                # regenerate BOTH schemas (crawler + ui)
+make types                # regenerate BOTH API schemas (crawler + ui)
+make agents               # docs/agents/ → claude · cursor · opencode · antigravity
+make generated            # types + drizzle-pull + agents. check fails on a diff
 
 make check                # lint + test + types-clean.  CI runs exactly this.
 ```
@@ -394,6 +457,12 @@ are the same command in the same images.
 | BFF cannot write `crawl.*` | **working as designed** | call the crawler API; do not loosen the grant |
 | `rendered` domains stall, static fine | sidecar down | `docker compose ps render`; check `/healthz` |
 | Chromium driver mismatch | npm Playwright version ≠ image tag | pin them together |
+| `make check` fails on a `crawl.generated.ts` diff | an Alembic migration changed `crawl` | `make drizzle-pull` and commit it. **Do not edit the generated file** |
+| A drizzle migration contains `crawl` DDL | `schemaFilter` missing from `drizzle.config.ts` | add it; delete and regenerate the migration |
+| Pre-commit is slow | it is running the full suite | it should not — pre-commit is format + lint + typecheck; `make check` belongs on pre-push. See `WORKFLOW.md` |
+| A hook blocks a commit you believe is fine | the gate is doing its job | fix it, or `--no-verify` **and say so in the PR**. Do not disable the hook |
+| An agent role change seems to have no effect | you edited a generated copy | roles are edited in `docs/agents/`, then `make agents` (`WORKFLOW.md` §3) |
+| `make check` fails on `.cursor/` or `.agents/` | `docs/agents/` changed without regenerating | `make agents` and commit the result |
 
 ## Configuration
 

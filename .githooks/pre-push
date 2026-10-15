@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# Spydra pre-push — the real gate. Budget: 3 minutes.
+#
+# `make check` is exactly what CI runs, in the same images, so green here
+# means green there. This is the contract between one agent and the next
+# (ADR-0022 §3): a slice is handed on when the gate passes, not when someone
+# says it is done.
+# ---------------------------------------------------------------------------
+set -uo pipefail
+
+RED=$'\033[0;31m'; GRN=$'\033[0;32m'; YEL=$'\033[0;33m'; OFF=$'\033[0m'
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$branch" = "develop" ] || [ "$branch" = "main" ]; then
+  echo "${RED}✗ ${branch} is protected. Work on type/NN-slug and open a PR (WORKFLOW.md §1).${OFF}" >&2
+  exit 1
+fi
+
+if [ ! -f Makefile ] || ! grep -qE '^check:' Makefile; then
+  echo "${YEL}·${OFF} no 'make check' yet — scaffolding in progress. Skipping."
+  exit 0
+fi
+
+echo "${YEL}·${OFF} make check  (lint · types · generated-file drift · tests)"
+if ! make -s check; then
+  echo "${RED}✗ make check failed. This is what CI will run.${OFF}" >&2
+  exit 1
+fi
+
+echo "${GRN}✓${OFF} pre-push"
+exit 0

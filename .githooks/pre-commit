@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# Spydra pre-commit — budget: 10 seconds.
+#
+# Format and lint staged files, typecheck what changed, and refuse the few
+# things that must never be committed. Tests and builds belong on pre-push
+# (docs/WORKFLOW.md §2) — a slow pre-commit is one people pass --no-verify to,
+# and then there is no gate at all.
+#
+# Install: make hooks   (git config core.hooksPath .githooks)
+# Bypass:  git commit --no-verify   — allowed, but say so in the PR.
+# ---------------------------------------------------------------------------
+set -uo pipefail
+
+RED=$'\033[0;31m'; YEL=$'\033[0;33m'; GRN=$'\033[0;32m'; OFF=$'\033[0m'
+fail() { echo "${RED}✗ $*${OFF}" >&2; exit 1; }
+note() { echo "${YEL}·${OFF} $*"; }
+
+staged() { git diff --cached --name-only --diff-filter=ACM -- "$@"; }
+
+PY=$(staged '*.py')
+TS=$(staged '*.ts' '*.tsx')
+FMT=$(staged '*.md' '*.json' '*.yaml' '*.yml' '*.css' '*.html')
+ALL=$(git diff --cached --name-only --diff-filter=ACM)
+
+[ -z "$ALL" ] && exit 0
+
+# --- 1. things that must never be committed -------------------------------
+# Cheap, exact, and the reason for each is in an ADR or AGENTS.md.
+
+if echo "$ALL" | grep -qE '(^|/)\.env$'; then
+  fail ".env is not committed. Use .env.example (AGENTS.md rule 2)."
+fi
+
+# Secrets. Deliberately narrow: a noisy secret scanner gets disabled.
+if git diff --cached -U0 | grep -nE '^\+.*(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9]{32,})' >/dev/null; then
+  fail "Looks like a credential in the diff. Nothing secret belongs in this repo."
+fi
+
+# ADR-0021: generate + migrate, never push.
+if git diff --cached -U0 -- '*.json' '*.ts' '*.sh' 'Makefile' \
+     | grep -nE '^\+.*drizzle-kit[[:space:]]+push' >/dev/null; then
+  fail "drizzle-kit push is forbidden (ADR-0021). Use generate + migrate."
+fi
+
+# ADR-0013 / ADR-0021 / ADR-0022: generated files are build artifacts, not
+# source.
+#
+# The agent adapters are a special case worth getting right. Committing them
+# IS the normal workflow — you edit a role, run `make agents`, and stage both.
+# So the test is not "were adapters staged" but "were they staged WITHOUT a
+# source change", which is the hand-edit this rule exists to stop.
+AGENT_SRC=$(echo "$ALL" | grep -E '^(docs/agents/|scripts/gen-agents\.py)' || true)
+AGENT_GEN=$(echo "$ALL" | grep -E '^\.(claude/agents|cursor/rules|opencode/agents|agents/rules)/' || true)
+
+if [ -n "$AGENT_GEN" ] && [ -z "$AGENT_SRC" ] && [ -z "${SPYDRA_REGEN:-}" ]; then
+  echo "${RED}✗${OFF} agent definitions staged with no change to docs/agents/:"
+  echo "$AGENT_GEN" | sed 's/^/    /'
+  echo "  These are generated. Edit the role in docs/agents/ and run 'make agents'."
+  echo "  If you really did only regenerate: SPYDRA_REGEN=1 git commit ..."
+  exit 1
+fi
+
+# Either way the pair must be consistent. This runs on the host's python3 so
+# it works before the Makefile exists, and from any tool's terminal.
+if [ -n "$AGENT_SRC$AGENT_GEN" ] && [ -f scripts/gen-agents.py ]; then
+  if ! python3 scripts/gen-agents.py --check >/dev/null 2>&1; then
+    fail "docs/agents/ and the generated copies disagree. Run 'make agents' (or python3 scripts/gen-agents.py) and stage the result."
+  fi
+fi
+
+# The other generated artifacts have no routine-regeneration case, so they
+# stay strict.
+GEN=$(echo "$ALL" | grep -E '(schema\.(crawler|ui)\.d\.ts|crawl\.generated\.ts)$' || true)
+if [ -n "$GEN" ] && [ -z "${SPYDRA_REGEN:-}" ]; then
+  echo "${YEL}!${OFF} staged generated file(s):"
+  echo "$GEN" | sed 's/^/    /'
+  echo "  These come from 'make generated'. Do not hand-edit them."
+  echo "  If this is a legitimate regeneration: SPYDRA_REGEN=1 git commit ..."
+  exit 1
+fi
+
+# Large files — assets belong in /data, not in git.
+while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  sz=$(wc -c <"$f" | tr -d ' ')
+  if [ "$sz" -gt 2097152 ]; then
+    fail "$f is $((sz/1024)) KB. Files over 2 MB do not belong in the repo."
+  fi
+done <<<"$ALL"
+
+# --- 2. format and lint, in the containers --------------------------------
+# No host toolchain (ADR-0010). Until phase 0.6 builds the Makefile, these
+# targets do not exist yet — skip rather than block the scaffolding commits.
+
+has_target() { [ -f Makefile ] && grep -qE "^$1:" Makefile; }
+
+if [ -n "$PY" ] && has_target fmt-staged; then
+  note "ruff on $(echo "$PY" | wc -l | tr -d ' ') python file(s)"
+  make -s fmt-staged FILES="$PY" || fail "ruff found problems it could not fix."
+fi
+
+if [ -n "$TS$FMT" ] && has_target fmt-staged-js; then
+  note "prettier + eslint on $(echo "$TS$FMT" | wc -l | tr -d ' ') file(s)"
+  make -s fmt-staged-js FILES="$TS $FMT" || fail "eslint found problems it could not fix."
+fi
+
+# Formatters rewrite in place, so re-stage what they touched. A
+# formatting-only failure should fix the commit, not block it.
+if [ -n "$ALL" ]; then
+  echo "$ALL" | while IFS= read -r f; do [ -f "$f" ] && git add -- "$f"; done
+fi
+
+# --- 3. typecheck what changed --------------------------------------------
+# A typecheck catches nearly everything a build would, in a tenth of the time.
+# The real build runs on pre-push.
+
+if [ -n "$TS" ] && has_target typecheck-changed; then
+  note "tsc --noEmit"
+  make -s typecheck-changed FILES="$TS" || fail "TypeScript errors. Fix them or commit with --no-verify and say so."
+fi
+
+if [ -n "$PY" ] && has_target typecheck-changed-py; then
+  note "mypy"
+  make -s typecheck-changed-py FILES="$PY" || fail "mypy errors. Fix them or commit with --no-verify and say so."
+fi
+
+echo "${GRN}✓${OFF} pre-commit"
+exit 0

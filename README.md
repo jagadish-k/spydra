@@ -36,13 +36,27 @@ docs/
   DESIGN_SYSTEM.md   Tokens, typography, components, anti-patterns
   SCREENS.md         What each screen is for and what it contains
   BRAND.md           Logo construction, variants, usage rules
-  adr/               Fourteen decision records, each with its stated cost
-  specs/             Nine component specs with acceptance criteria
+  WORKFLOW.md        Branches, the two gates, and the agent team
+  agents/            Agent roles — canonical, tool-neutral. Edit these
+  PHASE0_PROMPT.md   The prompt that starts a build session
+  deck/              Developer briefing deck (open index.html from disk)
+  adr/               Twenty-two decision records, each with its stated cost
+  specs/             Fourteen component specs with acceptance criteria
 
 design/
   tokens/            tokens.css (runtime) · tokens.json (W3C, for Figma)
   logo/              Six SVG variants + the generator that produces them
   mockups/           Static reference implementation of all ten screens
+
+scripts/
+  gen-agents.py      docs/agents/ → the four tool formats. Stdlib only
+
+.claude/ .cursor/ .opencode/ .agents/
+                     GENERATED agent definitions, one set per tool.
+                     Edit docs/agents/ and run `make agents`.
+.claude/hooks/       Optional Claude Code guards. The real gate is .githooks/
+.githooks/           pre-commit · commit-msg · pre-push. `make hooks` wires them
+.tasks/              One handoff file per branch (ADR-0022)
 
 docker/              Dockerfiles, Caddyfile, init-schemas.sql
 compose.yaml         Seven services

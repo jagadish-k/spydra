@@ -32,3 +32,5 @@ shape everything else sits inside.
 | [0018](0018-react19-tailwind4.md) | React 19 and Tailwind v4 | Accepted |
 | [0019](0019-one-authoring-pipeline.md) | One authoring pipeline, three input modes | Accepted |
 | [0020](0020-best-of-n-verification.md) | Best-of-N sampling, ranked by deterministic verification | Accepted |
+| [0021](0021-drizzle-for-bff.md) | Drizzle for the BFF's database access | Accepted *(supersedes spec 011 §6 "no ORM")* |
+| [0022](0022-agent-team.md) | Specialised agents, sequential within a slice | Accepted |

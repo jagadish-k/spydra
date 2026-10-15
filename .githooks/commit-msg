@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Imperative subject, under 72 characters, optionally prefixed by type.
+# Deliberately lenient: this catches accidents, it is not a commit-lint suite.
+set -uo pipefail
+subject=$(head -n1 "$1")
+
+case "$subject" in
+  fixup!*|squash!*|Merge*|Revert*) exit 0 ;;
+esac
+
+if [ ${#subject} -gt 72 ]; then
+  echo "✗ Subject is ${#subject} characters. Keep it under 72; put the detail in the body." >&2
+  exit 1
+fi
+
+if ! echo "$subject" | grep -qE '^(feat|fix|chore|docs|test|refactor|perf)(\([a-z0-9.-]+\))?: .+'; then
+  echo "✗ Subject should read:  type: imperative summary (task)" >&2
+  echo "  e.g.  feat: claim query with SKIP LOCKED (1.3)" >&2
+  echo "  types: feat fix chore docs test refactor perf" >&2
+  exit 1
+fi
+exit 0

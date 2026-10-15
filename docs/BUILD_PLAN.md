@@ -43,30 +43,63 @@ so every later phase has a gate to pass.*
       are the two ways to get this wrong (spec 010 §2).
 - [ ] `0.5` `docker/init-schemas.sql` — `crawl` and `ui` schemas, two roles,
       grants. Assert the BFF role cannot write `crawl` (spec 010 §3).
-- [ ] `0.6` `Makefile` with every target in `DEVELOPMENT.md § Commands`.
+- [ ] `0.6` `Makefile` with every target in `DEVELOPMENT.md § Commands`,
+      including the granular ones the hooks call: `fmt-staged`,
+      `fmt-staged-js`, `typecheck-changed`, `typecheck-changed-py`,
+      `agents`, `generated`, `hooks`. **`make agents` runs
+      `scripts/gen-agents.py` on the host's `python3`, not in a container** —
+      it has no dependencies and must work from any tool's terminal before
+      the images exist.
+- [ ] `0.6b` `make hooks` wires `core.hooksPath` to `.githooks/`. Verify all
+      three hooks fire: a long commit subject is rejected, a staged `.env` is
+      rejected, and a push to `develop` is refused (`docs/WORKFLOW.md` §2).
+- [ ] `0.6c` Drizzle wiring (ADR-0021): `bff/drizzle.config.ts` with
+      `schemaFilter: ['ui']`, `make revision-ui`, `make drizzle-pull`, and the
+      test asserting every file in `bff/drizzle/` mentions only `ui.`.
 - [ ] `0.7` Backend: FastAPI with `GET /api/crawler/healthz`, ruff + mypy
       strict + import-linter. The contract forbids `domain/` importing
       `adapters/`.
 - [ ] `0.8` BFF: Fastify with `GET /api/ui/healthz`, TypeBox, ESLint,
-      OpenAPI document published.
+      OpenAPI document published, **Drizzle connected to `ui`** with one
+      trivial table proving generate → migrate → migrate-down works.
 - [ ] `0.9` Render sidecar: `POST /render` + `GET /healthz`, context pool,
       resource blocking (spec 012).
 - [ ] `0.10` Frontend: Vite + React 19 + TS strict; `styles/theme.css`
       importing `tokens.css` and `tailwind-theme.css`; ESLint flat + Prettier.
       **Assert `bg-red-500` fails the build** (ADR-0018).
-- [ ] `0.11` Alembic initialised (crawl) + the BFF migration runner (ui);
-      empty baselines run both ways.
+- [ ] `0.11` Alembic initialised (`crawl`) + drizzle-kit initialised (`ui`);
+      empty baselines run both ways under `make migrate` / `make migrate-down`.
+- [ ] `0.11b` `make generated` produces `schema.crawler.d.ts`,
+      `schema.ui.d.ts`, `bff/src/db/schema/crawl.generated.ts` and the four
+      sets of agent adapters, and `make check` fails when any of them is
+      stale. **Prove it by changing a `crawl` column and watching the BFF
+      build break**, and by editing a role in `docs/agents/` without
+      regenerating.
 - [ ] `0.12` pytest + vitest + the BFF suite wired, one trivial test each.
-- [ ] `0.13` CI running `make check`.
+- [ ] `0.13` CI running `make check` on a clean checkout, plus
+      `make migrate-down`.
+- [ ] `0.14` Agent team smoke test: run one trivial slice
+      (`chore/0.14-hello-slice`) end to end — planner writes
+      `.tasks/<branch>.md`, an implementer changes one file, `spydra-test`
+      adds one test, `spydra-reviewer` reads the diff, `spydra-integrator`
+      runs `make check` and opens the PR. **The point is to find out whether
+      the handoff works while the stakes are a hello-world**, not to produce
+      the change.
 
 **Exit:** `make up` gives a working stack reachable at
 `http://localhost:8080`; `make check` is green; the frontend renders a page
 using a design token and the theme toggle works; an SSE test endpoint
-streams through the edge **unbuffered**; the BFF cannot write `crawl`.
+streams through the edge **unbuffered**; the BFF cannot write `crawl`; the
+three git hooks fire; and one slice has been through the full agent handoff.
 
 > `0.4` and `0.5` are the two that will cost you a day each if deferred.
 > Buffered SSE looks like a frontend bug, and a missing grant looks like
 > nothing at all until the BFF quietly writes a table it should not.
+
+> **Run phase 0 as one branch** (`chore/phase-0-scaffold`), mostly
+> sequentially. There is nothing to parallelise yet and the hooks do not
+> fully exist until `0.6`. The agent team starts paying for itself at phase 1
+> (`docs/WORKFLOW.md` §5).
 
 ---
 
