@@ -48,9 +48,7 @@ services:
 
   api:
     build: { context: ., dockerfile: docker/api.Dockerfile }
-    # PLACEHOLDER until task 0.8 lands spydra.api.main. Replaced by:
-    #   uvicorn spydra.api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/spydra
-    command: python -c "print('api placeholder — task 0.8'); import time; time.sleep(1e9)"
+    command: uvicorn spydra.api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/spydra
     environment: *py-env
     depends_on:
       db: { condition: service_healthy }
