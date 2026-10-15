@@ -73,7 +73,7 @@ a dozen ungated commits, is the common mistake.
       `schemaFilter: ['ui']`, `make revision-ui`, `make drizzle-pull`, one
       trivial `ui` table proving generate → migrate → migrate-down, and the
       test asserting every file in `bff/drizzle/` mentions only `ui.`.
-- [ ] `0.11` Render sidecar: `POST /render` + `GET /healthz`, context pool,
+- [x] `0.11` Render sidecar: `POST /render` + `GET /healthz`, context pool,
       resource blocking (spec 012).
 - [ ] `0.12` Frontend: Vite + React 19 + TS strict; `styles/theme.css`
       importing `tokens.css` and `tailwind-theme.css`; ESLint flat + Prettier.
