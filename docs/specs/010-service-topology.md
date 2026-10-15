@@ -9,15 +9,15 @@ Six services. The rule that keeps this from being a distributed monolith:
 
 ## 1. Services
 
-| Service | Image base | Port | Owns | Scales |
-| --- | --- | --- | --- | --- |
-| `edge` | `caddy:2-alpine` | 8080 | — | no |
-| `web` | `node:26-slim` (dev) / static (prod) | 5173 | — | no |
-| `bff` | `node:26-slim` | 3000 | `ui` schema | no |
-| `api` | `python:3.15-slim` | 8000 | `crawl` schema | no |
-| `worker` | `python:3.15-slim` | — | `crawl` schema | **yes**, by replica |
-| `render` | `mcr.microsoft.com/playwright:v1.x-noble` | 3001 | nothing | **yes**, by replica |
-| `db` | `postgres:18` | 5432 | — | no |
+| Service  | Image base                                | Port | Owns           | Scales              |
+| -------- | ----------------------------------------- | ---- | -------------- | ------------------- |
+| `edge`   | `caddy:2-alpine`                          | 8080 | —              | no                  |
+| `web`    | `node:26-slim` (dev) / static (prod)      | 5173 | —              | no                  |
+| `bff`    | `node:26-slim`                            | 3000 | `ui` schema    | no                  |
+| `api`    | `python:3.15-slim`                        | 8000 | `crawl` schema | no                  |
+| `worker` | `python:3.15-slim`                        | —    | `crawl` schema | **yes**, by replica |
+| `render` | `mcr.microsoft.com/playwright:v1.x-noble` | 3001 | nothing        | **yes**, by replica |
+| `db`     | `postgres:18`                             | 5432 | —              | no                  |
 
 Plus `llama-server` on the host (ADR-0009). Seven things, one of which the
 operator starts themselves.
@@ -62,12 +62,12 @@ wrong.
 }
 ```
 
-| Path | Goes to | Why |
-| --- | --- | --- |
-| `/` | `web` | the SPA |
-| `/api/ui/*` | `bff` | scheduling, saved views, preferences, aggregation |
-| `/api/crawler/*` | `api` | domains, templates, runs, pages, reports |
-| `/api/crawler/runs/*/events` | `api` | SSE — matched **before** the general crawler rule |
+| Path                         | Goes to | Why                                               |
+| ---------------------------- | ------- | ------------------------------------------------- |
+| `/`                          | `web`   | the SPA                                           |
+| `/api/ui/*`                  | `bff`   | scheduling, saved views, preferences, aggregation |
+| `/api/crawler/*`             | `api`   | domains, templates, runs, pages, reports          |
+| `/api/crawler/runs/*/events` | `api`   | SSE — matched **before** the general crawler rule |
 
 **`flush_interval -1` is not optional.** Without it Caddy buffers the
 response and the event stream arrives in chunks or not at all. This is the
@@ -86,13 +86,14 @@ One Postgres instance, two schemas, two migration chains.
 
 ```sql
 CREATE SCHEMA crawl;   -- owned by api/worker, migrated by Alembic
-CREATE SCHEMA ui;      -- owned by bff,        migrated by the Node tool
+                         -- ui is NOT created here: the BFF's first Drizzle
+                         -- migration creates AND owns it (ADR-0024)
 
 CREATE ROLE spydra_api LOGIN PASSWORD '…';
 CREATE ROLE spydra_bff LOGIN PASSWORD '…';
 
 GRANT USAGE, CREATE ON SCHEMA crawl TO spydra_api;
-GRANT USAGE, CREATE ON SCHEMA ui    TO spydra_bff;
+GRANT CREATE ON DATABASE spydra TO spydra_bff;
 
 -- The BFF may READ crawl data for aggregation, never write it.
 GRANT USAGE ON SCHEMA crawl TO spydra_bff;
@@ -134,16 +135,16 @@ fails honestly when it is down (ADR-0016); static crawling is unaffected.
 
 ## 5. Failure matrix
 
-| Down | Effect | Surfaced as |
-| --- | --- | --- |
-| `edge` | Nothing reachable | browser error |
-| `web` | SPA will not load; API still works via curl | browser error |
-| `bff` | Schedules do not fire; saved views unavailable. **Crawling unaffected** | `/api/ui/*` 502; sidebar badge |
-| `api` | No control plane. Running worker drains its queue and stops | SPA error state |
-| `worker` | Queue stops draining; run never completes | run monitor shows no progress |
-| `render` | `rendered` domains stall; `auto` falls back to static; `static` unaffected | run monitor; `/healthz` |
-| `db` | Everything stops | all healthchecks red |
-| `llama-server` | Onboarding blocked; **crawling unaffected** | sidebar dot |
+| Down           | Effect                                                                     | Surfaced as                    |
+| -------------- | -------------------------------------------------------------------------- | ------------------------------ |
+| `edge`         | Nothing reachable                                                          | browser error                  |
+| `web`          | SPA will not load; API still works via curl                                | browser error                  |
+| `bff`          | Schedules do not fire; saved views unavailable. **Crawling unaffected**    | `/api/ui/*` 502; sidebar badge |
+| `api`          | No control plane. Running worker drains its queue and stops                | SPA error state                |
+| `worker`       | Queue stops draining; run never completes                                  | run monitor shows no progress  |
+| `render`       | `rendered` domains stall; `auto` falls back to static; `static` unaffected | run monitor; `/healthz`        |
+| `db`           | Everything stops                                                           | all healthchecks red           |
+| `llama-server` | Onboarding blocked; **crawling unaffected**                                | sidebar dot                    |
 
 Two of these are deliberate and worth restating: **the BFF being down does
 not stop a crawl**, and **the render sidecar being down does not stop static

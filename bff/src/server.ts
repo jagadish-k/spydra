@@ -8,16 +8,33 @@ import { Type, type Static } from "@sinclair/typebox";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import Fastify from "fastify";
+import postgres from "postgres";
 
 const CRAWLER_API_BASE = process.env.CRAWLER_API_BASE ?? "http://api:8000";
 
-// spec 010 §4: bff health reports {db, api}. The db check arrives with
-// task 0.10 — drizzle brings the driver.
+// spec 010 §4: bff health reports {db, api}. postgres.js is the app's db
+// driver (ADR-0021) — max 1 connection, the health check needs no pool.
+const db = postgres(
+  process.env.DATABASE_URL ?? "postgres://spydra_bff:spydra@db:5432/spydra",
+  { max: 1, connect_timeout: 2, idle_timeout: 5 },
+);
+
 const HealthResponse = Type.Object({
   status: Type.Literal("ok"),
+  db: Type.Union([Type.Literal("ok"), Type.Literal("down")]),
   api: Type.Union([Type.Literal("ok"), Type.Literal("down")]),
 });
 type HealthResponse = Static<typeof HealthResponse>;
+
+async function dbUp(): Promise<boolean> {
+  try {
+    await db`select 1`;
+    return true;
+  } catch {
+    // Unreachable or slow — "down". Liveness must not depend on the db.
+    return false;
+  }
+}
 
 async function crawlerApiUp(): Promise<boolean> {
   try {
@@ -33,6 +50,9 @@ async function crawlerApiUp(): Promise<boolean> {
 }
 
 const app = Fastify({ logger: true });
+app.addHook("onClose", async () => {
+  await db.end();
+});
 
 await app.register(swagger, {
   openapi: {
@@ -50,6 +70,7 @@ app.get(
   { schema: { response: { 200: HealthResponse } } },
   async (): Promise<HealthResponse> => ({
     status: "ok",
+    db: (await dbUp()) ? "ok" : "down",
     api: (await crawlerApiUp()) ? "ok" : "down",
   }),
 );

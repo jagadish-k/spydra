@@ -109,7 +109,7 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   manylinux aarch64 wheel (verified on PyPI; the domain→adapters
   contract moves to a stdlib-AST pytest in 0.8, which blocks CI
   where a lint only warns). `design/tokens/*` + `docs/
-         UI_STATES.md` appeared in the tree mid-session — NOT this
+       UI_STATES.md` appeared in the tree mid-session — NOT this
   branch's work, left uncommitted for the human.
 
 - integrator — 0.6 PROVEN: 6 SSE events through :8080, arrival gaps
@@ -135,6 +135,62 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   <6.1.0 only and ERESOLVE blocks install (npm ci would fail).
   eslint stays empty-config on purpose (comment in eslint.config.mjs);
   tsc --noEmit + prettier cover src. All verified in-container.
+
+- bff — 0.10: Drizzle wiring landed; **the chain is proven but BLOCKED on
+  the dev db by docker/init-schemas.sql's shape — see deviation, needs an
+  ops/integrator decision before 0.10 can be ticked.** Landed:
+  drizzle.config.ts exactly per ADR-0021/DEVELOPMENT sketch (schemaFilter
+  ['ui'] load-bearing, ledger at drizzle default drizzle.__drizzle_migrations
+  per ADR-0024); ui.ts with throwaway ui.drizzle_probe; migration 0000
+  generated via npx drizzle-kit generate (unmodified); hand-written
+  0000_drizzle_probe.down.sql (DROP SCHEMA ui CASCADE — 0000 creates the
+  schema, so its inverse removes it; dropping only the table breaks the
+  migrate→down→migrate invariant because up re-hits CREATE SCHEMA);
+  migrate-down.ts runner (journal-shape-validated, 42P01→nothing-to-rollback,
+  one step back, deletes ledger row in the same tx); node:test guards —
+  (a) every *.sql has sibling .down.sql, (b) nothing under bff/drizzle may
+  mention crawl. or carry non-ui-qualified DDL (SQL comments stripped before
+  the DDL scan). Teeth proven both ways (renamed down.sql → fail; appended
+  CREATE TABLE crawl.evil → fail; both restored, file byte-identical to
+  generated). Driver: postgres.js — ESM-native, zero-config pooling,
+  drizzle's first-class pg pairing (node-postgres would drag CJS/pg-types
+  heritage into an ESM-only package). healthz now {status, db, api} with
+  db via postgres.js select 1, same never-fail convention; onClose ends the
+  pool. +drizzle-orm, +postgres, +drizzle-kit (dev); lock regenerated
+  in-container; image rebuilt; bff/.prettierignore excludes drizzle/ (kit
+  output must reproduce byte-for-byte — formatting it would be hand-editing
+  a generated artifact). tsc --noEmit + eslint + prettier clean; tsconfig
+  include += tests.
+- bff — 0.10 DEVIATION (the blocker, fully diagnosed): `make migrate-ui`
+  CANNOT work against the dev db as init-schemas.sql shapes it, and no
+  grant fixes it. Three independent facts, each verified live: (1)
+  drizzle-kit migrate unconditionally runs `CREATE SCHEMA IF NOT EXISTS
+<ledger-schema>` (drizzle-orm pg-core/dialect.js:54) — as spydra_bff that
+  is `permission denied for database spydra` (role has CREATE on schema ui
+  only; PG-18 checks db CREATE even when the schema exists — drizzle-kit
+  swallows the error, silent exit 1); (2) generated migration 0000 contains
+  `CREATE SCHEMA "ui";` (plain, no IF NOT EXISTS — first generate always
+  emits it for pgSchema schemas) which collides with init's pre-created ui:
+  ERROR 42P06 even as superuser; (3) alembic survives the same shape only
+  because it never emits CREATE SCHEMA and its version table lives in the
+  granted schema. The proof was therefore run on a scratch database
+  encoding the RECOMMENDED fix: no pre-existing ui, GRANT CREATE ON
+  DATABASE to spydra_bff. Full cycle green as spydra_bff: migrate →
+  ui.drizzle_probe created + ledger 1 → migrate:down → table+schema+ledger
+  row gone → migrate again → recreated. `make migrate-down` green on the
+  real db today (alembic skip message + runner nothing-to-roll-back).
+  RECOMMENDED (one file, ops-owned): in docker/init-schemas.sql replace
+  `CREATE SCHEMA ui; GRANT USAGE, CREATE ON SCHEMA ui TO spydra_bff;` with
+  `GRANT CREATE ON DATABASE spydra TO spydra_bff;` — migration 0000 then
+  creates AND OWNS ui (single owner; the crawl grants stay untouched, so
+  the 010 §3 boundary is unchanged — db-CREATE lets the role create new
+  schemas, not touch crawl tables). Alternative rejected: blessing removal
+  of the CREATE SCHEMA line from generated 0000 (hand-editing an artifact
+  ADR-0021 exists to keep pristine, and every fresh generate re-adds it).
+  After ops lands the init change: `make reset && make migrate-ui` must be
+  re-proven on the real db, then 0.10 can tick. Dev-db evidence left
+  pristine: runtime grant revoked, stray ui.__drizzle_migrations dropped,
+  scratch db deleted.
 
 ## Open questions
 

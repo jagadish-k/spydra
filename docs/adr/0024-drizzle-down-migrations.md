@@ -55,6 +55,19 @@ requires "one trivial `ui` table proving generate → migrate → migrate-down".
 - `drizzle-kit` version bumps may change the journal format; the runner reads
   it defensively and fails loudly on an unknown shape rather than guessing.
 
+### Discovered while implementing (worth keeping)
+
+The `ui` schema is **not** pre-created by `docker/init-schemas.sql`; the
+BFF's first migration creates it, so `spydra_bff` owns the schema outright.
+Two PG-18 realities forced this, both verified: drizzle-kit's migrator runs
+`CREATE SCHEMA IF NOT EXISTS` for its ledger schema unconditionally and PG 18
+checks `CREATE ON DATABASE` for that statement **even when the schema already
+exists**; and `drizzle-kit generate` emits `CREATE SCHEMA "ui"` in the first
+migration, which a pre-created `ui` would make fail on every fresh boot. The
+role therefore carries `CREATE ON DATABASE` — which grants nothing inside
+schemas owned by others, so the crawl write boundary (spec 010 §3, proven by
+`make verify-grants`) is unchanged. Spec 010 §3's SQL was corrected to match.
+
 ## Alternatives rejected
 
 | Option                                                 | Why not                                                                                                                                |

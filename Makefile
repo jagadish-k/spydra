@@ -111,7 +111,7 @@ verify-grants: ## PROVE the BFF role cannot write crawl (spec 010 §3, BUILD_PLA
 	    -c "CREATE TABLE ui.probe (id integer)" >/dev/null 2>&1; then \
 	  echo "✗ spydra_api wrote to ui — no route in should exist"; $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra -c "DROP TABLE crawl.runs" >/dev/null; exit 1; \
 	else \
-	  echo "  ✓ rejected (permission denied for schema ui)"; \
+	  echo "  ✓ rejected (no route into ui)"; \
 	fi; \
 	$(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
 	  -c "DROP TABLE crawl.runs" >/dev/null && echo "✓ grants hold: bff reads crawl, writes nothing; api never sees ui"

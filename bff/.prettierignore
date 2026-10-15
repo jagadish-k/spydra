@@ -1,0 +1,3 @@
+# drizzle-kit output is generated (ADR-0021) — formatting it would hand-edit
+# an artifact that make/regenerate must reproduce byte-for-byte.
+drizzle/

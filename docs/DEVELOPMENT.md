@@ -326,11 +326,16 @@ performance, not meant to be browsable.
 
 ### Database roles
 
-`docker/init-schemas.sql` runs once on first boot and creates the two schemas
-and two roles with the grants that enforce ownership (spec 010 §3). The BFF
-role gets `SELECT` on `crawl` and nothing more. **An `INSERT` into
-`crawl.runs` from the BFF must fail** — that is the boundary, enforced by
-Postgres rather than by convention.
+`docker/init-schemas.sql` runs once on first boot and creates the `crawl`
+schema and the two roles with the grants that enforce ownership (spec 010
+§3). The `ui` schema is created by the BFF's first Drizzle migration, so
+`spydra_bff` owns it outright — which is also why the role carries
+`CREATE ON DATABASE` (drizzle's ledger needs it; PG 18 checks the privilege
+even for `CREATE SCHEMA IF NOT EXISTS` on an existing schema, and
+db-level CREATE grants nothing inside `crawl`). The BFF role gets `SELECT`
+on `crawl` and nothing more. **An `INSERT` into `crawl.runs` from the BFF
+must fail** — that is the boundary, enforced by Postgres rather than by
+convention.
 
 ### Caddyfile
 
