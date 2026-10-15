@@ -78,7 +78,7 @@ a dozen ungated commits, is the common mistake.
 - [x] `0.12` Frontend: Vite + React 19 + TS strict; `styles/theme.css`
       importing `tokens.css` and `tailwind-theme.css`; ESLint flat + Prettier.
       **Assert `bg-red-500` fails the build** (ADR-0018).
-- [ ] `0.13` Alembic initialised for `crawl`; empty baselines run both ways
+- [x] `0.13` Alembic initialised for `crawl`; empty baselines run both ways
       under `make migrate` / `make migrate-down` alongside the Drizzle chain.
 - [ ] `0.14` `make generated` produces `schema.crawler.d.ts`,
       `schema.ui.d.ts`, `bff/src/db/schema/crawl.generated.ts` and the four
