@@ -54,6 +54,7 @@ services:
       db: { condition: service_healthy }
     volumes:
       - ./backend:/app # bind: source, hot reload
+      - .:/repo # host-side python (scripts/) for fmt/typecheck targets
       - venv:/app/.venv # named: never the bind mount
       - ${SPYDRA_DATA:-./.data}:/data
     extra_hosts: ["host.docker.internal:host-gateway"] # llama-server AND render (ADR-0023)

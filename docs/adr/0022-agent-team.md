@@ -92,12 +92,12 @@ vendor-neutral frontmatter keys (`name`, `description`, `access`).
 drift — the same rule that already governs generated API types (ADR-0013) and
 `crawl.generated.ts` (ADR-0021).
 
-| Tool | Generated to | Loading |
-| --- | --- | --- |
-| Claude Code | `.claude/agents/<name>.md` | subagent; body is the system prompt |
+| Tool        | Generated to                 | Loading                                           |
+| ----------- | ---------------------------- | ------------------------------------------------- |
+| Claude Code | `.claude/agents/<name>.md`   | subagent; body is the system prompt               |
 | OpenCode v2 | `.opencode/agents/<name>.md` | `mode` + `permissions`; body is the system prompt |
-| Cursor | `.cursor/rules/<name>.mdc` | `alwaysApply: false` + description |
-| Antigravity | `.agents/rules/<name>.md` | `trigger: model_decision` |
+| Cursor      | `.cursor/rules/<name>.mdc`   | `alwaysApply: false` + description                |
+| Antigravity | `.agents/rules/<name>.md`    | `trigger: model_decision`                         |
 
 **`AGENTS.md` is the anchor**, because it is the one file every one of these
 tools reads without configuration. The hard rules live there; the roles point
@@ -113,7 +113,10 @@ Three consequences worth stating plainly:
   which take a tool allowlist and an ordered permission list respectively.
   OpenCode is the strictest of the four: its model covers the shell as well
   as the filesystem, so the reviewer gets `edit: deny`, `shell: deny`, and
-  `git diff`/`log`/`show`/`status` allowed back — everything it needs to
+  `git diff`/`log`/`show`/`status` allowed back — plus the read-only pipe
+  partners (`head`, `tail`, `wc`, `grep`, `cat`, …), because the scanner
+  denies a compound command whole when any segment is denied (amended after
+  the 0.17 slice found it) — everything it needs to
   review and nothing it needs to write. On Cursor and Antigravity it is
   prose. That is a genuine difference in enforcement strength and it matters
   most for the reviewer; the backstop everywhere is the same as for
@@ -145,13 +148,13 @@ this project is built to avoid.
 
 ## Alternatives rejected
 
-| Option | Why not |
-| --- | --- |
-| Many agents on one branch | Conflicts and drift; nobody owns the result |
-| One generalist agent for everything | No separation between author and reviewer, which is the whole point of §4 |
-| Handoff by conversation summary | A subagent gets a fresh context — the summary is the only thing that survives, and it is unverifiable |
-| Roles written natively per tool | Four copies of eight roles, drifting from the day they are written |
-| Roles only in `AGENTS.md` | One file cannot hold eight roles without being loaded whole, every turn, by every tool |
-| Pinning a model per role | The shortest-lived, most tool-specific thing that could go in a vendor-neutral file |
-| Lowest-common-denominator adapters | Leaves OpenCode's permission model unused — the one place a role's `read-only` can actually be enforced |
-| Agent-written git history (auto-merge) | A PR nobody read is not review; `develop` stays protected |
+| Option                                 | Why not                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Many agents on one branch              | Conflicts and drift; nobody owns the result                                                             |
+| One generalist agent for everything    | No separation between author and reviewer, which is the whole point of §4                               |
+| Handoff by conversation summary        | A subagent gets a fresh context — the summary is the only thing that survives, and it is unverifiable   |
+| Roles written natively per tool        | Four copies of eight roles, drifting from the day they are written                                      |
+| Roles only in `AGENTS.md`              | One file cannot hold eight roles without being loaded whole, every turn, by every tool                  |
+| Pinning a model per role               | The shortest-lived, most tool-specific thing that could go in a vendor-neutral file                     |
+| Lowest-common-denominator adapters     | Leaves OpenCode's permission model unused — the one place a role's `read-only` can actually be enforced |
+| Agent-written git history (auto-merge) | A PR nobody read is not review; `develop` stays protected                                               |

@@ -59,7 +59,28 @@ FORBIDDEN_COMMANDS = ("drizzle-kit push*",)
 # What a read-only role may still run. It needs the diff; it does not need a
 # shell. `*` is denied first and these are the exceptions, because OpenCode
 # resolves an ordered list and the last matching rule wins.
-READONLY_SHELL = ("git diff*", "git log*", "git show*", "git status*")
+#
+# Beyond git itself: the scanner splits compound commands and pipes into one
+# resource per segment, and ANY denied segment denies the whole call — so a
+# bare `git diff*` allow dies the moment a reviewer writes `git diff | head`.
+# The pipe partners below are all read-only, which is the reviewer's whole
+# diet. (Found by the 0.17 slice; see ADR-0022 §6.)
+READONLY_SHELL = (
+    "git diff*",
+    "git log*",
+    "git show*",
+    "git status*",
+    "git branch*",
+    "head*",
+    "tail*",
+    "wc*",
+    "grep*",
+    "cat*",
+    "sed -n*",
+    "ls*",
+    "find*",
+    "rg*",
+)
 
 
 class Role:
@@ -138,8 +159,7 @@ def opencode(r: Role) -> tuple[Path, str]:
         "---\n"
         f"description: {r.description}\n"
         f"mode: {mode}\n"
-        "permissions:\n" + rules +
-        "---\n\n" + r.banner() + r.body,
+        "permissions:\n" + rules + "---\n\n" + r.banner() + r.body,
     )
 
 
@@ -185,7 +205,7 @@ def main() -> int:
     names = [r.name for r in roles]
     if len(set(names)) != len(names):
         raise SystemExit("duplicate role names in docs/agents/")
-    for role, path in zip(roles, sources):
+    for role, path in zip(roles, sources, strict=True):
         if role.name != path.stem:
             raise SystemExit(
                 f"{path}: frontmatter name '{role.name}' does not match the "
