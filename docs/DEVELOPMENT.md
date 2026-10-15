@@ -273,6 +273,7 @@ services:
       VITE_API_BASE: "" # same origin via the edge
     volumes:
       - ./frontend:/app
+      - ./design:/design:ro # theme.css imports design/tokens/* (ADR-0018)
       - web_modules:/app/node_modules
     ports: ["127.0.0.1:5173:5173"]
 
