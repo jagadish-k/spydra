@@ -18,6 +18,14 @@ COMPOSE := docker compose
 #   $(call skip_if_missing,compose.yaml) && $(COMPOSE) up -d
 skip_if_missing = @test -e "$(1)" || { echo "·  skip $@ — $(1) does not exist yet"; exit 0; }
 
+# A literal newline, for flattening $(FILES) — callers (the hooks) pass staged
+# paths newline-separated, and a raw newline inside a recipe breaks sh -c.
+define NL
+
+
+endef
+flat = $(subst $(NL), ,$(1))
+
 .DEFAULT_GOAL := help
 
 .PHONY: help hooks agents agents-check \
@@ -157,17 +165,18 @@ fmt: ## ruff format + prettier --write
 # does not block one (WORKFLOW.md §2).
 
 fmt-staged:
-	@if [ ! -f backend/pyproject.toml ]; then echo "·  skip $@ — backend/pyproject.toml does not exist yet"; exit 0; fi
-	@files=$$(printf '%s\n' $(FILES) | sed 's|^backend/||'); \
+	@if [ ! -f backend/pyproject.toml ]; then echo "·  skip $@ — backend/pyproject.toml does not exist yet"; exit 0; fi; \
+	files=$$(printf '%s\n' $(call flat,$(FILES)) | sed 's|^backend/||' | tr '\n' ' '); \
 	$(COMPOSE) run --rm --no-deps -T api sh -c "ruff format $$files && ruff check --fix $$files"
 
 # Split staged files by the package whose container can see them. Root-level
 # files (docs, compose.yaml) go to the bff container via its /repo mount.
 fmt-staged-js:
-	@if [ ! -f compose.yaml ]; then echo "·  skip $@ — no compose stack yet"; exit 0; fi
-	@bff=$$(printf '%s\n' $(FILES) | grep '^bff/' | sed 's|^bff/|/app/|' | tr '\n' ' '); \
-	web=$$(printf '%s\n' $(FILES) | grep '^frontend/' | sed 's|^frontend/|/app/|' | tr '\n' ' '); \
-	root=$$(printf '%s\n' $(FILES) | grep -v '^bff/\|^frontend/' | sed 's|^|/repo/|' | tr '\n' ' '); \
+	@if [ ! -f compose.yaml ]; then echo "·  skip $@ — no compose stack yet"; exit 0; fi; \
+	files='$(call flat,$(FILES))'; \
+	bff=$$(printf '%s\n' "$$files" | grep '^bff/' | sed 's|^bff/|/app/|' | tr '\n' ' '); \
+	web=$$(printf '%s\n' "$$files" | grep '^frontend/' | sed 's|^frontend/|/app/|' | tr '\n' ' '); \
+	root=$$(printf '%s\n' "$$files" | grep -v '^bff/\|^frontend/' | sed 's|^|/repo/|' | tr '\n' ' '); \
 	if [ -n "$$bff" ] && [ -f bff/package.json ]; then \
 	  $(COMPOSE) run --rm --no-deps -T bff sh -c "npx prettier --write $$bff && npx eslint --fix $$bff" || exit 1; \
 	fi; \
@@ -179,17 +188,17 @@ fmt-staged-js:
 	fi
 
 typecheck-changed:
-	@if [ ! -f bff/package.json ] && [ ! -f frontend/package.json ]; then echo "·  skip $@ — no TS packages yet"; exit 0; fi
-	@if printf '%s\n' $(FILES) | grep -q '^bff/' && [ -f bff/package.json ]; then \
+	@if [ ! -f bff/package.json ] && [ ! -f frontend/package.json ]; then echo "·  skip $@ — no TS packages yet"; exit 0; fi; \
+	if printf '%s\n' '$(call flat,$(FILES))' | grep -q '^bff/' && [ -f bff/package.json ]; then \
 	  $(COMPOSE) run --rm --no-deps -T bff tsc --noEmit; \
-	fi
-	@if printf '%s\n' $(FILES) | grep -q '^frontend/' && [ -f frontend/package.json ]; then \
+	fi; \
+	if printf '%s\n' '$(call flat,$(FILES))' | grep -q '^frontend/' && [ -f frontend/package.json ]; then \
 	  $(COMPOSE) run --rm --no-deps -T web tsc --noEmit; \
 	fi
 
 typecheck-changed-py:
-	@if [ ! -f backend/pyproject.toml ]; then echo "·  skip $@ — backend/pyproject.toml does not exist yet"; exit 0; fi
-	@files=$$(printf '%s\n' $(FILES) | sed 's|^backend/||'); \
+	@if [ ! -f backend/pyproject.toml ]; then echo "·  skip $@ — backend/pyproject.toml does not exist yet"; exit 0; fi; \
+	files=$$(printf '%s\n' $(call flat,$(FILES)) | sed 's|^backend/||' | tr '\n' ' '); \
 	$(COMPOSE) run --rm --no-deps -T api mypy $$files
 
 # --- generated artifacts (ADR-0013, ADR-0021, ADR-0022) -------------------------

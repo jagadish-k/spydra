@@ -40,16 +40,16 @@ with no dependencies, so they work from the first minute, and every commit
 from `0.4` onward is already gated. Building them at the end of phase 0, after
 a dozen ungated commits, is the common mistake.
 
-- [ ] `0.1` Repository skeleton per `AGENTS.md` § Repository layout —
+- [x] `0.1` Repository skeleton per `AGENTS.md` § Repository layout —
       `backend/`, `bff/`, `render/`, `frontend/`, `docker/`, `scripts/`.
       Plus `.gitignore` and **`.env.example`** (committed; `.env` never is).
-- [ ] `0.2` `Makefile` with every target in `DEVELOPMENT.md § Commands`.
+- [x] `0.2` `Makefile` with every target in `DEVELOPMENT.md § Commands`.
       Targets whose service does not exist yet **succeed with a skip message
       rather than failing** — `make check` must be green on an empty project
       or it cannot gate the rest of phase 0. Include the granular targets the
       hooks call: `fmt-staged`, `fmt-staged-js`, `typecheck-changed`,
       `typecheck-changed-py`, `agents`, `generated`, `hooks`.
-- [ ] `0.3` `make hooks` wires `core.hooksPath` to `.githooks/`, and
+- [x] `0.3` `make hooks` wires `core.hooksPath` to `.githooks/`, and
       `make agents` runs `scripts/gen-agents.py` on the host. **Verify all
       three hooks fire**: a long commit subject is rejected, a staged `.env`
       is rejected, a push to `develop` is refused. Time pre-commit and

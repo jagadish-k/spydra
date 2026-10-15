@@ -62,6 +62,13 @@ definition of done holds, not when its code is written.
                work already on `develop` (hooks, gen-agents, adapters,
                .gitignore); verified `gen-agents.py --check` green. 0.2
                (Makefile) is the first real build task; 0.3 is wire+verify.
+- integrator — 0.1–0.3 done. `make check` green on the empty project
+               (skip-guards + agents drift check are the only live parts).
+               Hooks wired via `make hooks`; verified: 119-char subject
+               rejected, staged `.env` rejected, push to `develop` refused
+               (temp bare remote, removed after). Feature-branch push ran
+               `make check` under pre-push. Pre-commit timing: **0.9 s**
+               (budget 10 s). 0.2/0.3 DoD held before ticking.
 
 ## Open questions
 
