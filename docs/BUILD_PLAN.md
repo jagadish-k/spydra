@@ -75,7 +75,7 @@ a dozen ungated commits, is the common mistake.
       test asserting every file in `bff/drizzle/` mentions only `ui.`.
 - [x] `0.11` Render sidecar: `POST /render` + `GET /healthz`, context pool,
       resource blocking (spec 012).
-- [ ] `0.12` Frontend: Vite + React 19 + TS strict; `styles/theme.css`
+- [x] `0.12` Frontend: Vite + React 19 + TS strict; `styles/theme.css`
       importing `tokens.css` and `tailwind-theme.css`; ESLint flat + Prettier.
       **Assert `bg-red-500` fails the build** (ADR-0018).
 - [ ] `0.13` Alembic initialised for `crawl`; empty baselines run both ways
