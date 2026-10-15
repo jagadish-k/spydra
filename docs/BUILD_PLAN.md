@@ -87,7 +87,7 @@ a dozen ungated commits, is the common mistake.
       break; edit a role in `docs/agents/` without regenerating.
 - [x] `0.15` pytest + vitest + the BFF suite wired, one trivial test each.
       `make check` now actually runs them instead of skipping.
-- [ ] `0.16` CI running `make check` on a clean checkout, plus
+- [x] `0.16` CI running `make check` on a clean checkout, plus
       `make migrate-down`.
 - [ ] `0.17` Agent team smoke test: one trivial slice
       (`chore/0.17-hello-slice`) end to end — planner writes
