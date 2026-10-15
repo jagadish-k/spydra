@@ -701,7 +701,7 @@ Worth naming explicitly, since crawler tooling drifts toward them by default:
 
 ## Screens
 
-Nine screens. The table above is the index; this section is the specification — what each screen is for, what it contains, and which widgets are shared.
+Ten screens. The table above is the index; this section is the specification — what each screen is for, what it contains, and which widgets are shared.
 
 One principle runs through all of them: **this is a single-operator control room, not a consumer app.** Density beats whitespace, every list is filterable, and every state is visible without drilling in. You are the only user and you will be looking for problems, so the screens should surface anomalies rather than celebrate successes.
 
@@ -727,7 +727,7 @@ Build these once; every screen composes them.
 | --- | --- | --- |
 | `<DomainStatePill>` | Domains, Runs, Unknown | Colour-coded lifecycle state with tooltip explaining why it is in that state |
 | `<SelectorField>` | Template review, Unknown | Editable CSS selector + live-resolved value + match count; red when it resolves to nothing, amber when it resolves to several |
-| `<PagePreview>` | Template review, Unknown, Products | Sanitised HTML in a sandboxed iframe with the active selector's match outlined |
+| `<PagePreview>` | Template review, Unknown, Products | Screenshot plus coordinate overlay from `POST /inspect`; the active selector's matches outlined. **No iframe** — spec 014 §1 |
 | `<ValidationBadge>` | Products, Reports, Runs | Per-field pass/fail with the failing rule named |
 | `<ProgressBar>` | Run monitor, Domain detail | Queued / in-flight / done / failed as a stacked bar, not a percentage |
 | `<ObservationTimeline>` | Products, Reports | Horizontal time series of observations with change points marked |
@@ -780,7 +780,7 @@ After confirmation: new domains enter `discovered` and are routed straight to te
 
 **Three-pane layout:**
 
-*Left (45%) — page preview.* Sanitised HTML in a sandboxed iframe. Hovering a selector on the right outlines every element it matches, in place. A toggle switches to raw-DOM-skeleton view, which is what the model actually saw — useful when a proposal is wrong and you want to know whether the model was misled or just mistaken.
+*Left (45%) — page view.* Three modes on a segmented control: **Preview** (screenshot with coordinate overlay, the active selector's matches outlined), **Select** (the visual playground — click an element to assign it to a field; spec 014), and **Skeleton** (what the model actually saw, node indices clickable — useful when a proposal is wrong and you want to know whether the model was misled or just mistaken). No supplier HTML or script enters the app document; see spec 014 §1 for why an iframe was rejected.
 
 *Centre (35%) — field list.* One `<SelectorField>` per requested field (title, price, description, images, category, vendor, supplier, specs table). Each row shows: field name · proposed selector (editable) · **resolved value on this page** · match count · model confidence. Edits re-resolve on a 300 ms debounce against the already-loaded DOM, with no network round-trip.
 

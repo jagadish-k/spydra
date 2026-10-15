@@ -66,6 +66,14 @@ React components to match them, not to match your own idea of the layout.
    temporary block becomes permanent.
 9. **Every LLM proposal is verified deterministically** against the real DOM
    before a human sees it. No exceptions, no "the model was probably right".
+   This includes selectors produced by chat and by the playground.
+9a. **One authoring pipeline.** Form, chat and playground are three front
+   doors to one `TemplateDraft` and one verify/merge/rank path (ADR-0019).
+   A second verification implementation, or a mode that writes `templates`
+   directly, is a defect regardless of how well it works.
+9b. **No supplier HTML or script in the app document.** The page preview is a
+   screenshot plus geometry from `POST /inspect` (spec 014 §1). No iframe, no
+   `innerHTML` with fetched markup, no "just sanitised" exception.
 10. **Templates are versioned, never edited in place.** Every observation
    records the template version that produced it.
 11. **Observations are append-only.** Never `UPDATE` a `page_observations` row.

@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Playground · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+
+  <div class="page-head">
+    <div>
+      <h1>Select mode — vantage-abrasives.com</h1>
+      <p class="sub">Draft #412 · pattern <code class="mono">/products/*</code> ·
+        2 of 5 sample pages clicked · 5 fields from clicks, 1 from chat</p>
+    </div>
+    <div class="actions">
+      <div class="btn-group">
+        <a class="btn btn-sm" href="template-review.html" aria-pressed="false">Preview</a>
+        <button class="btn btn-sm" aria-pressed="true">Select</button>
+        <button class="btn btn-sm" aria-pressed="false">Skeleton</button>
+      </div>
+      <button class="btn">Re-inspect</button>
+      <a class="btn btn-primary" href="template-review.html">Open in review</a>
+    </div>
+  </div>
+
+  <div class="banner banner-info" style="margin-bottom:var(--sp-space-4)">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linecap="round"><path d="M8 7.2v4 M8 4.8v.01 M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13z"/></svg>
+    <div>
+      <strong>price was clicked on one page only.</strong>
+      The selector it produced still carries a positional step
+      (<code class="mono">div:nth-of-type(3)</code>), which is the form that
+      silently breaks on a redesign. Click the same field on a second sample
+      URL and the differing index is eliminated — two examples from two pages
+      beat ten clicks on one.
+    </div>
+    <div class="actions"><button class="btn btn-sm">Open sample 2</button></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,62fr) minmax(0,38fr);
+              gap:var(--sp-space-4);align-items:start">
+
+    <!-- ------------------------------------------------- canvas + overlay -->
+    <div class="card" style="overflow:hidden">
+      <div class="card-head">
+        <h3>Page canvas</h3>
+        <div class="actions">
+          <span class="tag">cached 4 min ago · no fetch</span>
+          <span class="tag tag-mono">1440 × 5120</span>
+        </div>
+      </div>
+      <div class="preview-frame" style="border:0;border-radius:0;height:820px">
+        <div class="preview-chrome">
+          <span class="url">https://vantage-abrasives.com/products/flap-disc-120g-115mm</span>
+          <span class="tag" style="margin-left:auto">screenshot + geometry · no iframe</span>
+        </div>
+
+        <!-- The "page" below stands in for the screenshot; the boxes stand in
+             for elements[] from POST /inspect. In the real screen nothing here
+             is markup from the supplier — it is an image and a list of rects. -->
+        <div class="canvas">
+          <div class="canvas-page">
+
+            <div class="ghost ghost-line" style="width:34%"></div>
+            <div style="height:var(--sp-space-5)"></div>
+
+            <!-- picked: the clicked example -->
+            <div style="position:relative;margin-bottom:var(--sp-space-5)">
+              <div style="font-size:var(--sp-text-lg);font-weight:600">
+                Zirconia Flap Disc 115 mm · 120 grit</div>
+              <div class="sel-box picked" style="inset:-5px -8px">
+                <span class="lbl">title · picked</span>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:var(--sp-space-5);margin-bottom:var(--sp-space-5)">
+              <div class="ghost" style="width:128px;height:128px;flex-shrink:0"></div>
+              <div style="flex:1;min-width:0">
+
+                <!-- hover: what a click would assign right now -->
+                <div style="position:relative;display:inline-block;margin-bottom:var(--sp-space-4)">
+                  <span style="font-size:var(--sp-text-xl);font-weight:600">£4.85</span>
+                  <span class="muted" style="font-size:var(--sp-text-xs)">ex VAT</span>
+                  <div class="sel-box hover" style="inset:-4px -6px">
+                    <span class="lbl">span[itemprop=price] → price_amount</span>
+                  </div>
+                </div>
+
+                <!-- the other nodes the proposed selector also matches -->
+                <div style="position:relative;margin-bottom:12px">
+                  <span class="muted" style="font-size:var(--sp-text-sm);text-decoration:line-through">£6.20</span>
+                  <div class="sel-box match" style="inset:-4px -6px">
+                    <span class="lbl">also matches (2 of 2)</span>
+                  </div>
+                </div>
+
+                <div class="ghost ghost-line" style="width:88%"></div>
+                <div class="ghost ghost-line" style="width:70%"></div>
+              </div>
+            </div>
+
+            <!-- repeating container on a listing page -->
+            <div style="position:relative;padding:var(--sp-space-4) 0">
+              <div class="sel-box container" style="inset:0">
+                <span class="lbl">container · ul.product-grid &gt; li · 24 siblings</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:var(--sp-space-3)">
+                <div class="ghost-block" style="margin:0"><div class="ghost" style="height:44px"></div>
+                  <div class="ghost ghost-line" style="width:80%;margin-top:8px;margin-bottom:0"></div></div>
+                <div class="ghost-block" style="margin:0"><div class="ghost" style="height:44px"></div>
+                  <div class="ghost ghost-line" style="width:72%;margin-top:8px;margin-bottom:0"></div></div>
+                <div class="ghost-block" style="margin:0"><div class="ghost" style="height:44px"></div>
+                  <div class="ghost ghost-line" style="width:86%;margin-top:8px;margin-bottom:0"></div></div>
+                <div class="ghost-block" style="margin:0"><div class="ghost" style="height:44px"></div>
+                  <div class="ghost ghost-line" style="width:64%;margin-top:8px;margin-bottom:0"></div></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Ancestor chain. Picking the right node is the most error-prone
+             step on this screen; a keyboard walk makes it cheap. Struck-out
+             classes are the hashed and utility ones, dropped before the
+             selector is generalised. -->
+        <div class="ancestry">
+          <span class="node">body</span><span>›</span>
+          <span class="node">main</span><span>›</span>
+          <span class="node">div.product-info</span><span>›</span>
+          <span class="node rejected">div.mt-4</span><span>›</span>
+          <span class="node rejected">div.css-1x4bf9k</span><span>›</span>
+          <span class="node here">span[itemprop=price]</span>
+          <span class="key"><span class="kbd">[</span> <span class="kbd">]</span> walk ancestors</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ----------------------------------------------------- right column -->
+    <div class="stack">
+
+      <div class="card">
+        <div class="card-head">
+          <h3>Assign to field</h3>
+          <div class="actions"><button class="btn btn-sm">New field…</button></div>
+        </div>
+        <div class="card-body" style="padding:var(--sp-space-2)">
+          <!-- The canonical vocabulary, not a free-text box. Without it,
+               forty domains end up with price, cost and unit_price meaning
+               the same thing and no report can be written. -->
+          <div class="vocab">
+            <button aria-pressed="false">title <span class="core">core</span><span class="n">1 example</span></button>
+            <button aria-pressed="true">price_amount <span class="core">core</span><span class="n">clicking…</span></button>
+            <button aria-pressed="false">availability <span class="core">core</span><span class="n">1 example</span></button>
+            <button aria-pressed="false">vendor <span class="core">core</span><span class="n">from chat</span></button>
+            <button aria-pressed="false">images <span class="core">core</span><span class="n">2 examples · many</span></button>
+            <button aria-pressed="false">sku <span class="n">—</span></button>
+            <button aria-pressed="false">lead_time <span class="n">—</span></button>
+          </div>
+        </div>
+        <div class="card-body" style="border-top:1px solid var(--sp-border);padding:var(--sp-space-3) var(--sp-space-4)">
+          <p class="muted" style="margin:0;font-size:var(--sp-text-xs)">
+            A field outside this list lands in JSONB and will not appear in any
+            cross-domain report. You are told at creation, because that is the
+            last moment a core field can still be chosen instead.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Candidate</h3>
+          <div class="actions"><span class="prov prov-click">clicked</span></div>
+        </div>
+        <div class="card-body" style="padding:var(--sp-space-2)">
+          <div class="selector-field">
+            <div class="fname">price_amount <span class="req" title="Required">*</span></div>
+            <div class="fbody">
+              <input class="sel" type="text" value="div.product-info span[itemprop='price']" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">£4.85</span>
+                <span class="matches tag">2 matches</span>
+              </div>
+              <div class="resolved" style="border:0;padding-top:0">
+                <span class="muted" style="font-size:var(--sp-text-xs)">
+                  generalised by <strong>multi_example</strong> · score 85</span>
+                <span class="confidence" style="margin-left:auto">
+                  <i class="on"></i><i class="on"></i><i class="on"></i></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field is-warn">
+            <div class="fname">lead_time</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="div:nth-of-type(3) > span" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">3–5 working days</span>
+                <span class="matches tag">1 match</span>
+              </div>
+              <div class="resolved" style="border:0;padding-top:0">
+                <span class="muted" style="font-size:var(--sp-text-xs)">
+                  generalised by <strong>heuristic</strong> · score 48 · positional</span>
+                <span class="confidence low" style="margin-left:auto">
+                  <i class="on"></i><i></i><i></i></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Stored examples</h3>
+          <div class="actions"><span class="tag">kept after approval</span></div>
+        </div>
+        <div class="card-body">
+          <div class="examples">
+            <div class="ex"><span class="tag tag-mono">#14</span>
+              <span class="url">/products/flap-disc-120g-115mm</span><span class="txt">£4.85</span></div>
+            <div class="ex"><span class="tag tag-mono">#22</span>
+              <span class="url">/products/SKU-8841</span><span class="txt">£11.40</span></div>
+          </div>
+          <p class="muted" style="margin:var(--sp-space-3) 0 0;font-size:var(--sp-text-xs)">
+            Examples are provenance, not history. When a redesign breaks this
+            selector, they let the system re-generalise against the new DOM
+            instead of asking you to click everything again.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>Verification across samples</h3></div>
+        <div class="card-body">
+          <div class="sample-grid" style="grid-template-columns:1fr repeat(5,26px)">
+            <div class="hd">field</div><div class="hd">1</div><div class="hd">2</div>
+            <div class="hd">3</div><div class="hd">4</div><div class="hd">5</div>
+            <div>title</div><div class="pass">✓</div><div class="pass">✓</div>
+            <div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+            <div>price_amount</div><div class="pass">✓</div><div class="pass">✓</div>
+            <div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+            <div>images</div><div class="pass">✓</div><div class="pass">✓</div>
+            <div class="partial">!</div><div class="pass">✓</div><div class="pass">✓</div>
+            <div>lead_time</div><div class="pass">✓</div><div class="fail">✗</div>
+            <div class="fail">✗</div><div class="pass">✓</div><div class="fail">✗</div>
+          </div>
+          <p class="muted" style="margin:var(--sp-space-3) 0 0;font-size:var(--sp-text-xs)">
+            Every click is verified against all five samples, not just the page
+            on screen. A selector that works here and fails on sample 3 is the
+            most common error there is, and it is invisible without this row.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: 'templates', crumbs: ['Spydra','Templates','Select mode'], runnable: false });</script>
+</body>
+</html>

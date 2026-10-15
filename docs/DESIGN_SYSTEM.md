@@ -146,7 +146,7 @@ classes; in the React app they are the components named here.
 | --- | --- | --- |
 | `<DomainStatePill>` | `.pill` | Lifecycle state, dot + label, tooltip explains why |
 | `<SelectorField>` | `.selector-field` | Editable selector + live resolved value + match count. Red when it resolves to nothing, amber when it resolves to several |
-| `<PagePreview>` | `.preview-frame` | Sanitised HTML in a sandboxed iframe, active selector outlined in place |
+| `<PagePreview>` | `.preview-frame` | Screenshot + overlay canvas; active selector's matches outlined in place. No iframe — spec 014 §1 |
 | `<ValidationBadge>` | `.pill` + count | Per-field pass/fail with the failing rule named |
 | `<ProgressBar>` | `.progress` | Queued / in-flight / done / failed as a **stacked bar, never a percentage** |
 | `<Sparkline>` | `.spark` | 7-day health trend, coloured by band |
@@ -155,11 +155,20 @@ classes; in the React app they are the components named here.
 | `<Confidence>` | `.confidence` | Four-bar model confidence, coloured by band |
 | `<SampleMatrix>` | `.sample-grid` | Per-field pass/fail across sample URLs |
 | `<Banner>` | `.banner` | Info / warn / danger, with inline actions |
+| `<ProvenanceBadge>` | `.prov` | Where a selector came from — form · chat · clicked · escalated |
+| `<SelectionOverlay>` | `.sel-box` | Absolutely positioned boxes over the screenshot: hovered, picked, other matches, container. Translucent, never opaque — they sit **over** the content being selected |
+| `<AncestryBar>` | `.ancestry` | The clicked node's ancestor chain; `[` / `]` walk it, rejected classes struck through |
+| `<FieldVocabulary>` | `.vocab` | The canonical field list a click assigns to |
+| `<ChatMessage>` | `.msg` | Operator / system / refusal, with the terse mono variant for what the system did |
 
-### Two decisions worth keeping
+### Three decisions worth keeping
 
 **`<ProgressBar>` shows a stacked bar, not a percentage.** During discovery the
 denominator is still growing, so a percentage would simply lie.
+
+**`<SelectionOverlay>` tints are translucent.** An opaque fill hides the very
+element being selected — and the first build of the mockup did exactly that,
+which is why it is written down here rather than left to taste.
 
 **`<DataTable>` keeps filter state in the URL.** When a run surfaces 40 broken
 pages you want to send yourself that exact filtered view, not reconstruct it.

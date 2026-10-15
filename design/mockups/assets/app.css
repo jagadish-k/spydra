@@ -598,3 +598,147 @@ tbody tr:hover .row-actions { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ========================================= authoring: provenance badges === */
+/* Where a selector came from changes how hard you look at it, so it is a
+   first-class label on the field, not a tooltip. */
+.prov {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 9px; font-weight: var(--sp-weight-medium);
+  letter-spacing: 0.03em; text-transform: uppercase;
+  padding: 1px 5px; border-radius: var(--sp-radius-xs);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.prov-form  { background: var(--sp-bg-subtle);         color: var(--sp-text-secondary); border-color: var(--sp-border); }
+.prov-chat  { background: var(--sp-fb-info-bg);        color: var(--sp-fb-info); }
+.prov-click { background: var(--sp-state-active-bg);   color: var(--sp-state-active); }
+.prov-llm   { background: var(--sp-state-pending-bg);  color: var(--sp-state-pending); }
+
+/* ================================================= authoring: chat pane === */
+
+.chat { display: flex; flex-direction: column; min-height: 0; }
+.chat-log {
+  flex: 1; overflow-y: auto; padding: var(--sp-space-4);
+  display: flex; flex-direction: column; gap: var(--sp-space-3);
+}
+.msg { max-width: 92%; font-size: var(--sp-text-md); line-height: 1.5; }
+.msg .bubble {
+  padding: var(--sp-space-3); border-radius: var(--sp-radius-md);
+  border: 1px solid var(--sp-border); background: var(--sp-bg-surface);
+}
+.msg .who {
+  font-size: var(--sp-text-2xs); color: var(--sp-text-muted);
+  margin-bottom: 4px; letter-spacing: 0.03em; text-transform: uppercase;
+}
+.msg-you { align-self: flex-end; }
+.msg-you .bubble { background: var(--sp-bg-selected); border-color: var(--sp-brand-500); }
+.msg-you .who { text-align: right; }
+/* The system's replies state what it did, not prose about it. */
+.msg-sys .bubble.terse {
+  font-family: var(--sp-font-mono); font-size: var(--sp-text-xs);
+  background: var(--sp-bg-subtle); color: var(--sp-text-secondary);
+}
+.msg-sys .bubble.refusal { background: var(--sp-state-pending-bg); border-color: var(--sp-state-pending); }
+.msg .steps { margin: 6px 0 0; padding-left: 16px; font-size: var(--sp-text-sm); color: var(--sp-text-secondary); }
+.chat-compose {
+  border-top: 1px solid var(--sp-border); padding: var(--sp-space-3);
+  display: flex; flex-direction: column; gap: var(--sp-space-2); flex-shrink: 0;
+}
+.chat-compose textarea {
+  resize: none; min-height: 58px; font-family: var(--sp-font-ui);
+}
+.chat-foot {
+  display: flex; align-items: center; gap: var(--sp-space-3);
+  font-size: var(--sp-text-xs); color: var(--sp-text-muted);
+}
+.chat-foot .spacer { margin-left: auto; }
+.budget { display: inline-flex; align-items: center; gap: 4px; }
+.budget i {
+  width: 6px; height: 6px; border-radius: var(--sp-radius-full);
+  background: var(--sp-border-strong); display: inline-block;
+}
+.budget i.used { background: var(--sp-brand-600); }
+
+/* ============================================ playground: canvas overlay === */
+/* Not an iframe: a screenshot plus absolutely positioned boxes from the
+   geometry list. No supplier markup enters the document. */
+.canvas {
+  position: relative; overflow: auto; flex: 1;
+  background: var(--sp-bg-inset); min-height: 0;
+}
+.canvas-page {
+  position: relative; margin: var(--sp-space-4) auto; width: 92%;
+  background: var(--sp-bg-surface); border: 1px solid var(--sp-border);
+  border-radius: var(--sp-radius-sm); padding: var(--sp-space-4);
+  box-shadow: var(--sp-shadow-sm);
+}
+.sel-box { position: absolute; border-radius: var(--sp-radius-xs); pointer-events: none; }
+/* Tints are translucent, not solid: these boxes are drawn OVER the
+   screenshot, so an opaque fill would hide the very content being selected. */
+/* hover: what you are about to pick */
+.sel-box.hover  { border: 1px dashed var(--sp-brand-600);
+                  background: color-mix(in srgb, var(--sp-brand-500) 10%, transparent); }
+/* assigned: the clicked example */
+.sel-box.picked { border: 2px solid var(--sp-brand-600);
+                  background: color-mix(in srgb, var(--sp-brand-500) 12%, transparent); }
+/* every other node the proposed selector matches — six where you expected
+   one is the whole point of drawing these. */
+.sel-box.match  { border: 1px solid var(--sp-state-pending);
+                  background: color-mix(in srgb, var(--sp-state-pending) 14%, transparent); }
+.sel-box.container { border: 1px dashed var(--sp-viz-4); background: transparent; }
+.sel-box .lbl {
+  position: absolute; top: -15px; left: -1px;
+  font-size: 9px; font-weight: var(--sp-weight-medium);
+  padding: 1px 5px; border-radius: var(--sp-radius-xs);
+  background: var(--sp-brand-600); color: #fff; white-space: nowrap;
+}
+.sel-box.match .lbl     { background: var(--sp-state-pending); color: #fff; }
+.sel-box.container .lbl { background: var(--sp-viz-4); color: #fff; }
+
+/* ancestor chain: [ and ] walk it, which is the cheapest fix for the
+   most error-prone step on this screen. */
+.ancestry {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 6px var(--sp-space-3); border-top: 1px solid var(--sp-border);
+  background: var(--sp-bg-subtle); font-family: var(--sp-font-mono);
+  font-size: 10px; color: var(--sp-text-muted); flex-shrink: 0;
+}
+.ancestry .node { padding: 1px 5px; border-radius: var(--sp-radius-xs); }
+.ancestry .node.here { background: var(--sp-brand-600); color: #fff; }
+.ancestry .node.rejected { text-decoration: line-through; opacity: 0.6; }
+.ancestry .key { margin-left: auto; font-family: var(--sp-font-ui); }
+.kbd {
+  font-family: var(--sp-font-mono); font-size: 10px;
+  padding: 0 4px; border: 1px solid var(--sp-border-strong);
+  border-bottom-width: 2px; border-radius: var(--sp-radius-xs);
+  background: var(--sp-bg-surface); color: var(--sp-text-secondary);
+}
+
+/* field target list — the canonical vocabulary, so forty domains do not end
+   up with price, cost and unit_price meaning the same thing. */
+.vocab { display: flex; flex-direction: column; gap: 1px; }
+.vocab button {
+  display: flex; align-items: center; gap: var(--sp-space-2);
+  width: 100%; text-align: left; cursor: pointer;
+  padding: 5px var(--sp-space-3); border: 1px solid transparent;
+  border-radius: var(--sp-radius-sm); background: transparent;
+  font: inherit; font-size: var(--sp-text-sm); color: var(--sp-text-primary);
+}
+.vocab button:hover { background: var(--sp-bg-hover); }
+.vocab button[aria-pressed="true"] {
+  background: var(--sp-bg-selected); border-color: var(--sp-brand-500);
+  font-weight: var(--sp-weight-medium);
+}
+.vocab .n { margin-left: auto; font-size: var(--sp-text-2xs); color: var(--sp-text-muted); }
+.vocab .core { color: var(--sp-text-muted); font-size: 9px; letter-spacing: 0.03em; }
+
+/* stored click examples — provenance that lets a broken selector be
+   re-generalised against a redesigned DOM instead of re-authored. */
+.examples { display: flex; flex-direction: column; gap: 4px; }
+.examples .ex {
+  display: flex; align-items: center; gap: var(--sp-space-2);
+  font-family: var(--sp-font-mono); font-size: 10px;
+  color: var(--sp-text-secondary);
+}
+.examples .ex .url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.examples .ex .txt { margin-left: auto; color: var(--sp-text-primary); flex-shrink: 0; }

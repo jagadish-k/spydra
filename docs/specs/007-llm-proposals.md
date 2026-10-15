@@ -1,6 +1,6 @@
 # 007 — LLM proposal and verification
 
-**Phase 4** · depends on 003, 005 · ADR-0005, ADR-0009
+**Phase 4** · depends on 003, 005 · ADR-0005, ADR-0009, ADR-0020
 
 The model proposes CSS selectors once per template. It never extracts at
 crawl time and it is never trusted.
@@ -12,12 +12,24 @@ crawl time and it is never trusted.
 `llama-server` runs natively on the host (ADR-0009), reached at
 `LLM_BASE_URL` (default `http://host.docker.internal:8080`).
 
-A 30B-class instruction-tuned model. The Mac Studio Ultra's unified memory
-accommodates it comfortably, and because inference is once-per-template,
-**quality of proposals matters far more than tokens per second**.
+Because inference is once-per-template rather than once-per-page, **quality
+of proposals matters far more than tokens per second**. That inverts the usual
+local-LLM advice and is the reason for the model choice and for best-of-N
+(ADR-0020).
+
+| Tier | Model | Footprint | Used for |
+| --- | --- | --- | --- |
+| primary | Qwen3-Coder 30B-A3B (MoE) | ~20 GB Q4 | every proposal; ~3 B active params makes N=5 sampling affordable |
+| escalation | Qwen 3.6 27B dense | ~22 GB Q4 | retried fields where no sample scored above 60 |
+
+Both fit the Mac Studio Ultra's unified memory with room for the OS. Load one
+at a time; `llama-server` is restarted to switch tiers, which is acceptable
+because escalation is rare and authoring is interactive, not batched.
 
 The application talks to it behind the `LLMClient` port. Swapping models, or
-comparing against a hosted API, touches one adapter.
+comparing against a hosted API, touches one adapter. **Model identity and
+sample index are recorded in `provenance`** (spec 013 §2) so a bad batch of
+selectors can be traced to the model that produced it.
 
 ## 2. Preprocessing — the step that matters
 
@@ -62,8 +74,18 @@ than asking politely for JSON and parsing hopefully.
   "notes": "Price appears once; a second .price node is a strike-through RRP." }
 ```
 
-Temperature 0.1. Deterministic seed. One retry on malformed output, then fail
-with a clear error — do not loop.
+**N=5 samples at temperature 0.7**, not one at 0.1 (ADR-0020). The reasoning
+is counter-intuitive and worth stating: a greedy decode gives one answer with
+no way to tell whether it is good, whereas five varied answers can be ranked
+by *deterministic verification against the real DOM* — so sampling diversity
+is free accuracy when a cheap oracle exists. It does here.
+
+Samples are scored by ADR-0020 §scoring and **merged per field, not per
+sample** (spec 013 §4): the best `title` may come from sample 1 and the best
+`images` from sample 4.
+
+One retry on malformed output per sample, then drop that sample. Five
+malformed samples fail the proposal with a clear error — do not loop.
 
 ## 4. Verification — non-negotiable
 
@@ -107,9 +129,10 @@ positional selectors are the ones that silently break on redesign.
 | Condition | Behaviour |
 | --- | --- |
 | `llama-server` unreachable | 503 problem detail from `/propose`. **Crawling is unaffected.** Sidebar shows the dot red. |
-| Malformed output twice | Fail the proposal, record the raw response, surface "model output unusable". |
+| Malformed output on every sample | Fail the proposal, record the raw responses, surface "model output unusable". |
+| No field scores above 60 | Escalate those fields to the dense model once; if still below, route to manual authoring. |
 | All fields discarded | Template stays a draft, reason `llm_low_confidence`, routed to the review inbox for manual authoring. |
-| Timeout (>120 s) | Abort; a 30B model on this hardware should take seconds. |
+| Timeout (>180 s for the full N=5 batch) | Abort and keep whatever samples returned. |
 
 ## 7. Acceptance
 
@@ -123,3 +146,9 @@ positional selectors are the ones that silently break on redesign.
       retains the price, title and image nodes.
 - [ ] The adapter is behind `LLMClient`; a fake client drives all tests
       without a model running.
+- [ ] Five samples are requested and ranked; a case exists where the winning
+      `price` and the winning `title` come from different samples.
+- [ ] One malformed sample does not fail the proposal.
+- [ ] `provenance.model` records the tier and sample index that won each
+      field.
+- [ ] Escalation to the dense model fires only for fields scoring below 60.

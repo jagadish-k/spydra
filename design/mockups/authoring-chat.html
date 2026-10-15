@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Authoring chat · Spydra</title>
+<link rel="icon" href="../logo/spydra-favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css" />
+<script>
+  /* Resolve the theme before first paint so dark never flashes white. */
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('spydra.theme'); if (s) t = s;
+          else if (matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark'; }
+    catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="page">
+<div class="content">
+
+  <div class="page-head">
+    <div>
+      <h1>Authoring chat — vantage-abrasives.com</h1>
+      <p class="sub">Draft #412 · 3 of 5 sample pages used ·
+        model <span class="mono">qwen3-coder-30b-a3b</span> · best-of-5</p>
+    </div>
+    <div class="actions">
+      <button class="btn">Discard draft</button>
+      <a class="btn btn-primary" href="template-review.html">Open in review</a>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,35fr) minmax(0,65fr);
+              gap:var(--sp-space-4);align-items:start">
+
+    <!-- --------------------------------------------------- conversation -->
+    <div class="card chat" style="height:1030px">
+      <div class="card-head">
+        <h3>Instructions</h3>
+        <div class="actions"><span class="tag">SSE · live</span></div>
+      </div>
+
+      <div class="chat-log">
+
+        <div class="msg msg-you">
+          <div class="who">You</div>
+          <div class="bubble">Here are three product URLs. Pull the title, the
+            price excluding VAT, the supplier, every product image and the
+            spec table.</div>
+        </div>
+
+        <div class="msg msg-sys">
+          <div class="who">Spydra</div>
+          <div class="bubble terse">fetched 3 pages · 2.1 s<br />
+            skeletonised · 2,840 nodes<br />
+            5 samples × 7 fields → 31 candidates<br />
+            verified 6 · discarded 25 (no match 19, claim mismatch 6)</div>
+          <ul class="steps">
+            <li><strong>cost</strong> in your wording resolved to
+              <code class="mono">price_amount</code> via the vocabulary — not a
+              new field.</li>
+            <li><strong>specs</strong> has no core field, so it lands in JSONB
+              and will not appear in cross-domain reports.</li>
+          </ul>
+        </div>
+
+        <div class="msg msg-you">
+          <div class="who">You</div>
+          <div class="bubble">The price you found includes VAT. Use the one in
+            the small print under the button.</div>
+        </div>
+
+        <div class="msg msg-sys">
+          <div class="who">Spydra</div>
+          <div class="bubble terse">re-proposed <strong>price_amount</strong><br />
+            best of 5 · winner sample 4 · score 85<br />
+            verified on 5 of 5 samples<br />
+            transform <code>strip_currency → parse_decimal</code></div>
+        </div>
+
+        <div class="msg msg-you">
+          <div class="who">You</div>
+          <div class="bubble">Now crawl the whole catalogue and give me a CSV.</div>
+        </div>
+
+        <!-- The refusal is part of the design, not an error state. A chat that
+             quietly fetched twenty pages would be the rudest component in a
+             system whose first principle is politeness. -->
+        <div class="msg msg-sys">
+          <div class="who">Spydra</div>
+          <div class="bubble refusal">
+            <strong>Not from here.</strong> This conversation authors a
+            template; it cannot start a run and cannot fetch more than five
+            sample pages. Approve the draft and start the run from
+            <a href="run-monitor.html">Runs</a> — the politeness gate has no
+            exception for interactive work.</div>
+        </div>
+
+      </div>
+
+      <div class="chat-compose">
+        <textarea placeholder="Refine a field, add one, or paste another sample URL…"></textarea>
+        <div class="chat-foot">
+          <span class="budget">
+            <i class="used"></i><i class="used"></i><i class="used"></i><i></i><i></i>
+            3 / 5 sample pages
+          </span>
+          <span class="spacer"></span>
+          <span><span class="kbd">⏎</span> send</span>
+          <button class="btn btn-sm btn-primary">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- -------------------------------------------------- the draft, live -->
+    <div class="stack">
+
+      <div class="card">
+        <div class="card-head">
+          <h3>Draft fields</h3>
+          <div class="actions">
+            <span class="tag">6 verified · 1 unresolved</span>
+            <a class="btn btn-sm" href="playground.html">Click instead</a>
+          </div>
+        </div>
+        <div class="card-body" style="padding:var(--sp-space-2)">
+
+          <div class="selector-field">
+            <div class="fname">title <span class="req" title="Required">*</span></div>
+            <div class="fbody">
+              <input class="sel" type="text" value="h1.product-title" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">Zirconia Flap Disc 115 mm · 120 grit</span>
+                <span class="matches tag">1 match</span>
+              </div>
+              <div class="resolved" style="border:0;padding-top:0">
+                <span class="prov prov-chat">chat</span>
+                <span class="muted" style="font-size:var(--sp-text-xs)">sample 2 · score 92</span>
+                <span class="confidence" style="margin-left:auto"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field">
+            <div class="fname">price_amount <span class="req" title="Required">*</span></div>
+            <div class="fbody">
+              <input class="sel" type="text" value="div.price-block span[itemprop='price']" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">4.85</span>
+                <span class="matches tag">1 match</span>
+              </div>
+              <div class="resolved" style="border:0;padding-top:0">
+                <span class="prov prov-chat">chat</span>
+                <span class="muted" style="font-size:var(--sp-text-xs)">sample 4 · score 85 · ex VAT</span>
+                <span class="confidence" style="margin-left:auto"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field">
+            <div class="fname">vendor</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="div.brand-name > a" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">Vantage Abrasives Ltd</span>
+                <span class="matches tag">1 match</span>
+              </div>
+              <div class="resolved" style="border:0;padding-top:0">
+                <span class="prov prov-click">clicked</span>
+                <span class="muted" style="font-size:var(--sp-text-xs)">2 examples · multi_example</span>
+                <span class="confidence" style="margin-left:auto"><i class="on"></i><i class="on"></i><i class="on"></i></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field">
+            <div class="fname">images</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="div.gallery img[src]" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val">4 URLs</span>
+                <span class="matches tag">many</span>
+              </div>
+              <div class="resolved" style="border:0;padding-top:0">
+                <span class="prov prov-chat">chat</span>
+                <span class="muted" style="font-size:var(--sp-text-xs)">sample 1 · score 78</span>
+                <span class="confidence mid" style="margin-left:auto"><i class="on"></i><i class="on"></i><i></i></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="selector-field is-error">
+            <div class="fname">supplier_ref</div>
+            <div class="fbody">
+              <input class="sel" type="text" value="—" />
+              <div class="resolved">
+                <span class="arrow">→</span>
+                <span class="val empty">no candidate survived verification</span>
+                <span class="matches tag">0</span>
+              </div>
+              <div class="resolved" style="border:0;padding-top:0">
+                <span class="prov prov-llm">escalated</span>
+                <span class="muted" style="font-size:var(--sp-text-xs)">
+                  dense model retried · best score 41 · click it instead</span>
+                <a class="btn btn-sm" href="playground.html" style="margin-left:auto">Select on page</a>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="card-body" style="border-top:1px solid var(--sp-border);padding:var(--sp-space-3) var(--sp-space-4)">
+          <p class="muted" style="margin:0;font-size:var(--sp-text-xs)">
+            Fields are merged <strong>per field</strong>, not per sample: the
+            winning <code class="mono">title</code> came from sample 2 and the
+            winning <code class="mono">price_amount</code> from sample 4. There
+            is no reason to take one model answer whole.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-head"><h3>Verification</h3></div>
+          <div class="card-body">
+            <div class="sample-grid" style="grid-template-columns:1fr repeat(3,26px)">
+              <div class="hd">field</div><div class="hd">1</div><div class="hd">2</div><div class="hd">3</div>
+              <div>title</div><div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+              <div>price_amount</div><div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+              <div>vendor</div><div class="pass">✓</div><div class="pass">✓</div><div class="pass">✓</div>
+              <div>images</div><div class="pass">✓</div><div class="partial">!</div><div class="pass">✓</div>
+              <div>supplier_ref</div><div class="fail">✗</div><div class="fail">✗</div><div class="fail">✗</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3>Discovery rules</h3></div>
+          <div class="card-body">
+            <div class="kv" style="grid-template-columns:96px 1fr">
+              <div class="muted">product_link</div><div class="mono">a.product-card__link</div>
+              <div class="muted">next_page</div><div class="mono">a[rel='next']</div>
+              <div class="muted">depth cap</div><div>5</div>
+            </div>
+            <p class="muted" style="margin:var(--sp-space-3) 0 0;font-size:var(--sp-text-xs)">
+              Proposed from the listing page in the same pass. Dry-run them in
+              review before approving — this is where a faceted-navigation trap
+              is caught, not mid-run.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="banner banner-info">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round"><path d="M8 7.2v4 M8 4.8v.01 M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13z"/></svg>
+        <div>
+          <strong>This chat produces a template, never data.</strong>
+          Every value shown above is what a stored selector resolves to on a
+          sample page — not an extraction. Per-page model extraction would cost
+          determinism, reproducibility and the audit trail, which is why the
+          crawl path never calls the model at all.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="assets/shell.js"></script>
+<script>mountShell({ active: 'chat', crumbs: ['Spydra','Authoring','vantage-abrasives.com'], runnable: false });</script>
+</body>
+</html>

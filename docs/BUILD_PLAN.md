@@ -1,11 +1,11 @@
 # Build plan
 
-Six phases. **Each ends with something that runs end to end** — not a layer,
+Seven phases. **Each ends with something that runs end to end** — not a layer,
 not a set of classes, but a thing you can execute and watch work.
 
 The order follows **risk, not interest**. Phases 0–2 contain everything that
 is hard to change later: queue semantics, the politeness model, URL
-canonicalisation, the observation schema. Phases 4–5 are additive and slot
+canonicalisation, the observation schema. Phases 4–6 are additive and slot
 into ports that already exist.
 
 > The common failure mode for a project like this is to build the model
@@ -173,25 +173,53 @@ running crawl.
 
 ---
 
-## Phase 4 — LLM proposals
+## Phase 4 — LLM proposals and chat authoring
 
 *The model enters. By now the scheduler, the chain and the review screen all
 exist, so this adds a rung and an adapter.*
 
+**4a — the model (spec 007)**
+
 - [ ] `4.1` `LLMClient` port + `LlamaServerClient`, with the fake used by
       tests.
-- [ ] `4.2` DOM skeletonisation (spec 007 §2), with the node budget.
+- [ ] `4.2` DOM skeletonisation (spec 007 §2), with the node budget and
+      stable node indices.
 - [ ] `4.3` Proposal request with JSON-schema-constrained output.
 - [ ] `4.4` **Deterministic verification** (spec 007 §4). Non-negotiable.
-- [ ] `4.5` Derived confidence, including the `nth-of-type` cap.
-- [ ] `4.6` `POST /templates/{id}/propose`; `awaiting_approval` transition.
-- [ ] `4.7` Unknown-pages inbox, grouped by `(domain, reason, url_pattern)`.
-- [ ] `4.8` Dismiss-as-not-a-product-page adds a deny pattern.
-- [ ] `4.9` DOM-skeleton toggle in the review preview.
-- [ ] `4.10` Degradation: `llama-server` down blocks onboarding only.
+- [ ] `4.5` **Best-of-N: N=5 at temp 0.7, the ADR-0020 scorer, per-field
+      merging.** Do not build the single-greedy-sample version first; the
+      scorer is what makes the proposals usable.
+- [ ] `4.6` Derived confidence, including the `nth-of-type` cap; escalation
+      to the dense model for fields scoring below 60.
+- [ ] `4.7` `POST /templates/{id}/propose`; `awaiting_approval` transition.
+- [ ] `4.8` Unknown-pages inbox, grouped by `(domain, reason, url_pattern)`.
+- [ ] `4.9` Dismiss-as-not-a-product-page adds a deny pattern.
+- [ ] `4.10` DOM-skeleton toggle in the review preview.
+- [ ] `4.11` Degradation: `llama-server` down blocks onboarding only.
+
+**4b — the draft (spec 013)**
+
+- [ ] `4.12` `crawl.template_drafts` and `crawl.field_vocabulary` migrations;
+      vocabulary seed + the test asserting `column_name` names a real column.
+- [ ] `4.13` `TemplateDraft` + `FieldCandidate` domain objects, provenance
+      and verification sub-objects included from the start.
+- [ ] `4.14` The shared verify → merge-per-field → rank pipeline. **One
+      implementation, used by all three modes.** If a second appears, ADR-0019
+      has been broken.
+- [ ] `4.15` Draft API surface (spec 013 §5); `approve` promotes to a new
+      template version and discards the draft.
+- [ ] `4.16` Retrofit form-mode review (phase 3) onto drafts, so the
+      hand-written path and the model path share one state shape.
+- [ ] `4.17` Chat endpoint over SSE, with the hard limits enforced
+      server-side — five sample pages, one domain, cannot start a run,
+      cannot write `templates`.
+- [ ] `4.18` Authoring chat screen (SCREENS §10) with provenance badges and
+      the visible sample-page counter.
+- [ ] `4.19` Draft purge sweep for `discarded` rows older than 30 days.
 
 **Exit:** a new domain goes from seed URL to approved template without a
-selector being written by hand. With `llama-server` stopped, crawling is
+selector being written by hand, by chat or by `propose`. The chat refuses a
+sixth sample page and says why. With `llama-server` stopped, crawling is
 unaffected.
 
 ---
@@ -219,6 +247,43 @@ coverage number. The crawl-politeness report is defensible evidence.
 
 ---
 
+## Phase 6 — Visual playground
+
+*Last because it is the most build for the least risk, and because it needs
+the draft pipeline and the sidecar to already be solid. It is also the phase
+most likely to change shape once phases 4–5 have shown where the review time
+actually goes — so do not start it early.*
+
+- [ ] `6.1` `POST /inspect` on the sidecar (spec 014 §2) — full-page
+      screenshot, element geometry, skeleton, **sharing the existing context
+      cap and the egress-only network**.
+- [ ] `6.2` Full-page scroll before capture, so lazy-loaded content has
+      boxes.
+- [ ] `6.3` Attribute and class filtering (spec 014 §3) — hashed, utility and
+      state classes rejected before generalisation.
+- [ ] `6.4` Inspect cache, 30 min, keyed `(url, viewport, full_page)`. **Cache
+      hits claim no politeness lock; misses do.**
+- [ ] `6.5` Layer 1 generalisation — heuristic ancestor walk, top three
+      candidates emitted, not one.
+- [ ] `6.6` Layer 2 generalisation — multi-example index elimination. This is
+      the layer that earns the phase; budget accordingly.
+- [ ] `6.7` Layer 3 — LLM refinement, only below score 60, selectors only.
+- [ ] `6.8` Repeating-container detection with all three confirmations
+      (siblings, structural similarity, geometry).
+- [ ] `6.9` `POST /drafts/{id}/select`; examples persisted in provenance.
+- [ ] `6.10` Select and Skeleton modes on the review screen's left pane,
+      ancestor walk on `[` / `]`, all matches highlighted.
+- [ ] `6.11` `expand` option for `<details>` and `aria-expanded` content.
+- [ ] `6.12` Re-generalisation from stored examples, for a template broken by
+      a redesign. This is the payoff for storing provenance.
+
+**Exit:** a listing and a product template are authored for a previously
+unseen domain entirely by clicking, container included, and the result is
+indistinguishable in shape from a hand-written template. A selector built
+from clicks on two sample pages survives a positional change on a third.
+
+---
+
 ## Deferred
 
 Not in the plan; revisit only with a reason.
@@ -232,6 +297,7 @@ Not in the plan; revisit only with a reason.
 | Proxy rotation | If it is needed, the polite-crawling assumptions have already failed |
 | Free-threaded Python (`cp315t`) | Dependencies ship it; nothing needs it yet (ADR-0017) |
 | Replacing the render sidecar with browserless | The HTTP contract makes it a swap, not a rewrite |
+| Scripted interaction recorder in the playground | Large build; `expand` and Skeleton mode cover nearly all of it (spec 014 §7) |
 
 ---
 

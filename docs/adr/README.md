@@ -30,3 +30,5 @@ shape everything else sits inside.
 | [0016](0016-render-sidecar.md) | Headless rendering runs in a sidecar | Accepted |
 | [0017](0017-version-policy.md) | Track latest versions, behind a readiness gate | Accepted |
 | [0018](0018-react19-tailwind4.md) | React 19 and Tailwind v4 | Accepted |
+| [0019](0019-one-authoring-pipeline.md) | One authoring pipeline, three input modes | Accepted |
+| [0020](0020-best-of-n-verification.md) | Best-of-N sampling, ranked by deterministic verification | Accepted |

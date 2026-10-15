@@ -59,17 +59,22 @@
     <!-- ---------------------------------------------------------- preview -->
     <div class="card" style="overflow:hidden">
       <div class="card-head">
-        <h3>Page preview</h3>
+        <h3>Page view</h3>
         <div class="actions">
+          <!-- Three modes, one pane. Select is the visual playground; it is a
+               mode rather than a tenth screen because it fills the same field
+               list shown to the right. -->
           <div class="btn-group">
-            <button class="btn btn-sm" aria-pressed="true">Rendered</button>
-            <button class="btn btn-sm" aria-pressed="false">DOM skeleton</button>
+            <button class="btn btn-sm" aria-pressed="true">Preview</button>
+            <a class="btn btn-sm" href="playground.html" aria-pressed="false">Select</a>
+            <button class="btn btn-sm" aria-pressed="false">Skeleton</button>
           </div>
         </div>
       </div>
       <div class="preview-frame" style="border:0;border-radius:0">
         <div class="preview-chrome">
           <span class="url">https://vantage-abrasives.com/products/flap-disc-120g-115mm</span>
+          <span class="tag" style="margin-left:auto">screenshot · no iframe</span>
         </div>
         <div class="preview-body" style="height:560px">
           <div class="ghost ghost-line" style="width:40%"></div>

@@ -219,6 +219,33 @@ empty extraction.
 
 ---
 
+## 3a. Authoring tables (phase 4)
+
+Two tables support template authoring. **[Spec 013](013-template-authoring.md)
+is authoritative for their contents**; they are listed here so this spec
+remains the complete picture of the `crawl` schema.
+
+| Table | Purpose | Lifetime |
+| --- | --- | --- |
+| `crawl.template_drafts` | working state for a template being authored by form, chat or playground | until approved or discarded |
+| `crawl.field_vocabulary` | canonical field names, aliases, types and targets | permanent, seeded |
+
+Two constraints belong to this spec rather than 013:
+
+- **A draft is not a template.** Nothing in the crawl path may read
+  `template_drafts`; only `templates` rows with `is_active = true` are
+  crawled from. Enforce by review, and assert it in the scheduler tests.
+- **`field_vocabulary.column_name` must name a real column** on
+  `product_observations` when `target = 'column'`. A seed test asserts this;
+  a typo here silently routes a core field into JSONB, where no cross-domain
+  report can see it.
+
+`template_drafts` is the one table in the schema that is allowed to be
+deleted outright. Drafts older than 30 days in state `discarded` are purged
+by the same job that purges parsed HTML.
+
+---
+
 ## 4. Migrations
 
 Alembic, one migration per schema change, in `backend/migrations/`.
@@ -245,3 +272,6 @@ Alembic, one migration per schema change, in `backend/migrations/`.
       three invalid ones.
 - [ ] Domain objects import nothing from `adapters/` (enforced by an
       import-linter rule in `make lint`).
+- [ ] Every `field_vocabulary` row with `target = 'column'` names an existing
+      column on `product_observations`.
+- [ ] No crawl-path query references `template_drafts`.

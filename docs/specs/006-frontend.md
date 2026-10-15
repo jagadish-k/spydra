@@ -40,7 +40,7 @@ CSS class in brackets is the reference implementation.
 | `AppShell` | `.app` | Sidebar + topbar; the only layout component |
 | `DomainStatePill` | `.pill` | Six lifecycle states |
 | `SelectorField` | `.selector-field` | Editable selector, live resolved value, match count |
-| `PagePreview` | `.preview-frame` | Sandboxed iframe, active selector outlined |
+| `PagePreview` | `.preview-frame` | Screenshot + overlay canvas (Preview / Select / Skeleton), active selector's matches outlined. No iframe — spec 014 §1 |
 | `SampleMatrix` | `.sample-grid` | Per-field × per-URL pass/fail |
 | `ValidationBadge` | `.pill` + count | |
 | `ProgressBar` | `.progress` | Stacked segments, **never a percentage** |

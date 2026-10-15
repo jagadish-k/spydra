@@ -1,7 +1,10 @@
 # Spydra — screens
 
-Nine screens plus a foundations page. Each is specified below and mocked up in
+Ten screens plus a foundations page. Each is specified below and mocked up in
 [`design/mockups/`](../design/mockups/).
+
+Screen 4 carries the visual playground as a *mode*, not as a separate screen —
+see the note there for why.
 
 The screens are ordered by how often you will see them, not by navigation order.
 
@@ -76,10 +79,33 @@ selectors.
 
 **Three panes:**
 
-*Left (45%) — page preview.* Sanitised HTML in a sandboxed iframe. Hovering a
-selector outlines every element it matches, in place. A toggle switches to the
-**DOM skeleton view** — what the model actually saw — which tells you whether a
-wrong proposal was misled or just mistaken.
+*Left (45%) — page view, three modes.* A segmented control: **Preview ·
+Select · Skeleton**.
+
+- **Preview** — a full-page screenshot from the render sidecar with a
+  coordinate overlay. Hovering a selector in the centre pane outlines every
+  element it matches, drawn on the overlay.
+- **Select** — the visual playground (spec 014). Hover highlights the smallest
+  element under the cursor, `[` / `]` walk the ancestor chain, and a click
+  assigns that element to the selected field. The proposed selector appears
+  immediately with **every** match highlighted, so six boxes where you
+  expected one is instant feedback.
+- **Skeleton** — what the model actually saw, node indices visible and
+  clickable. This tells you whether a wrong proposal was misled or just
+  mistaken, and it is the escape hatch for content hidden behind a click.
+
+**There is no iframe.** The pane is a screenshot plus a geometry list from
+`POST /inspect`, so no supplier HTML or script ever enters the app document.
+A sandboxed iframe would block the script but then render the page wrong, and
+cross-origin framing gives no DOM access anyway — which was the whole point.
+Spec 014 §1 covers the trade-off; the cost is that hover states and
+click-to-open content need the `expand` option or Skeleton mode.
+
+**Why the playground is a mode and not a tenth screen.** Clicking a price is
+one way to fill the same field list the centre pane already shows, verified
+against the same sample strip. Splitting it out would mean two screens
+competing to own one draft, two copies of the field list, and a hand-off
+between them in the middle of the only task that matters here.
 
 *Centre (35%) — field list.* One `<SelectorField>` per field: name · editable
 selector · **resolved value on this page** · match count · model confidence.
@@ -220,6 +246,41 @@ Standing reports, not ad-hoc querying. Each is a saved view with CSV and JSON ex
 **The coverage report is the one to build last and read most.** Onboarding pace
 against backlog growth is the number that tells you whether the tiered-coverage
 mitigation is needed yet, or still just an option.
+
+---
+
+## 10 · Authoring chat
+
+**Where a template starts when you have no idea what the page contains.**
+Reached from Domain detail or from a seed: paste one to five URLs, describe
+what you want in plain language, and watch a draft fill in.
+
+**Two panes:**
+
+*Left (35%) — conversation.* Your instructions and the system's replies.
+Each reply is a short statement of what it did, not prose: *"fetched 3 pages ·
+proposed 7 fields · 5 verified · `lead_time` found on 1 of 3."* Streamed over
+SSE (ADR-0012), same transport as run progress.
+
+*Right (65%) — the draft, live.* The same field list and sample strip as
+screen 4, filling in as candidates verify. Each field shows its provenance
+badge — **form · chat · clicked** — because knowing a selector came from a
+model rather than from a click changes how hard you look at it.
+
+**The chat produces a template, never data.** Asking it for "the price on
+these pages" yields a verified selector and the value it resolves to on each
+sample, not a table of extracted prices. Per-page LLM extraction through the
+back door is exactly what ADR-0005 rejects.
+
+**Visible limits, not hidden ones.** A footer shows `3 / 5 sample pages used`.
+Asking for a sixth, for another domain, or for a run to start is refused with
+a one-line reason — the politeness model has no exceptions for interactive
+work, and a chat that quietly fetches twenty pages would be the rudest thing
+in the system.
+
+**"Open in review"** hands the draft to screen 4 with every field, example and
+transcript entry intact. The two screens are two front doors to one draft
+(ADR-0019), so there is nothing to migrate.
 
 ---
 

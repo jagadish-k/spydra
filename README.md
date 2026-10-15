@@ -11,7 +11,7 @@ The model proposes once per template. It never runs during a crawl.
 ## Status
 
 **Design complete, implementation not started.** This repository holds the
-architecture, the design system, static mockups of all nine screens, and a
+architecture, the design system, static mockups of all ten screens, and a
 full development handoff: specs, ADRs and a phased build plan. No application
 code yet.
 
@@ -28,7 +28,7 @@ AGENTS.md            Operating rules for anyone — human or agent — working
 
 docs/
   README.md          Documentation index and reading order
-  BUILD_PLAN.md      Six phases, tasks, exit criteria. What to do next.
+  BUILD_PLAN.md      Seven phases, tasks, exit criteria. What to do next.
   ARCHITECTURE.md    System design. The source of truth for intent.
   DATA_MODEL.md      Core Postgres schema (specs/001 closes its gaps)
   DEVELOPMENT.md     Docker-native environment, commands, macOS gotchas
@@ -42,7 +42,7 @@ docs/
 design/
   tokens/            tokens.css (runtime) · tokens.json (W3C, for Figma)
   logo/              Six SVG variants + the generator that produces them
-  mockups/           Static reference implementation of all nine screens
+  mockups/           Static reference implementation of all ten screens
 
 docker/              Dockerfiles, Caddyfile, init-schemas.sql
 compose.yaml         Seven services

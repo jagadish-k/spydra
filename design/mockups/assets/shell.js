@@ -4,7 +4,7 @@
    straight off disk with file://, where module imports are blocked by CORS.
    The React app has no such constraint; this is a mockup-harness decision.
    The sidebar and topbar are defined once here and injected into every
-   screen. Nine hand-copied shells drift within a day; one definition does
+   screen. Ten hand-copied shells drift within a day; one definition does
    not. In the React app this file corresponds to <AppShell>.
    ========================================================================== */
 
@@ -21,6 +21,8 @@ const ICONS = {
   moon:     'M13.2 9.6A5.6 5.6 0 016.4 2.8 5.8 5.8 0 108.9 14a5.8 5.8 0 004.3-4.4z',
   collapse: 'M6 3.5v9 M2.5 2.5h11v11h-11z',
   play:     'M4 2.5l9 5.5-9 5.5z',
+  chat:     'M2.5 3h11v8h-6l-3 2.5V11h-2z M5 6h6 M5 8h4',
+  playground: 'M3 2.5l4.2 11 1.9-4.4 4.4-1.9z',
 };
 
 const NAV = [
@@ -29,6 +31,9 @@ const NAV = [
   { id: 'seeds',         label: 'Seeds',         href: 'seeds.html' },
   { id: 'runs',          label: 'Runs',          href: 'run-monitor.html',
     count: { text: '412', kind: 'live' } },
+  { section: 'Author' },
+  { id: 'chat',          label: 'Authoring Chat', href: 'authoring-chat.html' },
+  { id: 'playground',    label: 'Playground',    href: 'playground.html' },
   { section: 'Review' },
   { id: 'templates',     label: 'Templates',     href: 'template-review.html',
     count: { text: '7', kind: 'attention' } },

@@ -1,6 +1,6 @@
 # 012 — Render sidecar
 
-**Phase 1** · Node 26 + Playwright · ADR-0016
+**Phase 1** (+ `/inspect` in phase 6) · Node 26 + Playwright · ADR-0016
 
 A stateless HTTP service wrapping Playwright. The Python side keeps the
 `Fetcher` port and talks to it over HTTP; it has no browser dependency at
@@ -38,6 +38,16 @@ POST /render
 | 502 | Navigation failed (DNS, connection refused) | treat as a fetch error |
 | 504 | Render timed out | retry once, then fetch error |
 | 503 | No context available within the queue timeout | backpressure; retry later |
+
+```
+POST /inspect → screenshot + element geometry + skeleton, for the visual
+playground. **Specified in [spec 014](014-playground.md) §2**, not here: the
+contract belongs with the screen that consumes it. What belongs here is that
+it shares this service's browser, context cap, recycling policy and network
+isolation — it is another route, not another service. It counts against the
+same three contexts, so an authoring session and a rendered crawl compete;
+that is correct, since both are real browser work on one machine.
+```
 
 ```
 GET /healthz → {"ok": true, "contexts_in_use": 2, "contexts_max": 3,
@@ -132,3 +142,5 @@ page faults.
 - [ ] With `render` stopped: `static` domains crawl, `auto` falls back and
       records it, `rendered` stalls honestly.
 - [ ] The Python image contains no `playwright` package and no browser.
+- [ ] `/inspect` and `/render` share the context cap: three renders in flight
+      make an `/inspect` call queue, not open a fourth context.

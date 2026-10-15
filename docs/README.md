@@ -19,7 +19,7 @@ Start with [`../AGENTS.md`](../AGENTS.md) — the operating rules — then
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | System design. The source of truth for intent. |
 | [`DATA_MODEL.md`](DATA_MODEL.md) | Core schema. **Incomplete** — [spec 001](specs/001-domain-model.md) closes the gaps. |
 | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Tokens, typography, components, anti-patterns. |
-| [`SCREENS.md`](SCREENS.md) | What each of the nine screens is for. |
+| [`SCREENS.md`](SCREENS.md) | What each of the ten screens is for. |
 | [`BRAND.md`](BRAND.md) | Logo construction, variants, usage. |
 
 The UI specification is `design/mockups/` — static HTML, opens from disk,

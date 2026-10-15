@@ -21,6 +21,8 @@ before implementing; read `docs/adr/` before changing one.
 | [010](010-service-topology.md) | Service topology, routing and data ownership | 0 |
 | [011](011-bff.md) | BFF: scheduling, saved views, aggregation | 3 |
 | [012](012-render-sidecar.md) | Render sidecar | 1 |
+| [013](013-template-authoring.md) | Template authoring: drafts, vocabulary, chat | 4 |
+| [014](014-playground.md) | Visual playground: click-to-select | 6 |
 
 Where a spec and `docs/ARCHITECTURE.md` disagree, the spec is more specific
 and wins on detail; the architecture doc wins on intent. If they disagree on
