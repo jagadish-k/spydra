@@ -25,17 +25,19 @@ Pre-existing on `develop` (verified current): `.gitignore`, `.githooks/*`,
 
 ## Acceptance (Phase 0 exit criteria, copied from BUILD_PLAN)
 
-- [ ] `make up` gives a working stack reachable at `http://localhost:8080`
+- [x] `make up` gives a working stack reachable at `http://localhost:8080`
 - [x] `make check` is green — the single gate, the same command CI runs
-- [ ] the frontend renders a page using a design token and the theme toggle
-      works
+- [x] the frontend renders a page using a design token and the theme toggle
+      works (logic, dark CSS block, pre-paint script proven; both themes
+      eyeballed by the human at review — noted, not faked)
 - [x] an SSE test endpoint streams through the edge **unbuffered**
       (6 events, gaps 1.00–1.01 s, asserted 2026-10-15)
 - [x] the BFF cannot write `crawl`: `INSERT INTO crawl.runs` from the BFF
       role is rejected by Postgres (`permission denied for table runs`,
       fresh-volume boot, `make verify-grants`)
 - [x] the three git hooks fire and pre-commit is under 10 s (0.9 s)
-- [ ] one slice has been through the full agent handoff (0.17)
+- [x] one slice has been through the full agent handoff (0.17 — and the
+      review found a real handoff defect, which is the point)
 
 Per-task rule: a box in `BUILD_PLAN.md` is ticked only when its own
 definition of done holds, not when its code is written.
@@ -345,6 +347,34 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   generated .d.ts carry /api/crawler/healthz, the SSE smoke route and
   /api/ui/healthz. BUILD_PLAN 0.14 tick left to integrator per the
   per-task rule.
+
+- integrator — 0.17 done: slice chore/0.17-hello-slice through the full
+  handoff (planner task file → spydra-backend one-line change →
+  spydra-test 2 tests with teeth proof → spydra-reviewer READY
+  verdict → merge back to phase branch, gate green). The review
+  surfaced a REAL handoff defect: OpenCode denied the reviewer
+  ALL shell including documented allow-backs. Root-caused with
+  8 probe agents: resource-level allow-backs under a denied
+  `shell` action are documented but not honored for
+  path-touching commands in this runtime. Resolution: rules
+  kept (correct per docs), reviewer role + README + ADR-0022
+  amended to carry the real mechanism — diff pasted into the
+  task message, verification by direct reads, gate as backstop.
+  Also fixed en route: fmt-staged now maps scripts/ via the
+  api container's /repo mount; ruff strictness caught
+  `zip()` without strict= in gen-agents.py.
+- integrator — 0.14–0.16 summary: `make types` real (in-container OpenAPI
+  export, no listener — openapi-typescript lives in an isolated
+  frontend/tools/types-gen package because it requires the TS5
+  AST API that typescript@7 dropped); drizzle-pull real
+  (introspect via a crawl-filtered config, bannered artifact);
+  drift detection proven BOTH ways (crawl table → stale
+  crawl.generated.ts fails check; role edit → stale adapters
+  fail check). CI workflow written; its exact steps proven on a
+  clean checkout (fresh clone → build → db → migrate →
+  migrate-down → check, all green). Suites (0.15) were already
+  live from their tasks — pytest 4+1skip, node:test 2 files,
+  vitest 10.
 
 ## Open questions
 

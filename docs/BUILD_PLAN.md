@@ -89,7 +89,7 @@ a dozen ungated commits, is the common mistake.
       `make check` now actually runs them instead of skipping.
 - [x] `0.16` CI running `make check` on a clean checkout, plus
       `make migrate-down`.
-- [ ] `0.17` Agent team smoke test: one trivial slice
+- [x] `0.17` Agent team smoke test: one trivial slice
       (`chore/0.17-hello-slice`) end to end — planner writes
       `.tasks/<branch>.md`, an implementer changes one file, the test role
       adds one test, the reviewer reads the diff, the integrator runs
