@@ -24,4 +24,10 @@ async def _frames() -> AsyncIterator[str]:
 
 @router.get("/__smoke/sse")
 async def smoke_sse() -> StreamingResponse:
-    return StreamingResponse(_frames(), media_type="text/event-stream")
+    # X-Accel-Buffering: no tells any proxy in the path not to buffer the
+    # stream; the edge's flush_interval only covers our own Caddy (ADR-0012).
+    return StreamingResponse(
+        _frames(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no"},
+    )
