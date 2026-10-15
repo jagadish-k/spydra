@@ -1,0 +1,33 @@
+# Spydra edge — one origin, four routes (spec 010 §2).
+#
+# The two load-bearing lines, both easy to break by "tidying":
+#   1. the SSE handle comes BEFORE handle /api/crawler/* — the first
+#      matching handle wins and the general rule would buffer the stream;
+#   2. flush_interval -1 — without it Caddy buffers and SSE arrives in
+#      chunks or not at all. This presents as a frontend bug (spec 010).
+
+:8080 {
+	encode zstd gzip
+
+	# SSE: straight to Python, no BFF hop, no buffering.
+	handle /api/crawler/runs/*/events {
+		reverse_proxy api:8000 {
+			flush_interval -1
+			transport http {
+				response_header_timeout 24h
+			}
+		}
+	}
+
+	handle /api/crawler/* {
+		reverse_proxy api:8000
+	}
+
+	handle /api/ui/* {
+		reverse_proxy bff:3000
+	}
+
+	handle {
+		reverse_proxy web:5173        # prod: file_server from the built SPA
+	}
+}

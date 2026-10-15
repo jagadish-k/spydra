@@ -30,7 +30,7 @@ flat = $(subst $(NL), ,$(1))
 
 .PHONY: help hooks agents agents-check \
         up down reset reset-deps logs ps \
-        shell-api shell-bff shell-web psql \
+        shell-api shell-bff shell-web psql verify-grants \
         migrate migrate-api migrate-ui migrate-down migrate-down-api \
         migrate-down-ui revision revision-ui drizzle-pull drizzle-studio \
         test test-api test-bff test-web e2e seed-dev \
@@ -88,6 +88,33 @@ shell-web: ## sh inside the web container
 
 psql: ## psql into the dev database (both schemas)
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) exec db psql -U spydra
+
+verify-grants: ## PROVE the BFF role cannot write crawl (spec 010 §3, BUILD_PLAN 0.7)
+	$(call skip_if_missing,compose.yaml) && \
+	echo "·  as spydra_api (schema owner): create a throwaway crawl.runs" && \
+	$(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
+	  -c "CREATE TABLE crawl.runs (id integer)" >/dev/null && \
+	echo "·  as spydra_bff: INSERT must be REJECTED" && \
+	if $(COMPOSE) exec -T db psql postgres://spydra_bff:spydra@localhost:5432/spydra \
+	    -c "INSERT INTO crawl.runs VALUES (1)" >/dev/null 2>/tmp/spydra-grant.err; then \
+	  $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
+	    -c "DROP TABLE crawl.runs" >/dev/null; \
+	  echo "✗ INSERT INTO crawl.runs SUCCEEDED from spydra_bff — the data-ownership boundary is broken"; exit 1; \
+	else \
+	  grep -q "permission denied" /tmp/spydra-grant.err && echo "  ✓ rejected: $$(grep -m1 'permission denied' /tmp/spydra-grant.err | sed 's/ERROR: //')"; \
+	fi; \
+	echo "·  as spydra_bff: SELECT must be ALLOWED (aggregation path)" && \
+	$(COMPOSE) exec -T db psql postgres://spydra_bff:spydra@localhost:5432/spydra \
+	  -c "SELECT count(*) FROM crawl.runs" >/dev/null && echo "  ✓ select granted"; \
+	echo "·  as spydra_api: the ui schema must be INVISIBLE" && \
+	if $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
+	    -c "CREATE TABLE ui.probe (id integer)" >/dev/null 2>&1; then \
+	  echo "✗ spydra_api wrote to ui — no route in should exist"; $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra -c "DROP TABLE crawl.runs" >/dev/null; exit 1; \
+	else \
+	  echo "  ✓ rejected (permission denied for schema ui)"; \
+	fi; \
+	$(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
+	  -c "DROP TABLE crawl.runs" >/dev/null && echo "✓ grants hold: bff reads crawl, writes nothing; api never sees ui"
 
 # --- migrations: two chains, two owners (spec 010 §3) ------------------------
 
