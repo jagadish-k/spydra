@@ -376,6 +376,20 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   live from their tasks — pytest 4+1skip, node:test 2 files,
   vitest 10.
 
+- reviewer — phase-final review (fresh context, diff pasted per the new
+  protocol): verdict PHASE-0 READY, 0 blockers. SHOULD-FIXes
+  all landed: stray bff/drizzle/{schema,relations}.ts deleted
+  (0.10 introspection debris), palette guard extended to
+  side-prefixed utilities (border-t-red-500) and arbitrary
+  colour values (bg-[#dc2626]) with a teeth proof on exactly
+  those two, BUILD_PLAN 0.4/0.5 ticked (DoD held, ticks
+  missed). NITs landed: truncation never exceeds the byte cap
+  (split-U+FFFD trimmed; test now cuts mid-sequence via €),
+  .env.example documents the hardcoded URLs, duplicate smoke
+  coverage trimmed from test_healthz.py. Filed as-is: 503
+  catch breadth (render), ms-collision in migrate-down ledger
+  match, worker placeholder sleep (1.11).
+
 ## Open questions
 
 - ADR-0023 (drizzle down-migrations) to be written and verified before 0.10

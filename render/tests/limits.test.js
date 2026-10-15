@@ -27,7 +27,10 @@ test('one byte over the cap truncates and flags', () => {
 });
 
 test('multibyte content cut mid-sequence flags and stays within the byte cap', () => {
-  const over = 'é'.repeat(Math.floor(MAX_HTML_BYTES / 2) + 10); // 2 bytes/char
+  // 3 bytes/char against an even cap: the cut MUST land mid-sequence, so a
+  // regression that lets the decoded U+FFFD push past the cap fails here
+  // (the reviewer's finding — é never split, € always does).
+  const over = '€'.repeat(Math.floor(MAX_HTML_BYTES / 3) + 10);
   const r = truncateHtml(over);
   assert.equal(r.truncated, true);
   assert.ok(Buffer.byteLength(r.html, 'utf8') <= MAX_HTML_BYTES);

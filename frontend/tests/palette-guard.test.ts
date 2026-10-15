@@ -15,7 +15,13 @@ import { expect, test } from "vitest";
 // the repo's design/ on a host checkout — same path trick as theme.css.
 
 const PALETTE_UTILITY =
-  /(^|[^a-z-])(?:bg|text|border|ring|fill|stroke|from|via|to|shadow|outline|decoration|divide|accent|caret)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-[0-9]{2,3}\b/;
+  /(^|[^a-z-])(?:bg|text|border|ring|fill|stroke|from|via|to|shadow|outline|decoration|divide|accent|caret)-(?:[trblxyse]-)?(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-[0-9]{2,3}\b/;
+
+// Arbitrary colour values are the same defect by another spelling: they
+// compile regardless of the palette removal, so nothing else would catch
+// them (ADR-0018 — colour carries state, and only the token system has any).
+const ARBITRARY_COLOUR =
+  /(?:bg|text|border|ring|fill|stroke|from|via|to|shadow|outline|decoration|divide|accent|caret)-\[(?:#|rgb|hsl|oklch|lab|color\()/;
 
 const SCANNED_EXTENSIONS = new Set([".ts", ".tsx", ".css", ".html"]);
 
@@ -71,7 +77,7 @@ test("no raw Tailwind palette utilities in src/ or index.html", () => {
     const rel = path.slice(frontendRoot.length + 1);
     const lines = readFileSync(path, "utf8").split("\n");
     lines.forEach((line, index) => {
-      if (PALETTE_UTILITY.test(line)) {
+      if (PALETTE_UTILITY.test(line) || ARBITRARY_COLOUR.test(line)) {
         violations.push(`${rel}:${index + 1}: ${line.trim()}`);
       }
     });

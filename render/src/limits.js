@@ -20,7 +20,10 @@ export const MAX_TIMEOUT_MS = 30_000;
 export function truncateHtml(html) {
   const buf = Buffer.from(html, 'utf8');
   if (buf.length <= MAX_HTML_BYTES) return { html, truncated: false };
-  // toString() turns a UTF-8 sequence split at the cut into U+FFFD — an
-  // honest marker at the truncation point, cheaper than seeking a boundary.
-  return { html: buf.subarray(0, MAX_HTML_BYTES).toString('utf8'), truncated: true };
+  // A cut landing mid-UTF-8-sequence decodes to U+FFFD (3 bytes), which
+  // would push the result past the cap — trim the replacement too, so the
+  // returned string is never longer than MAX_HTML_BYTES.
+  let cut = buf.subarray(0, MAX_HTML_BYTES).toString('utf8');
+  if (Buffer.byteLength(cut, 'utf8') > MAX_HTML_BYTES) cut = cut.slice(0, -1);
+  return { html: cut, truncated: true };
 }

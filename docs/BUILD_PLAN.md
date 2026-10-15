@@ -54,9 +54,9 @@ a dozen ungated commits, is the common mistake.
       three hooks fire**: a long commit subject is rejected, a staged `.env`
       is rejected, a push to `develop` is refused. Time pre-commit and
       confirm it is under the 10 s budget (`WORKFLOW.md` §2).
-- [ ] `0.4` Dockerfiles: `api`, `worker` (**no browser**), `render`
+- [x] `0.4` Dockerfiles: `api`, `worker` (**no browser**), `render`
       (Playwright Node image), `bff`, `web`.
-- [ ] `0.5` `compose.yaml` per `DEVELOPMENT.md` — seven services, the
+- [x] `0.5` `compose.yaml` per `DEVELOPMENT.md` — seven services, the
       `egress` network for `render`, `shm_size: 1gb`, named volumes for both
       `node_modules` and the venv, `extra_hosts` for the host LLM.
 - [x] `0.6` `docker/Caddyfile` with the four routes. **Verify SSE is not
