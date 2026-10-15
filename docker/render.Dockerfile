@@ -8,8 +8,10 @@ FROM mcr.microsoft.com/playwright:v1.64.1-noble
 WORKDIR /app
 COPY render/package.json ./
 RUN npm install
+COPY render/src src
+COPY render/tests tests
 
-# Placeholder until task 0.11 builds the real service (POST /render +
-# GET /healthz). Keeps the container up so `docker compose ps` is honest; the
-# /healthz probe fails until then, which nothing depends_on (ADR-0016).
-CMD ["node", "-e", "console.log('render placeholder — task 0.11'); setInterval(() => {}, 1e9)"]
+# Spec 012: POST /render + GET /healthz on :3001. The browser launches at
+# boot; if it cannot, the process exits and the healthcheck goes unhealthy.
+EXPOSE 3001
+CMD ["node", "src/index.js"]

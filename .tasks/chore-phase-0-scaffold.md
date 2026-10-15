@@ -109,7 +109,7 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   manylinux aarch64 wheel (verified on PyPI; the domain→adapters
   contract moves to a stdlib-AST pytest in 0.8, which blocks CI
   where a lint only warns). `design/tokens/*` + `docs/
-       UI_STATES.md` appeared in the tree mid-session — NOT this
+     UI_STATES.md` appeared in the tree mid-session — NOT this
   branch's work, left uncommitted for the human.
 
 - integrator — 0.6 PROVEN: 6 SSE events through :8080, arrival gaps
@@ -191,6 +191,30 @@ uv lock`, same pinned uv 0.13.1; stale spydra_venv volume dropped
   re-proven on the real db, then 0.10 can tick. Dev-db evidence left
   pristine: runtime grant revoked, stray ui.__drizzle_migrations dropped,
   scratch db deleted.
+
+- ops — 0.11 render sidecar. Plain ESM node:http (zero new npm deps —
+  two routes don't justify express; body parsing hand-rolled with the
+  64 KB cap enforced while reading). src/: limits.js (caps + truncate),
+  validate.js (422 matrix + 30 s clamp), context-queue.js (cap with
+  injectable timers), index.js (server, one browser, ref-counted entries,
+  retire-between-requests so recycle drains in-flight contexts). Dockerfile
+  placeholder → real CMD; pin pairing untouched. compose untouched —
+  /healthz shape matches the existing healthcheck. Tests: node --test,
+  no browser, mock.timers for the 5 s queue window — 17/17 in container.
+  Live-verified: healthz exact spec shape (contexts_max 3, browser_version
+  156.0.8078.4); example.com render 200 with full contract; 422s (bad
+  URL/protocol/wait_until/timeout_ms), 400 bad JSON, 413 >64 KB;
+  **503 proven live** — 3 holders via never-matching wait_for_selector
+  (15 s), 4th queued exactly 5.015 s then 503, holders returned 504 (=
+  timeout classification proven too); ADR-0023 re-check: api:8000 and
+  db:5432 from inside render → ENOTFOUND. Integration gaps stated:
+  alert() auto-dismiss wired but not live-proven (no fixture page that
+  dialogs); 10 MB truncation is unit-proven only; recycle path
+  (500 pages/30 min) is code-reviewed but not waited out. Note: the
+  playwright:v1.64.1-noble image ships **Node 24.21**, not 26 —
+  AGENTS.md/010 say "Node 26"; reality wins unless ops re-pins (did not:
+  the playwright pin pairing is load-bearing). BUILD_PLAN 0.11 tick left
+  to integrator after review.
 
 ## Open questions
 

@@ -1,10 +1,16 @@
 # 012 — Render sidecar
 
-**Phase 1** (+ `/inspect` in phase 6) · Node 26 + Playwright · ADR-0016
+**Phase 1** (+ `/inspect` in phase 6) · Node + Playwright · ADR-0016
 
 A stateless HTTP service wrapping Playwright. The Python side keeps the
 `Fetcher` port and talks to it over HTTP; it has no browser dependency at
 all.
+
+> The official `mcr.microsoft.com/playwright` image decides the sidecar's
+> Node major (v1.64.1-noble ships Node 24, not the repo's Node 26). That is
+> accepted: the npm-package↔image-tag pairing is what is load-bearing
+> (ADR-0016), and the Node-26 policy governs the images _we_ pick the base
+> for (`bff`, `web` — ADR-0017).
 
 ---
 
@@ -31,13 +37,13 @@ POST /render
 }
 ```
 
-| Code | Meaning | Python side |
-| --- | --- | --- |
-| 200 | Rendered | proceed to extraction |
-| 422 | Bad request (malformed URL, unknown `wait_until`) | bug; fail the page |
-| 502 | Navigation failed (DNS, connection refused) | treat as a fetch error |
-| 504 | Render timed out | retry once, then fetch error |
-| 503 | No context available within the queue timeout | backpressure; retry later |
+| Code | Meaning                                           | Python side                  |
+| ---- | ------------------------------------------------- | ---------------------------- |
+| 200  | Rendered                                          | proceed to extraction        |
+| 422  | Bad request (malformed URL, unknown `wait_until`) | bug; fail the page           |
+| 502  | Navigation failed (DNS, connection refused)       | treat as a fetch error       |
+| 504  | Render timed out                                  | retry once, then fetch error |
+| 503  | No context available within the queue timeout     | backpressure; retry later    |
 
 ```
 POST /inspect → screenshot + element geometry + skeleton, for the visual
@@ -81,15 +87,15 @@ This service fetches arbitrary operator-supplied URLs with a real browser. It
 is the largest attack surface in the system even though it only ever serves
 one user.
 
-| Guard | Setting |
-| --- | --- |
-| Request body | 64 KB max |
-| Response HTML | 10 MB max; truncate and flag beyond |
-| Navigation timeout | 30 s hard ceiling regardless of request |
-| JavaScript dialogs | auto-dismissed; never block |
-| Downloads | disabled |
-| Permissions | geolocation, camera, mic, notifications all denied |
-| Network | **no access to the docker-internal network** |
+| Guard              | Setting                                            |
+| ------------------ | -------------------------------------------------- |
+| Request body       | 64 KB max                                          |
+| Response HTML      | 10 MB max; truncate and flag beyond                |
+| Navigation timeout | 30 s hard ceiling regardless of request            |
+| JavaScript dialogs | auto-dismissed; never block                        |
+| Downloads          | disabled                                           |
+| Permissions        | geolocation, camera, mic, notifications all denied |
+| Network            | **no access to the docker-internal network**       |
 
 The last one matters. Put `render` on an egress-only network with no route to
 `db`, `api` or `bff`. A page that fetches `http://db:5432` or
@@ -101,11 +107,11 @@ This is cheap to configure and the only real isolation boundary in the stack.
 `RenderServiceFetcher` implements `Fetcher` (ADR-0008) and is selected by
 `domains.render_mode`:
 
-| Mode | Behaviour |
-| --- | --- |
-| `static` | `HttpxFetcher` only |
-| `rendered` | `RenderServiceFetcher` only |
-| `auto` | static first; if the template's **required** fields fail to resolve on a 200, retry once through the sidecar and record which path won |
+| Mode       | Behaviour                                                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `static`   | `HttpxFetcher` only                                                                                                                    |
+| `rendered` | `RenderServiceFetcher` only                                                                                                            |
+| `auto`     | static first; if the template's **required** fields fail to resolve on a 200, retry once through the sidecar and record which path won |
 
 `auto` is why the cost of a wrong onboarding guess is one wasted cheap fetch
 rather than a silently empty extraction. After a few runs the flag can be

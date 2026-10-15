@@ -1,6 +1,11 @@
 {
   "name": "spydra-render",
   "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
   "dependencies": {
     "playwright": "1.64.1"
   }
