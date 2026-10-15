@@ -60,26 +60,33 @@ FORBIDDEN_COMMANDS = ("drizzle-kit push*",)
 # shell. `*` is denied first and these are the exceptions, because OpenCode
 # resolves an ordered list and the last matching rule wins.
 #
-# Beyond git itself: the scanner splits compound commands and pipes into one
-# resource per segment, and ANY denied segment denies the whole call — so a
-# bare `git diff*` allow dies the moment a reviewer writes `git diff | head`.
-# The pipe partners below are all read-only, which is the reviewer's whole
-# diet. (Found by the 0.17 slice; see ADR-0022 §6.)
+# REALITY, verified during the 0.17 slice with eight probe agents: the
+# current OpenCode runtime does NOT honor resource-level allow-backs under a
+# denied `shell` action for any command that touches a path (echo/pwd pass;
+# `cat Makefile` and `git log --oneline -2` are denied even with exact
+# literal allows and a read:* allow). Documented-but-not-honored. The rules
+# below stay because they are correct per the docs and may be honored in a
+# future runtime — but NOTHING depends on them: the reviewer role instructs
+# the integrator to paste the diff into the task message, and the reviewer
+# verifies by direct reads, which work. The gate is the backstop (ADR-0022).
 READONLY_SHELL = (
-    "git diff*",
-    "git log*",
-    "git show*",
-    "git status*",
-    "git branch*",
-    "head*",
-    "tail*",
-    "wc*",
-    "grep*",
-    "cat*",
-    "sed -n*",
-    "ls*",
-    "find*",
-    "rg*",
+    "git diff *",
+    "git log *",
+    "git show *",
+    "git status *",
+    "git branch *",
+    "git branch",
+    "head *",
+    "tail *",
+    "wc *",
+    "grep *",
+    "cat *",
+    "sed -n *",
+    "ls *",
+    "ls",
+    "find *",
+    "rg *",
+    "pwd",
 )
 
 

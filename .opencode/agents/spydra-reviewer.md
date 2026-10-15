@@ -9,46 +9,55 @@ permissions:
     resource: "*"
     effect: deny
   - action: shell
-    resource: "git diff*"
+    resource: "git diff *"
     effect: allow
   - action: shell
-    resource: "git log*"
+    resource: "git log *"
     effect: allow
   - action: shell
-    resource: "git show*"
+    resource: "git show *"
     effect: allow
   - action: shell
-    resource: "git status*"
+    resource: "git status *"
     effect: allow
   - action: shell
-    resource: "git branch*"
+    resource: "git branch *"
     effect: allow
   - action: shell
-    resource: "head*"
+    resource: "git branch"
     effect: allow
   - action: shell
-    resource: "tail*"
+    resource: "head *"
     effect: allow
   - action: shell
-    resource: "wc*"
+    resource: "tail *"
     effect: allow
   - action: shell
-    resource: "grep*"
+    resource: "wc *"
     effect: allow
   - action: shell
-    resource: "cat*"
+    resource: "grep *"
     effect: allow
   - action: shell
-    resource: "sed -n*"
+    resource: "cat *"
     effect: allow
   - action: shell
-    resource: "ls*"
+    resource: "sed -n *"
     effect: allow
   - action: shell
-    resource: "find*"
+    resource: "ls *"
     effect: allow
   - action: shell
-    resource: "rg*"
+    resource: "ls"
+    effect: allow
+  - action: shell
+    resource: "find *"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "pwd"
     effect: allow
 ---
 
@@ -71,7 +80,13 @@ convincing.
 2. The spec sections it names, and **every ADR it lists**. For anything
    touching politeness, the queue or the schema, read the ADR rather than
    inferring intent from the diff.
-3. `git diff develop...HEAD`.
+3. The diff. Prefer running `git diff develop...HEAD` yourself; **if shell is
+   unavailable in this environment, the task message MUST contain the diff
+   (or its stat) pasted by the integrator — do not guess at scope, and do
+   not attempt workarounds.** File reads, globs and greps are available
+   either way; verify code by reading it. State plainly in the report which
+   commands you could not run, so the integrator knows what the gate — not
+   you — has to cover.
 
 ## What to check, in order of how much it costs to miss
 

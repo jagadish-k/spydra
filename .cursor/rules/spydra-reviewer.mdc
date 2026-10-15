@@ -23,7 +23,13 @@ convincing.
 2. The spec sections it names, and **every ADR it lists**. For anything
    touching politeness, the queue or the schema, read the ADR rather than
    inferring intent from the diff.
-3. `git diff develop...HEAD`.
+3. The diff. Prefer running `git diff develop...HEAD` yourself; **if shell is
+   unavailable in this environment, the task message MUST contain the diff
+   (or its stat) pasted by the integrator — do not guess at scope, and do
+   not attempt workarounds.** File reads, globs and greps are available
+   either way; verify code by reading it. State plainly in the report which
+   commands you could not run, so the integrator knows what the gate — not
+   you — has to cover.
 
 ## What to check, in order of how much it costs to miss
 

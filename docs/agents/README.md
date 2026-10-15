@@ -75,13 +75,17 @@ Antigravity's always-on budget is shared across all rules.
 
 **OpenCode v2 is the strictest of the four**, because its permission model
 covers both the filesystem and the shell. The generator emits an ordered rule
-list — broad rule first, exceptions after, since the last matching rule
-wins — so the reviewer gets `edit: deny` and `shell: deny` with `git diff`,
-`log`, `show` and `status` allowed back, plus the read-only pipe partners
-(`head`, `tail`, `wc`, `grep`, `cat`, `ls`, …): the scanner denies a compound
-command whole when any segment is denied, so a bare `git diff*` allow dies
-the moment a reviewer writes `git diff | head` (found during the 0.17 slice).
-It has what it needs to review and nothing it needs to write.
+list — broad rule first, exceptions after, per the documented last-match-wins
+— so the reviewer gets `edit: deny` and `shell: deny` with read-only git and
+pipe-partner exceptions allowed back. **Caveat, verified during the 0.17
+slice with probe agents: the current OpenCode runtime does not honor
+resource-level allow-backs under a denied `shell` action for commands that
+touch a path** (`echo`/`pwd` pass; `cat Makefile` fails even with a
+literal allow and `read: *` allowed). The rules stay — they are correct per
+the docs and cost nothing — but nothing depends on them: the reviewer role
+instructs that the diff be pasted into its task message when shell is
+unavailable, and the reviewer verifies by direct reads. The backstop is the
+same as everywhere else: the diff, and the gate.
 
 Read-write roles get the repository's own rules as permissions: no edits to
 any generated file, and `drizzle-kit push` refused outright (AGENTS.md rules

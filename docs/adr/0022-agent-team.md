@@ -113,11 +113,15 @@ Three consequences worth stating plainly:
   which take a tool allowlist and an ordered permission list respectively.
   OpenCode is the strictest of the four: its model covers the shell as well
   as the filesystem, so the reviewer gets `edit: deny`, `shell: deny`, and
-  `git diff`/`log`/`show`/`status` allowed back — plus the read-only pipe
-  partners (`head`, `tail`, `wc`, `grep`, `cat`, …), because the scanner
-  denies a compound command whole when any segment is denied (amended after
-  the 0.17 slice found it) — everything it needs to
-  review and nothing it needs to write. On Cursor and Antigravity it is
+  `git diff`/`log`/`show`/`status` allowed back — everything it needs to
+  review and nothing it needs to write. **Caveat found by the 0.17 slice:**
+  the OpenCode runtime, as of phase 0, does not honor resource-level
+  allow-backs under a denied `shell` action for commands touching a path
+  (verified with probe agents; documented in `docs/agents/README.md`). The
+  generated rules are still correct per the docs, but the reviewer role
+  carries the real mechanism: when shell is unavailable the integrator
+  pastes the diff into the task message, and the reviewer verifies by
+  direct reads. On Cursor and Antigravity it is
   prose. That is a genuine difference in enforcement strength and it matters
   most for the reviewer; the backstop everywhere is the same as for
   everything else here — the diff, and the gate.
