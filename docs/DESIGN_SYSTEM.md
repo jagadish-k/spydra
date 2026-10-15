@@ -20,10 +20,11 @@ colours mean domain state. Everything else is neutral. If everything is
 coloured, the one red row stops registering — and finding that row is the
 entire job.
 
-This is enforced structurally, not by discipline: `tailwind.config.ts`
-**replaces** the default palette rather than extending it, so `text-red-600`
-in a component fails to compile. Components consume semantic tokens
-(`text-state-broken`, `bg-surface`) or they do not build.
+This is enforced structurally, not by discipline:
+`design/tokens/tailwind-theme.css` sets `--color-*: initial` before
+declaring the semantic set, so `text-red-600` in a component fails to
+compile. Components consume semantic utilities (`text-state-broken`,
+`bg-surface`) or they do not build.
 
 ---
 
@@ -31,7 +32,30 @@ in a component fails to compile. Components consume semantic tokens
 
 Declared once in [`design/tokens/tokens.css`](../design/tokens/tokens.css),
 mirrored in `tokens.json` (W3C format, for Figma and other tooling), exposed
-to Tailwind by `tailwind.config.ts`.
+to Tailwind v4 by
+[`design/tokens/tailwind-theme.css`](../design/tokens/tailwind-theme.css).
+
+**Every token is prefixed `--sp-*`.** Tailwind v4 claims `--color-*`,
+`--text-*`, `--font-*`, `--radius-*`, `--shadow-*`, `--leading-*`,
+`--tracking-*` and `--ease-*` as theme namespaces; an unprefixed
+`--text-primary` would be silently read as a font size (ADR-0018). Do not
+remove the prefix.
+
+### Utility reference
+
+| Need | Class |
+| --- | --- |
+| App background | `bg-canvas` |
+| Card / panel | `bg-surface border border-line rounded-lg` |
+| Table header | `bg-subtle` |
+| Body text | `text-ink` |
+| Secondary text | `text-ink-muted` |
+| Metadata | `text-ink-subtle` |
+| Primary button | `bg-brand text-white hover:bg-brand-hover` |
+| Active nav item | `bg-selected text-ink-brand` |
+| Broken state pill | `bg-state-broken-tint text-state-broken` |
+| Focus ring | `ring-2 ring-focus ring-offset-2` |
+| Chart series | `stroke-viz-1` … `stroke-viz-6` |
 
 ### Theme
 
@@ -167,4 +191,5 @@ Named explicitly, because crawler tooling drifts toward them by default:
 - Decorative spider webs in the chrome. The logo carries the metaphor; the
   interface does not repeat it
 - Colour used for emphasis rather than meaning
-- Raw Tailwind palette classes in components (and the config makes these fail to build)
+- Raw Tailwind palette classes in components (the theme makes these fail to build)
+- Removing the `--sp-*` token prefix (it is what prevents a silent Tailwind namespace collision)

@@ -1,6 +1,14 @@
 # Spydra — data model
 
-> Extracted from the architecture blueprint. The schema below is the authoritative reference; `ARCHITECTURE.md` explains why it is shaped this way.
+> **This file is the core schema but it is not complete, and it contains four
+> known errors.** [`specs/001-domain-model.md`](specs/001-domain-model.md) is
+> the authoritative schema for implementation: it adds the missing tables
+> (`runs`, `run_events`, `asset_queue`, `template_samples`) and corrects
+> `domain_state`, `render_mode`, `in_flight` and `asset_concurrency`.
+> Read that spec before writing the migration.
+
+> Extracted from the architecture blueprint. `ARCHITECTURE.md` explains why
+> these shapes were chosen; the spec above supersedes this file on detail.
 
 Core fields are typed columns; variable per-site attributes (spec tables, supplier metadata) go in JSONB. Forcing both into one shape loses either validation or flexibility.
 

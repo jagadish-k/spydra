@@ -1,0 +1,151 @@
+# Testing strategy
+
+The point of the test suite is to catch the two failures that actually hurt:
+**getting blocked** and **silently extracting wrong data**. Coverage
+percentage is not a goal; those two are.
+
+---
+
+## 1. Layers
+
+| Layer | Tool | Runs against | Speed |
+| --- | --- | --- | --- |
+| Unit | pytest / vitest / node:test | Nothing external | ms |
+| Integration | pytest, BFF suite | **Real Postgres** | seconds |
+| Contract | pytest + openapi | Both running APIs | seconds |
+| End-to-end | Playwright | The whole stack through the edge | a minute |
+
+End-to-end tests go through **the edge on :8080**, not directly to a service.
+Testing against `api:8000` skips the routing that is the most likely thing to
+be misconfigured.
+
+### Never SQLite
+
+Integration tests run against real Postgres, in the compose stack, on a
+separate `spydra_test` database. `SKIP LOCKED`, `DISTINCT ON`, partial unique
+indexes, arrays and JSONB operators either do not exist in SQLite or behave
+differently. A SQLite suite would be testing a different system — and the
+concurrency guarantee is the thing most worth testing.
+
+Each test gets a transaction that is rolled back, except the concurrency tests,
+which need real committed rows and clean up after themselves.
+
+### No network, ever
+
+Unit and integration tests make no outbound requests.
+
+- HTTP: `respx` to mock `httpx`.
+- Pages: real HTML fixtures in `tests/fixtures/pages/`, captured once from
+  real sites and **committed**. Scrub them of anything identifying beyond the
+  public page content.
+- LLM: a fake `LLMClient` returning canned proposals. The entire proposal and
+  verification path is tested without a model running.
+- **Rendering: a fake render service.** The Python suite never starts
+  Chromium — `RenderServiceFetcher` is tested against a stub returning
+  recorded HTML, plus the 503-backpressure and timeout paths. The sidecar has
+  its own suite that does drive a real browser.
+- Playwright tests serve fixtures from a local static server in the test
+  network, not from the internet.
+
+---
+
+## 2. What must be tested
+
+These are not negotiable; each maps to a stated failure mode.
+
+**Politeness (spec 002)** — the guarantee the system exists to keep.
+
+- Two workers, one active domain → never concurrent. Assert on observed fetch
+  timestamps, not on mocks.
+- Two workers, four domains → four concurrent.
+- Killed worker → leased row returns to `pending`, `in_flight` reconciled.
+- Three 403s → domain paused, queue abandoned.
+- `Crawl-delay: 10` raises a 2 s delay; `Crawl-delay: 1` does not lower it.
+- robots.txt 5xx → domain skipped for the run.
+- Inter-request gaps show jitter, not a constant.
+
+**Silent extraction failure (spec 003)** — the one that produces no error.
+
+- Required field failing validation routes to `unknown_pages` *and* writes
+  the observation.
+- 21% failure rate breaks the domain and halts it; 19% does not.
+- A price of "POA" is a validation failure, not `0.00`.
+- Unchanged page → identical `content_hash`, no duplicate full row.
+- A redesigned fixture (same URL, new markup) produces `empty_extraction`.
+
+**LLM verification (spec 007)**
+
+- A proposal whose claimed text does not match the DOM is discarded.
+- A zero-match selector never reaches the API response.
+- `nth-of-type` capped at `medium` confidence.
+
+**Migrations**
+
+- `upgrade head` from empty, then `downgrade base`, on every migration. CI
+  fails an irreversible migration.
+
+**Contract (ADR-0013)**
+
+- `make types` on a clean tree produces no diff, for **both** schemas.
+- Every documented endpoint in specs 005 and 011 exists with the documented
+  method.
+
+**Service boundaries (spec 010)**
+
+- The BFF role cannot `INSERT` into `crawl.runs`. This is a test, not a
+  comment — it is the only thing standing between two schemas and a
+  distributed monolith.
+- The API role cannot see the `ui` schema.
+- SSE through the edge arrives incrementally: emit one event per second and
+  assert on **arrival times**, not just on the final payload. A buffered
+  stream passes a naive test and fails the user.
+- Stopping `bff` leaves a running crawl unaffected.
+- Stopping `render` leaves static domains crawling and `auto` domains falling
+  back with `strategy = static_fallback`.
+
+**Scheduling (spec 011)**
+
+- A due schedule fires exactly once with two loop iterations overlapping.
+- A BFF restarted after downtime fires a missed window once, not N times.
+- A schedule whose domains are mid-run is skipped and recorded.
+
+---
+
+## 3. Frontend
+
+- **Vitest + Testing Library** for reducers, hooks and components with logic.
+  Do not snapshot-test markup; snapshots of a design system are churn.
+- `useRunEvents` is tested against a fake `EventSource`, including the
+  reconnect-and-backfill path.
+- **Playwright** for the one journey that matters end to end:
+  seed → propose → review → approve → run → inspect a product.
+- Both themes are asserted on the screens where colour carries meaning
+  (Domains, Run monitor, Template review).
+- Accessibility: `axe` assertions on each screen; keyboard traversal of the
+  review screen.
+
+## 4. Fixtures
+
+```
+tests/fixtures/
+  pages/
+    vantage-abrasives/product.html        well-formed, selector path
+    orbis-components/product-jsonld.html  structured path
+    northfield/product-redesigned.html    same URL, broken selectors
+    mertens/product-rendered.html         JS-dependent
+  robots/{permissive,crawl-delay,disallow-all}.txt
+  llm/{good,malformed,hallucinated}.json
+  render/{rendered-ok.json,timeout.json,503.json}
+```
+
+The redesigned fixture is the most valuable one in the suite. It is the only
+way to test the failure that produces no error.
+
+## 5. CI
+
+CI runs `make check` — the same command, the same images, no separate
+pipeline definition that can drift. A PR that cannot pass it locally cannot
+pass it in CI, which is the point.
+
+Flaky tests are quarantined and fixed, not retried. A retry on a concurrency
+test hides exactly the bug it exists to find.

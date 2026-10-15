@@ -35,7 +35,7 @@
       <div class="card-head"><h3>Extraction health</h3>
         <div class="actions"><button class="btn btn-sm">Export</button></div></div>
       <div class="card-body">
-        <p class="muted" style="margin-top:0;font-size:var(--text-xs)">
+        <p class="muted" style="margin-top:0;font-size:var(--sp-text-xs)">
           Pass rate by field, trended over runs. The entry point for finding silent breakage.</p>
         <table class="table-compact">
           <thead><tr><th>Field</th><th class="num">Pass</th><th>Trend</th><th class="num">Δ 7d</th></tr></thead>
@@ -45,7 +45,7 @@
               <td class="num muted">+0.1</td></tr>
             <tr><td>price</td><td class="num">94.8%</td>
               <td><svg class="spark" viewBox="0 0 72 20"><path class="warn" d="M0,2 L18,3 L36,4 L54,6 L72,7"/></svg></td>
-              <td class="num" style="color:var(--state-pending)">−3.4</td></tr>
+              <td class="num" style="color:var(--sp-state-pending)">−3.4</td></tr>
             <tr><td>images</td><td class="num">97.1%</td>
               <td><svg class="spark" viewBox="0 0 72 20"><path class="ok" d="M0,4 L18,3 L36,3 L54,2 L72,3"/></svg></td>
               <td class="num muted">−0.2</td></tr>
@@ -54,10 +54,10 @@
               <td class="num muted">+0.6</td></tr>
             <tr><td>vendor</td><td class="num">88.3%</td>
               <td><svg class="spark" viewBox="0 0 72 20"><path class="warn" d="M0,3 L18,4 L36,5 L54,7 L72,8"/></svg></td>
-              <td class="num" style="color:var(--state-pending)">−2.1</td></tr>
+              <td class="num" style="color:var(--sp-state-pending)">−2.1</td></tr>
             <tr><td>supplier_ref</td><td class="num">61.4%</td>
               <td><svg class="spark" viewBox="0 0 72 20"><path class="bad" d="M0,4 L18,6 L36,9 L54,12 L72,13"/></svg></td>
-              <td class="num" style="color:var(--state-broken)">−12.7</td></tr>
+              <td class="num" style="color:var(--sp-state-broken)">−12.7</td></tr>
           </tbody>
         </table>
       </div>
@@ -67,18 +67,18 @@
       <div class="card-head"><h3>Broken templates</h3>
         <div class="actions"><span class="pill pill-broken">3 domains</span></div></div>
       <div class="card-body">
-        <p class="muted" style="margin-top:0;font-size:var(--text-xs)">
+        <p class="muted" style="margin-top:0;font-size:var(--sp-text-xs)">
           Over the 20% failure threshold, with the run where the rate moved and the field
           that degraded first.</p>
         <table class="table-compact">
           <thead><tr><th>Domain</th><th>First bad run</th><th>First field</th><th class="num">Fail</th></tr></thead>
           <tbody>
             <tr><td>northfield-supply.com</td><td class="secondary">14 Oct · 02</td>
-              <td class="mono">title</td><td class="num" style="color:var(--state-broken)">59%</td></tr>
+              <td class="mono">title</td><td class="num" style="color:var(--sp-state-broken)">59%</td></tr>
             <tr><td>calder-industrial.co.uk</td><td class="secondary">14 Oct · 02</td>
-              <td class="mono">price</td><td class="num" style="color:var(--state-broken)">48%</td></tr>
+              <td class="mono">price</td><td class="num" style="color:var(--sp-state-broken)">48%</td></tr>
             <tr><td>pacific-tooling.com</td><td class="secondary">09 Oct · 01</td>
-              <td class="mono">supplier_ref</td><td class="num" style="color:var(--state-pending)">24%</td></tr>
+              <td class="mono">supplier_ref</td><td class="num" style="color:var(--sp-state-pending)">24%</td></tr>
           </tbody>
         </table>
       </div>
@@ -90,23 +90,23 @@
           <option>Any magnitude</option><option>Over ±5%</option><option>Over ±10%</option>
         </select></div></div>
       <div class="card-body">
-        <p class="muted" style="margin-top:0;font-size:var(--text-xs)">
+        <p class="muted" style="margin-top:0;font-size:var(--sp-text-xs)">
           Filterable by magnitude so ±1% noise can be ignored.</p>
         <table class="table-compact">
           <thead><tr><th>Product</th><th class="num">Was</th><th class="num">Now</th><th class="num">Δ</th></tr></thead>
           <tbody>
             <tr><td class="truncate" style="max-width:190px">Hydraulikzylinder 63/200</td>
               <td class="num muted">€370.00</td><td class="num">€412.00</td>
-              <td class="num" style="color:var(--state-broken)">+11.4%</td></tr>
+              <td class="num" style="color:var(--sp-state-broken)">+11.4%</td></tr>
             <tr><td class="truncate" style="max-width:190px">Zirconia Flap Disc 115 mm</td>
               <td class="num muted">£5.30</td><td class="num">£4.85</td>
-              <td class="num" style="color:var(--state-active)">−8.5%</td></tr>
+              <td class="num" style="color:var(--sp-state-active)">−8.5%</td></tr>
             <tr><td class="truncate" style="max-width:190px">ESP32-WROOM-32E</td>
               <td class="num muted">€3.90</td><td class="num">€4.15</td>
-              <td class="num" style="color:var(--state-broken)">+6.4%</td></tr>
+              <td class="num" style="color:var(--sp-state-broken)">+6.4%</td></tr>
             <tr><td class="truncate" style="max-width:190px">Sanding Belt 50×686</td>
               <td class="num muted">£2.20</td><td class="num">£2.05</td>
-              <td class="num" style="color:var(--state-active)">−6.8%</td></tr>
+              <td class="num" style="color:var(--sp-state-active)">−6.8%</td></tr>
           </tbody>
         </table>
       </div>
@@ -116,7 +116,7 @@
       <div class="card-head"><h3>Crawl politeness</h3>
         <div class="actions"><span class="tag">evidence the crawler behaved</span></div></div>
       <div class="card-body">
-        <p class="muted" style="margin-top:0;font-size:var(--text-xs)">
+        <p class="muted" style="margin-top:0;font-size:var(--sp-text-xs)">
           The first place to look after a block.</p>
         <table class="table-compact">
           <thead><tr><th>Domain</th><th class="num">Requests</th><th class="num">429</th>
@@ -125,12 +125,12 @@
             <tr><td>orbis-components.nl</td><td class="num">4,077</td><td class="num">0</td>
               <td class="num">0</td><td class="num mono">2.1s</td></tr>
             <tr><td>mertens-hydraulik.de</td><td class="num">1,882</td>
-              <td class="num" style="color:var(--state-pending)">7</td><td class="num">0</td>
+              <td class="num" style="color:var(--sp-state-pending)">7</td><td class="num">0</td>
               <td class="num mono">4.5s</td></tr>
             <tr><td>northfield-supply.com</td><td class="num">1,204</td><td class="num">0</td>
               <td class="num">0</td><td class="num mono">2.0s</td></tr>
             <tr><td>calder-industrial.co.uk</td><td class="num">333</td><td class="num">0</td>
-              <td class="num" style="color:var(--state-broken)">3</td><td class="num mono">2.0s</td></tr>
+              <td class="num" style="color:var(--sp-state-broken)">3</td><td class="num mono">2.0s</td></tr>
           </tbody>
         </table>
       </div>
@@ -140,10 +140,10 @@
       <div class="card-head"><h3>Coverage</h3>
         <div class="actions"><span class="tag">build last, read most</span></div></div>
       <div class="card-body">
-        <p class="muted" style="margin-top:0;font-size:var(--text-xs)">
+        <p class="muted" style="margin-top:0;font-size:var(--sp-text-xs)">
           Onboarding pace against backlog growth — the honest measure of whether you are
           gaining or losing ground against the 1,200-domain target.</p>
-        <div class="grid grid-4" style="margin-bottom:var(--space-4)">
+        <div class="grid grid-4" style="margin-bottom:var(--sp-space-4)">
           <div><div class="metric-label">Domains onboarded</div>
             <div class="metric-value num">34</div>
             <div class="metric-delta up">+6 this month</div></div>

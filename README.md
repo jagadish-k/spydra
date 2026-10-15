@@ -10,31 +10,72 @@ The model proposes once per template. It never runs during a crawl.
 
 ## Status
 
-**Design complete, implementation not started.** This repository currently holds
-the architecture blueprint, the design system, and static mockups of all nine
-screens. No application code yet.
+**Design complete, implementation not started.** This repository holds the
+architecture, the design system, static mockups of all nine screens, and a
+full development handoff: specs, ADRs and a phased build plan. No application
+code yet.
+
+**Starting development?** Read [`AGENTS.md`](AGENTS.md), then
+[`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md). Phase 0 is scaffolding.
 
 ---
 
 ## Repository layout
 
 ```
+AGENTS.md            Operating rules for anyone — human or agent — working
+                     here. Read first, every session.
+
 docs/
-  ARCHITECTURE.md    System design: scheduler, extraction chain, concurrency,
-                     deployment, failure modes, build plan. Source of truth.
-  DATA_MODEL.md      Postgres schema and the reasoning behind its shape.
-  DESIGN_SYSTEM.md   Tokens, typography, components, anti-patterns.
-  SCREENS.md         What each screen is for and what it contains.
-  BRAND.md           Logo construction, variants, usage rules.
+  README.md          Documentation index and reading order
+  BUILD_PLAN.md      Six phases, tasks, exit criteria. What to do next.
+  ARCHITECTURE.md    System design. The source of truth for intent.
+  DATA_MODEL.md      Core Postgres schema (specs/001 closes its gaps)
+  DEVELOPMENT.md     Docker-native environment, commands, macOS gotchas
+  TESTING.md         Test strategy: what must be covered and why
+  DESIGN_SYSTEM.md   Tokens, typography, components, anti-patterns
+  SCREENS.md         What each screen is for and what it contains
+  BRAND.md           Logo construction, variants, usage rules
+  adr/               Fourteen decision records, each with its stated cost
+  specs/             Nine component specs with acceptance criteria
 
 design/
   tokens/            tokens.css (runtime) · tokens.json (W3C, for Figma)
   logo/              Six SVG variants + the generator that produces them
   mockups/           Static reference implementation of all nine screens
 
-tailwind.config.ts   Maps semantic tokens to Tailwind; replaces the default
-                     palette so raw colour classes fail to compile.
+docker/              Dockerfiles, Caddyfile, init-schemas.sql
+compose.yaml         Seven services
 ```
+
+Design tokens are `--sp-*` prefixed and mapped to Tailwind v4 by
+`design/tokens/tailwind-theme.css`, which also removes the default palette so
+raw colour classes fail to compile.
+
+## Shape
+
+Seven services, each owning its own data:
+
+```
+browser → edge (Caddy, :8080)
+            ├── /                          → web     React 19 SPA
+            ├── /api/ui/*                  → bff     Fastify · ui schema
+            └── /api/crawler/*             → api     FastAPI · crawl schema
+                                                      │
+                          worker (crawls, scales) ────┤
+                          render  (Playwright sidecar)┘
+                          db      PostgreSQL 18
+```
+
+Plus `llama-server` on the host — it proposes selectors during onboarding and
+is never in the crawl path.
+
+**Stack:** Python 3.15 · FastAPI · SQLAlchemy Core + Alembic · PostgreSQL 18
+— Node 26 · Fastify 5 — React 19 · TypeScript · Vite · Tailwind v4 —
+Playwright in a sidecar, all of it in Docker.
+
+Rationale for every choice in [`docs/adr/`](docs/adr/README.md); start with
+[ADR-0015](docs/adr/0015-service-topology.md).
 
 ## Viewing the mockups
 

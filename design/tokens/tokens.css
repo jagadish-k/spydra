@@ -1,5 +1,14 @@
 /* ==========================================================================
    Spydra — design tokens
+
+   Every custom property is prefixed --sp-*. This is not decoration:
+   Tailwind v4 claims --color-*, --text-*, --font-*, --radius-*, --shadow-*,
+   --leading-*, --tracking-* and --ease-* as theme namespaces. An unprefixed
+   --text-primary would be read by Tailwind as a FONT SIZE named "primary"
+   whose value is a hex colour — which produces no error and no warning,
+   just a broken utility. The prefix makes the collision impossible.
+
+   design/tokens/tailwind-theme.css maps these onto Tailwind's namespace.
    Single source of truth for colour, type, space, radius, motion.
    Light is the default theme. Dark is opt-in via [data-theme="dark"].
 
@@ -12,210 +21,210 @@
   /* ---- Brand ------------------------------------------------------------
      Deep indigo. Actions, focus and active navigation only.
      Never used to carry information or state.                             */
-  --brand-50:  #EEF0FB;
-  --brand-100: #DDE1F7;
-  --brand-200: #BFC6F0;
-  --brand-300: #9AA4E6;
-  --brand-400: #727FDF;
-  --brand-500: #4F56D9;
-  --brand-600: #4338CA;
-  --brand-700: #3730A3;
-  --brand-800: #2E2A83;
-  --brand-900: #262369;
+  --sp-brand-50:  #EEF0FB;
+  --sp-brand-100: #DDE1F7;
+  --sp-brand-200: #BFC6F0;
+  --sp-brand-300: #9AA4E6;
+  --sp-brand-400: #727FDF;
+  --sp-brand-500: #4F56D9;
+  --sp-brand-600: #4338CA;
+  --sp-brand-700: #3730A3;
+  --sp-brand-800: #2E2A83;
+  --sp-brand-900: #262369;
 
   /* ---- Neutrals --------------------------------------------------------- */
-  --neutral-0:   #FFFFFF;
-  --neutral-25:  #FBFBFC;
-  --neutral-50:  #F7F8FA;
-  --neutral-100: #F1F3F6;
-  --neutral-200: #E3E6EB;
-  --neutral-300: #CDD2DA;
-  --neutral-400: #A8AEB9;
-  --neutral-500: #878E9A;
-  --neutral-600: #5A616D;
-  --neutral-700: #3F4550;
-  --neutral-800: #272C36;
-  --neutral-900: #16191F;
-  --neutral-950: #0F1115;
+  --sp-neutral-0:   #FFFFFF;
+  --sp-neutral-25:  #FBFBFC;
+  --sp-neutral-50:  #F7F8FA;
+  --sp-neutral-100: #F1F3F6;
+  --sp-neutral-200: #E3E6EB;
+  --sp-neutral-300: #CDD2DA;
+  --sp-neutral-400: #A8AEB9;
+  --sp-neutral-500: #878E9A;
+  --sp-neutral-600: #5A616D;
+  --sp-neutral-700: #3F4550;
+  --sp-neutral-800: #272C36;
+  --sp-neutral-900: #16191F;
+  --sp-neutral-950: #0F1115;
 
   /* ---- Surfaces --------------------------------------------------------- */
-  --bg-base:        var(--neutral-50);
-  --bg-surface:     var(--neutral-0);
-  --bg-subtle:      var(--neutral-100);
-  --bg-raised:      var(--neutral-0);
-  --bg-inset:       var(--neutral-50);
-  --bg-hover:       rgba(22, 25, 31, 0.035);
-  --bg-selected:    var(--brand-50);
-  --bg-backdrop:    rgba(22, 25, 31, 0.40);
+  --sp-bg-base:        var(--sp-neutral-50);
+  --sp-bg-surface:     var(--sp-neutral-0);
+  --sp-bg-subtle:      var(--sp-neutral-100);
+  --sp-bg-raised:      var(--sp-neutral-0);
+  --sp-bg-inset:       var(--sp-neutral-50);
+  --sp-bg-hover:       rgba(22, 25, 31, 0.035);
+  --sp-bg-selected:    var(--sp-brand-50);
+  --sp-bg-backdrop:    rgba(22, 25, 31, 0.40);
 
-  --border:         var(--neutral-200);
-  --border-strong:  var(--neutral-300);
-  --border-focus:   var(--brand-500);
+  --sp-border:         var(--sp-neutral-200);
+  --sp-border-strong:  var(--sp-neutral-300);
+  --sp-border-focus:   var(--sp-brand-500);
 
   /* ---- Text ------------------------------------------------------------- */
-  --text-primary:   var(--neutral-900);
-  --text-secondary: var(--neutral-600);
-  --text-muted:     var(--neutral-500);
-  --text-inverse:   var(--neutral-0);
-  --text-brand:     var(--brand-600);
-  --text-link:      var(--brand-600);
+  --sp-text-primary:   var(--sp-neutral-900);
+  --sp-text-secondary: var(--sp-neutral-600);
+  --sp-text-muted:     var(--sp-neutral-500);
+  --sp-text-inverse:   var(--sp-neutral-0);
+  --sp-text-brand:     var(--sp-brand-600);
+  --sp-text-link:      var(--sp-brand-600);
 
   /* ---- Domain lifecycle -------------------------------------------------
      The only place colour carries meaning. Hues are identical in dark
      mode; only lightness shifts, so the mapping a user learns in one
      theme still holds in the other.                                       */
-  --state-discovered:    #6B7280;
-  --state-discovered-bg: #F3F4F6;
-  --state-pending:       #B45309;
-  --state-pending-bg:    #FEF3C7;
-  --state-active:        #047857;
-  --state-active-bg:     #D1FAE5;
-  --state-broken:        #B91C1C;
-  --state-broken-bg:     #FEE2E2;
-  --state-paused:        #C2410C;
-  --state-paused-bg:     #FFEDD5;
-  --state-archived:      #9CA3AF;
-  --state-archived-bg:   #F3F4F6;
+  --sp-state-discovered:    #6B7280;
+  --sp-state-discovered-bg: #F3F4F6;
+  --sp-state-pending:       #B45309;
+  --sp-state-pending-bg:    #FEF3C7;
+  --sp-state-active:        #047857;
+  --sp-state-active-bg:     #D1FAE5;
+  --sp-state-broken:        #B91C1C;
+  --sp-state-broken-bg:     #FEE2E2;
+  --sp-state-paused:        #C2410C;
+  --sp-state-paused-bg:     #FFEDD5;
+  --sp-state-archived:      #9CA3AF;
+  --sp-state-archived-bg:   #F3F4F6;
 
   /* ---- Feedback (transient, not lifecycle) ------------------------------ */
-  --fb-info:     #1D4ED8;
-  --fb-info-bg:  #DBEAFE;
-  --fb-success:  var(--state-active);
-  --fb-warning:  var(--state-pending);
-  --fb-danger:   var(--state-broken);
+  --sp-fb-info:     #1D4ED8;
+  --sp-fb-info-bg:  #DBEAFE;
+  --sp-fb-success:  var(--sp-state-active);
+  --sp-fb-warning:  var(--sp-state-pending);
+  --sp-fb-danger:   var(--sp-state-broken);
 
   /* ---- Data visualisation ----------------------------------------------
      Categorical series. Ordered for maximum adjacent separation and
      checked for deuteranopia distinguishability.                          */
-  --viz-1: #4F56D9;
-  --viz-2: #0E9F6E;
-  --viz-3: #D97706;
-  --viz-4: #9333EA;
-  --viz-5: #0891B2;
-  --viz-6: #DC2626;
-  --viz-grid: var(--neutral-200);
-  --viz-axis: var(--neutral-400);
+  --sp-viz-1: #4F56D9;
+  --sp-viz-2: #0E9F6E;
+  --sp-viz-3: #D97706;
+  --sp-viz-4: #9333EA;
+  --sp-viz-5: #0891B2;
+  --sp-viz-6: #DC2626;
+  --sp-viz-grid: var(--sp-neutral-200);
+  --sp-viz-axis: var(--sp-neutral-400);
 
   /* ---- Typography ------------------------------------------------------- */
-  --font-ui:   "Inter var", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --font-brand:"Space Grotesk", var(--font-ui);
+  --sp-font-ui:   "Inter var", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sp-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sp-font-brand:"Space Grotesk", var(--sp-font-ui);
 
   /* Base 14px. A dense operational interface; 16px wastes a third of
      every table row.                                                      */
-  --text-2xs: 0.6875rem;  /* 11px — badges, micro-labels      */
-  --text-xs:  0.75rem;    /* 12px — metadata, timestamps      */
-  --text-sm:  0.8125rem;  /* 13px — table body, dense lists   */
-  --text-md:  0.875rem;   /* 14px — body default, inputs      */
-  --text-lg:  1rem;       /* 16px — card titles               */
-  --text-xl:  1.25rem;    /* 20px — screen headings           */
-  --text-2xl: 1.75rem;    /* 28px — page titles (sparing)     */
+  --sp-text-2xs: 0.6875rem;  /* 11px — badges, micro-labels      */
+  --sp-text-xs:  0.75rem;    /* 12px — metadata, timestamps      */
+  --sp-text-sm:  0.8125rem;  /* 13px — table body, dense lists   */
+  --sp-text-md:  0.875rem;   /* 14px — body default, inputs      */
+  --sp-text-lg:  1rem;       /* 16px — card titles               */
+  --sp-text-xl:  1.25rem;    /* 20px — screen headings           */
+  --sp-text-2xl: 1.75rem;    /* 28px — page titles (sparing)     */
 
-  --leading-2xs: 1rem;
-  --leading-xs:  1.125rem;
-  --leading-sm:  1.25rem;
-  --leading-md:  1.375rem;
-  --leading-lg:  1.5rem;
-  --leading-xl:  1.75rem;
-  --leading-2xl: 2.25rem;
+  --sp-leading-2xs: 1rem;
+  --sp-leading-xs:  1.125rem;
+  --sp-leading-sm:  1.25rem;
+  --sp-leading-md:  1.375rem;
+  --sp-leading-lg:  1.5rem;
+  --sp-leading-xl:  1.75rem;
+  --sp-leading-2xl: 2.25rem;
 
-  --weight-normal: 400;
-  --weight-medium: 500;
-  --weight-semi:   600;
+  --sp-weight-normal: 400;
+  --sp-weight-medium: 500;
+  --sp-weight-semi:   600;
 
-  --tracking-tight: -0.01em;
-  --tracking-wide:  0.04em;
+  --sp-tracking-tight: -0.01em;
+  --sp-tracking-wide:  0.04em;
 
   /* ---- Space — 4px base, 8px component rhythm --------------------------- */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
-  --space-16: 4rem;
+  --sp-space-1: 0.25rem;
+  --sp-space-2: 0.5rem;
+  --sp-space-3: 0.75rem;
+  --sp-space-4: 1rem;
+  --sp-space-5: 1.25rem;
+  --sp-space-6: 1.5rem;
+  --sp-space-8: 2rem;
+  --sp-space-10: 2.5rem;
+  --sp-space-12: 3rem;
+  --sp-space-16: 4rem;
 
   /* ---- Radius ----------------------------------------------------------- */
-  --radius-xs:   3px;
-  --radius-sm:   4px;   /* badges            */
-  --radius-md:   6px;   /* controls, inputs  */
-  --radius-lg:   8px;   /* cards, panels     */
-  --radius-xl:   12px;  /* modal             */
-  --radius-full: 999px; /* status dots only  */
+  --sp-radius-xs:   3px;
+  --sp-radius-sm:   4px;   /* badges            */
+  --sp-radius-md:   6px;   /* controls, inputs  */
+  --sp-radius-lg:   8px;   /* cards, panels     */
+  --sp-radius-xl:   12px;  /* modal             */
+  --sp-radius-full: 999px; /* status dots only  */
 
   /* ---- Elevation — borders over shadows -------------------------------- */
-  --shadow-none: none;
-  --shadow-sm:  0 1px 2px rgba(22, 25, 31, 0.05);
-  --shadow-md:  0 4px 12px rgba(22, 25, 31, 0.08), 0 1px 3px rgba(22, 25, 31, 0.06);
-  --shadow-lg:  0 12px 32px rgba(22, 25, 31, 0.12), 0 2px 6px rgba(22, 25, 31, 0.06);
+  --sp-shadow-none: none;
+  --sp-shadow-sm:  0 1px 2px rgba(22, 25, 31, 0.05);
+  --sp-shadow-md:  0 4px 12px rgba(22, 25, 31, 0.08), 0 1px 3px rgba(22, 25, 31, 0.06);
+  --sp-shadow-lg:  0 12px 32px rgba(22, 25, 31, 0.12), 0 2px 6px rgba(22, 25, 31, 0.06);
 
   /* ---- Motion ----------------------------------------------------------- */
-  --duration-fast: 120ms;
-  --duration-base: 160ms;
-  --duration-flash: 400ms;
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --sp-duration-fast: 120ms;
+  --sp-duration-base: 160ms;
+  --sp-duration-flash: 400ms;
+  --sp-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* ---- Layout ----------------------------------------------------------- */
-  --sidebar-width: 240px;
-  --sidebar-collapsed: 56px;
-  --topbar-height: 52px;
-  --row-comfortable: 36px;
-  --row-compact: 28px;
+  --sp-sidebar-width: 240px;
+  --sp-sidebar-collapsed: 56px;
+  --sp-topbar-height: 52px;
+  --sp-row-comfortable: 36px;
+  --sp-row-compact: 28px;
 }
 
 /* ==========================================================================
    Dark theme — opt-in. Light remains the default.
    ========================================================================== */
 :root[data-theme="dark"] {
-  --bg-base:      var(--neutral-950);
-  --bg-surface:   #171A21;
-  --bg-subtle:    #1E222B;
-  --bg-raised:    #1E222B;
-  --bg-inset:     #12151A;
-  --bg-hover:     rgba(232, 234, 238, 0.045);
-  --bg-selected:  rgba(79, 86, 217, 0.16);
-  --bg-backdrop:  rgba(9, 10, 13, 0.60);
+  --sp-bg-base:      var(--sp-neutral-950);
+  --sp-bg-surface:   #171A21;
+  --sp-bg-subtle:    #1E222B;
+  --sp-bg-raised:    #1E222B;
+  --sp-bg-inset:     #12151A;
+  --sp-bg-hover:     rgba(232, 234, 238, 0.045);
+  --sp-bg-selected:  rgba(79, 86, 217, 0.16);
+  --sp-bg-backdrop:  rgba(9, 10, 13, 0.60);
 
-  --border:        #272C36;
-  --border-strong: #39404D;
+  --sp-border:        #272C36;
+  --sp-border-strong: #39404D;
 
-  --text-primary:   #E8EAEE;
-  --text-secondary: #A2A9B6;
-  --text-muted:     #6E7684;
-  --text-inverse:   var(--neutral-900);
-  --text-brand:     #9AA4E6;
-  --text-link:      #9AA4E6;
+  --sp-text-primary:   #E8EAEE;
+  --sp-text-secondary: #A2A9B6;
+  --sp-text-muted:     #6E7684;
+  --sp-text-inverse:   var(--sp-neutral-900);
+  --sp-text-brand:     #9AA4E6;
+  --sp-text-link:      #9AA4E6;
 
   /* Same hues, lifted for contrast on dark surfaces. */
-  --state-discovered:    #9CA3AF;
-  --state-discovered-bg: rgba(156, 163, 175, 0.14);
-  --state-pending:       #F59E0B;
-  --state-pending-bg:    rgba(245, 158, 11, 0.14);
-  --state-active:        #34D399;
-  --state-active-bg:     rgba(52, 211, 153, 0.14);
-  --state-broken:        #F87171;
-  --state-broken-bg:     rgba(248, 113, 113, 0.14);
-  --state-paused:        #FB923C;
-  --state-paused-bg:     rgba(251, 146, 60, 0.14);
-  --state-archived:      #6E7684;
-  --state-archived-bg:   rgba(110, 118, 132, 0.14);
+  --sp-state-discovered:    #9CA3AF;
+  --sp-state-discovered-bg: rgba(156, 163, 175, 0.14);
+  --sp-state-pending:       #F59E0B;
+  --sp-state-pending-bg:    rgba(245, 158, 11, 0.14);
+  --sp-state-active:        #34D399;
+  --sp-state-active-bg:     rgba(52, 211, 153, 0.14);
+  --sp-state-broken:        #F87171;
+  --sp-state-broken-bg:     rgba(248, 113, 113, 0.14);
+  --sp-state-paused:        #FB923C;
+  --sp-state-paused-bg:     rgba(251, 146, 60, 0.14);
+  --sp-state-archived:      #6E7684;
+  --sp-state-archived-bg:   rgba(110, 118, 132, 0.14);
 
-  --fb-info:    #60A5FA;
-  --fb-info-bg: rgba(96, 165, 250, 0.14);
+  --sp-fb-info:    #60A5FA;
+  --sp-fb-info-bg: rgba(96, 165, 250, 0.14);
 
-  --viz-1: #8B91F0;
-  --viz-2: #34D399;
-  --viz-3: #FBBF24;
-  --viz-4: #C084FC;
-  --viz-5: #22D3EE;
-  --viz-6: #F87171;
-  --viz-grid: #272C36;
-  --viz-axis: #4B5361;
+  --sp-viz-1: #8B91F0;
+  --sp-viz-2: #34D399;
+  --sp-viz-3: #FBBF24;
+  --sp-viz-4: #C084FC;
+  --sp-viz-5: #22D3EE;
+  --sp-viz-6: #F87171;
+  --sp-viz-grid: #272C36;
+  --sp-viz-axis: #4B5361;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --sp-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --sp-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --sp-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
 }

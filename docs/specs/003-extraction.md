@@ -1,0 +1,128 @@
+# 003 — Extraction chain and validation
+
+**Phase 1** · depends on 001 · ADR-0005
+
+Extraction is an ordered chain of strategies, cheapest first. Each rung is
+tried only if the previous produced nothing usable. Ordering is the whole
+design: it reduces how often the expensive rungs are invoked.
+
+---
+
+## 1. The chain
+
+```
+1. structured   JSON-LD (schema.org/Product), microdata, RDFa
+2. selector     the domain's approved template for this URL pattern
+3. llm_proposal only during onboarding/review — never at crawl time
+4. unknown      routed to the review inbox with a reason
+```
+
+```python
+class ExtractionStrategy(Protocol):
+    name: Strategy
+    async def extract(self, page: FetchedPage, template: Template | None
+                      ) -> ExtractedFields | None: ...
+```
+
+`chain.py` owns the order. Adding a strategy means adding a class and one
+entry in the chain — this is what the open/closed principle buys here, and the
+only place it is worth the indirection.
+
+**Rung 1 matters more than it looks.** Where a site emits
+`schema.org/Product`, structured data is more stable than CSS selectors,
+survives redesigns, and needs no model. These are bespoke supplier
+catalogues so coverage will be low — JSON-LD is a consumer-SEO feature — but
+it is free to try and it is the cheapest rung.
+
+Use `extruct` for rung 1; do not hand-roll JSON-LD parsing.
+
+## 2. Selector extraction
+
+Per `FieldRule` (see spec 001):
+
+```
+resolve(selector) → nodes
+  ├ many=false → first node, or None
+  └ many=true  → all nodes
+extract(attr)    → 'text' (normalised whitespace) or attribute value
+transform(...)   → applied in order
+validate(...)    → records pass/fail, never raises
+```
+
+Parsing uses **selectolax** (`LexborHTMLParser`) — roughly an order of
+magnitude faster than BeautifulSoup and sufficient for CSS selection. Reach
+for lxml only if XPath is genuinely needed.
+
+**Transforms** are small pure functions, composed in order:
+
+| Transform | Behaviour |
+| --- | --- |
+| `trim` | collapse whitespace, strip |
+| `strip_currency` | remove symbol and thousands separators, keep sign and decimal |
+| `parse_decimal` | to `Decimal`; fails loudly on ambiguity |
+| `absolute_url` | resolve against the page URL |
+| `first` / `all` | cardinality |
+| `pairs(th, td)` | a spec table to a key/value mapping for JSONB |
+
+Currency detection: symbol first, then the page's declared currency, then the
+domain default. A price without a determinable currency is a **validation
+failure**, not a guess.
+
+## 3. Validation
+
+Every extracted field is checked at crawl time. Validation never raises — it
+records.
+
+| Rule | Passes when |
+| --- | --- |
+| `non_empty` | after trim, length > 0 |
+| `currency` | parses to a Decimal and has a 3-letter currency |
+| `url` | absolute, http(s) |
+| `integer`, `date` | parses |
+| `min_count(n)` | a `many` field yielded at least n |
+| `matches(re)` | matches the pattern |
+
+Results land in `page_observations.validation` as
+`{field: {"rule": "currency", "ok": false, "saw": "POA"}}`.
+
+**Routing:**
+
+- Any **required** field failing → the page goes to `unknown_pages` with
+  reason `validation_failed`, and the observation is still written with
+  whatever did resolve. Do not discard partial data.
+- All fields resolving to nothing on a 200 → reason `empty_extraction`. This
+  is the redesign signature and the diff against the last working observation
+  is what the operator needs.
+- Failures exceeding **20% of a domain's pages in a run** → the domain moves
+  to `broken` and **crawling stops for it mid-run**. Carrying on and recording
+  thousands of empty extractions is how a redesign quietly corrupts a dataset.
+
+This is the system's most important failure mode: it produces no error and no
+crash, just wrong data. Validation is mandatory per field, not optional.
+
+## 4. Content hashing
+
+`content_hash` is computed over the **normalised extracted fields**, not the
+raw HTML. Raw HTML changes on every request because of timestamps, session
+tokens and CSRF fields; hashing it would mark every page changed every run.
+
+Normalisation: sorted keys, decimals canonicalised, whitespace collapsed,
+asset URLs excluded (they are hashed separately by content).
+
+If the hash matches the previous observation, write a lightweight row
+(`observed_at`, `http_status`, `unchanged = true`) or skip and bump
+`pages.last_crawled_at` — configurable per domain.
+
+## 5. Acceptance
+
+- [ ] A page with valid JSON-LD extracts via `structured` without consulting a
+      template.
+- [ ] The same page with JSON-LD removed falls through to `selector`.
+- [ ] A required field failing validation routes to `unknown_pages` **and**
+      writes the observation.
+- [ ] 21% of a domain's pages failing moves it to `broken` and halts it;
+      19% does not.
+- [ ] Re-extracting an unchanged page produces an identical `content_hash`.
+- [ ] A price of "POA" is a validation failure, not `0.00`.
+- [ ] Transform chains are unit-tested against a table of fixtures, including
+      European decimal commas and multi-currency pages.

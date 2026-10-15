@@ -36,7 +36,7 @@
       <button class="btn btn-primary">Re-propose template</button></div>
   </div>
 
-  <div class="banner banner-danger" style="margin-bottom:var(--space-5)">
+  <div class="banner banner-danger" style="margin-bottom:var(--sp-space-5)">
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
       stroke-linecap="round"><path d="M8 5.5v3.2 M8 11.3v.01 M8 1.8l6.2 11.4H1.8z"/></svg>
     <div><strong>Marked broken during run r-2026-10-14-02.</strong>
@@ -52,8 +52,8 @@
     <button class="tab" aria-selected="false">Activity</button>
   </div>
 
-  <div class="table-wrap" style="margin-bottom:var(--space-5)">
-    <div class="table-toolbar"><strong style="font-size:var(--text-md)">Template versions</strong>
+  <div class="table-wrap" style="margin-bottom:var(--sp-space-5)">
+    <div class="table-toolbar"><strong style="font-size:var(--sp-text-md)">Template versions</strong>
       <span class="spacer"></span><button class="btn btn-sm">Diff v3 → v4</button></div>
     <table>
       <thead><tr><th>Version</th><th>URL pattern</th><th class="num">Fields</th>
@@ -62,7 +62,7 @@
         <tr><td class="mono">v4</td><td class="mono">/catalog/*</td><td class="num">6</td>
           <td><span class="pill pill-active"><i class="dot"></i>Active</span></td>
           <td class="secondary">02 Oct</td>
-          <td><span style="color:var(--state-broken)">41%</span></td>
+          <td><span style="color:var(--sp-state-broken)">41%</span></td>
           <td><div class="row-actions"><button class="btn btn-sm">Edit</button></div></td></tr>
         <tr><td class="mono">v3</td><td class="mono">/catalog/*</td><td class="num">6</td>
           <td class="muted">—</td><td class="secondary">18 Sep</td>
@@ -87,7 +87,7 @@
     <div class="card">
       <div class="card-head"><h3>Settings</h3>
         <div class="actions"><button class="btn btn-sm">Save</button></div></div>
-      <div class="card-body stack" style="gap:var(--space-3)">
+      <div class="card-body stack" style="gap:var(--sp-space-3)">
         <div class="grid grid-2">
           <div class="field"><label>Crawl delay (ms)</label><input type="text" value="2000" /></div>
           <div class="field"><label>Asset concurrency</label><input type="text" value="5" /></div>
@@ -98,11 +98,11 @@
           <div class="field"><label>Max depth</label><input type="text" value="5" /></div>
         </div>
         <div class="field"><label>Deny patterns</label>
-          <textarea rows="3" class="mono" style="font-size:var(--text-xs)">?(sort|view|per_page)=
+          <textarea rows="3" class="mono" style="font-size:var(--sp-text-xs)">?(sort|view|per_page)=
 /catalog/compare
 /account</textarea></div>
         <div class="field"><label>User agent</label>
-          <input type="text" class="mono" style="font-size:var(--text-xs)"
+          <input type="text" class="mono" style="font-size:var(--sp-text-xs)"
             value="Spydra/1.0 (+mailto:k.jagdish@gmail.com)" /></div>
       </div>
     </div>
@@ -115,10 +115,10 @@
           <div class="row"><span class="path">User-agent: *</span></div>
           <div class="row"><span class="path">Disallow: /account</span></div>
           <div class="row"><span class="path">Disallow: /checkout</span></div>
-          <div class="row"><span class="path" style="color:var(--state-pending)">Crawl-delay: 3</span></div>
+          <div class="row"><span class="path" style="color:var(--sp-state-pending)">Crawl-delay: 3</span></div>
           <div class="row"><span class="path">Sitemap: /sitemap_index.xml</span></div>
         </div>
-        <div class="banner banner-warn" style="margin-top:var(--space-3)">
+        <div class="banner banner-warn" style="margin-top:var(--sp-space-3)">
           <div><strong>Crawl-delay 3 s overrides your 2 s.</strong>
             A site's stated delay is a floor, never lowered by configuration.</div>
         </div>

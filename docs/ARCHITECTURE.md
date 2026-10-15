@@ -1,5 +1,18 @@
 # Spydra — System Architecture Blueprint
 
+> **Deployment and stack sections are superseded.** This document is still
+> the source of truth for *intent* — the scheduler, politeness model,
+> extraction chain, failure modes and phasing all stand. But the system is
+> now six services rather than one Python app, and the versions have moved.
+>
+> | Superseded here | Current source |
+> | --- | --- |
+> | Single-app deployment, `docker compose` block | [specs/010-service-topology.md](specs/010-service-topology.md), [DEVELOPMENT.md](DEVELOPMENT.md) |
+> | Playwright inside the worker | [ADR-0016](adr/0016-render-sidecar.md), [specs/012-render-sidecar.md](specs/012-render-sidecar.md) |
+> | Python 3.12 / Postgres 17 / React 18 / Tailwind v3 | [ADR-0017](adr/0017-version-policy.md), [ADR-0018](adr/0018-react19-tailwind4.md) |
+> | `tailwind.config.ts` | `design/tokens/tailwind-theme.css` |
+> | Schema (incomplete, four errors) | [specs/001-domain-model.md](specs/001-domain-model.md) |
+
 Exported from the design conversation · 14 Oct 2026
 
 > Source of truth for system design. UI specifics live in `SCREENS.md`;
@@ -633,7 +646,7 @@ One brand hue, a wide neutral scale, and six semantic state colours. Brand colou
 }
 ```
 
-Exposed to Tailwind as semantic tokens (`bg-surface`, `text-secondary`, `state-broken`) in `tailwind.config`. **No raw colour classes in components** — `text-red-600` in a component is a bug, because the state-to-colour mapping must be changeable in one file and must stay identical across both themes.
+Exposed to Tailwind v4 as semantic utilities (`bg-surface`, `text-ink-muted`, `text-state-broken`) by `design/tokens/tailwind-theme.css`; the tokens themselves are `--sp-*` prefixed to avoid a Tailwind namespace collision (ADR-0018). **No raw colour classes in components** — `text-red-600` in a component is a bug, because the state-to-colour mapping must be changeable in one file and must stay identical across both themes.
 
 Both themes are checked against WCAG AA for body text and AAA for the state pills, since those are the elements you will read fastest and most often.
 

@@ -36,7 +36,7 @@
 
   <!-- Stacked bar, never a percentage: during discovery the denominator is
        still growing, so a percentage would simply lie. -->
-  <div class="card" style="margin-bottom:var(--space-4)">
+  <div class="card" style="margin-bottom:var(--sp-space-4)">
     <div class="card-body">
       <div class="progress">
         <span class="done" style="width:46%"></span>
@@ -45,16 +45,16 @@
         <span class="queued" style="width:47%"></span>
       </div>
       <div class="progress-legend">
-        <span><i style="background:var(--state-active)"></i> 3,841 done</span>
-        <span><i style="background:var(--viz-1)"></i> 14 in flight</span>
-        <span><i style="background:var(--state-broken)"></i> 232 failed</span>
-        <span><i style="background:var(--border-strong)"></i> 3,902 queued</span>
+        <span><i style="background:var(--sp-state-active)"></i> 3,841 done</span>
+        <span><i style="background:var(--sp-viz-1)"></i> 14 in flight</span>
+        <span><i style="background:var(--sp-state-broken)"></i> 232 failed</span>
+        <span><i style="background:var(--sp-border-strong)"></i> 3,902 queued</span>
         <span style="margin-left:auto">discovery still running — queue is still growing</span>
       </div>
     </div>
   </div>
 
-  <div class="grid grid-4" style="margin-bottom:var(--space-4)">
+  <div class="grid grid-4" style="margin-bottom:var(--sp-space-4)">
     <div class="card"><div class="card-body">
       <div class="metric-label">Pages / min</div>
       <div class="metric-value num">148</div>
@@ -74,17 +74,17 @@
   </div>
 
   <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);
-              gap:var(--space-4);align-items:start">
+              gap:var(--sp-space-4);align-items:start">
     <div class="stack">
 
       <!-- An auto-paused domain goes red and sorts to the top. -->
-      <div class="card" style="border-color:var(--state-broken)">
+      <div class="card" style="border-color:var(--sp-state-broken)">
         <div class="card-body">
-          <div class="row-flex" style="margin-bottom:var(--space-3)">
+          <div class="row-flex" style="margin-bottom:var(--sp-space-3)">
             <span class="pill pill-broken"><i class="dot"></i>Auto-paused</span>
             <strong>calder-industrial.co.uk</strong>
-            <span class="muted" style="font-size:var(--text-xs)">3 consecutive 403s</span>
-            <div style="margin-left:auto;display:flex;gap:var(--space-2)">
+            <span class="muted" style="font-size:var(--sp-text-xs)">3 consecutive 403s</span>
+            <div style="margin-left:auto;display:flex;gap:var(--sp-space-2)">
               <button class="btn btn-sm">Inspect</button>
               <button class="btn btn-sm">Resume anyway</button>
             </div>
@@ -96,18 +96,18 @@
           </div>
           <div class="progress-legend">
             <span>262 done · 71 failed · 508 abandoned</span>
-            <span style="margin-left:auto;color:var(--state-broken)">
+            <span style="margin-left:auto;color:var(--sp-state-broken)">
               crawling stopped — a retry loop turns a temporary block into a permanent one</span>
           </div>
         </div>
       </div>
 
       <div class="card"><div class="card-body">
-        <div class="row-flex" style="margin-bottom:var(--space-3)">
+        <div class="row-flex" style="margin-bottom:var(--sp-space-3)">
           <span class="pill pill-active"><i class="dot"></i>Active</span>
           <strong>orbis-components.nl</strong>
-          <span class="muted mono" style="font-size:var(--text-xs)">2.0s · static</span>
-          <span style="margin-left:auto;font-size:var(--text-xs)" class="secondary num">
+          <span class="muted mono" style="font-size:var(--sp-text-xs)">2.0s · static</span>
+          <span style="margin-left:auto;font-size:var(--sp-text-xs)" class="secondary num">
             74 pages/min</span>
         </div>
         <div class="progress">
@@ -120,12 +120,12 @@
       </div></div>
 
       <div class="card"><div class="card-body">
-        <div class="row-flex" style="margin-bottom:var(--space-3)">
+        <div class="row-flex" style="margin-bottom:var(--sp-space-3)">
           <span class="pill pill-active"><i class="dot"></i>Active</span>
           <strong>mertens-hydraulik.de</strong>
-          <span class="muted mono" style="font-size:var(--text-xs)">4.5s · rendered</span>
-          <span class="tag" style="color:var(--state-pending)">backoff ×2</span>
-          <span style="margin-left:auto;font-size:var(--text-xs)" class="secondary num">
+          <span class="muted mono" style="font-size:var(--sp-text-xs)">4.5s · rendered</span>
+          <span class="tag" style="color:var(--sp-state-pending)">backoff ×2</span>
+          <span style="margin-left:auto;font-size:var(--sp-text-xs)" class="secondary num">
             27 pages/min</span>
         </div>
         <div class="progress">
@@ -139,11 +139,11 @@
       </div></div>
 
       <div class="card"><div class="card-body">
-        <div class="row-flex" style="margin-bottom:var(--space-3)">
+        <div class="row-flex" style="margin-bottom:var(--sp-space-3)">
           <span class="pill pill-active"><i class="dot"></i>Active</span>
           <strong>northfield-supply.com</strong>
-          <span class="muted mono" style="font-size:var(--text-xs)">2.0s · static</span>
-          <span style="margin-left:auto;font-size:var(--text-xs)" class="secondary num">
+          <span class="muted mono" style="font-size:var(--sp-text-xs)">2.0s · static</span>
+          <span style="margin-left:auto;font-size:var(--sp-text-xs)" class="secondary num">
             47 pages/min</span>
         </div>
         <div class="progress">
@@ -153,7 +153,7 @@
           <span class="queued" style="width:62%"></span>
         </div>
         <div class="progress-legend">
-          <span style="color:var(--state-pending)">
+          <span style="color:var(--sp-state-pending)">
             validation failures at 14% — the 20% threshold marks the domain broken</span></div>
       </div></div>
 
@@ -161,31 +161,31 @@
            pools are independent. -->
       <div class="card">
         <div class="card-head"><h3>Throughput</h3>
-          <div class="actions"><span class="tag" style="color:var(--viz-1)">■ pages</span>
-            <span class="tag" style="color:var(--viz-2)">■ assets</span></div></div>
+          <div class="actions"><span class="tag" style="color:var(--sp-viz-1)">■ pages</span>
+            <span class="tag" style="color:var(--sp-viz-2)">■ assets</span></div></div>
         <div class="card-body">
           <svg viewBox="0 0 800 160" style="width:100%;height:160px" preserveAspectRatio="none">
-            <g stroke="var(--viz-grid)" stroke-width="1">
+            <g stroke="var(--sp-viz-grid)" stroke-width="1">
               <line x1="0" y1="40" x2="800" y2="40"/><line x1="0" y1="80" x2="800" y2="80"/>
               <line x1="0" y1="120" x2="800" y2="120"/></g>
-            <path fill="none" stroke="var(--viz-1)" stroke-width="2" stroke-linejoin="round"
+            <path fill="none" stroke="var(--sp-viz-1)" stroke-width="2" stroke-linejoin="round"
               d="M0,130 L80,96 L160,70 L240,66 L320,72 L400,68 L480,74 L560,88 L640,96 L720,100 L800,98"/>
-            <path fill="none" stroke="var(--viz-2)" stroke-width="2" stroke-linejoin="round"
+            <path fill="none" stroke="var(--sp-viz-2)" stroke-width="2" stroke-linejoin="round"
               d="M0,155 L80,142 L160,120 L240,92 L320,60 L400,38 L480,30 L560,26 L640,24 L720,22 L800,20"/>
           </svg>
-          <p class="muted" style="font-size:var(--text-xs);margin:var(--space-2) 0 0">
+          <p class="muted" style="font-size:var(--sp-text-xs);margin:var(--sp-space-2) 0 0">
             Assets climbing while pages flatten is the expected shape once discovery
             finishes. The reverse would mean the asset pool is starved or a CDN is throttling.</p>
         </div>
       </div>
     </div>
 
-    <div class="card" style="position:sticky;top:calc(var(--topbar-height) + var(--space-4))">
+    <div class="card" style="position:sticky;top:calc(var(--sp-topbar-height) + var(--sp-space-4))">
       <div class="card-head"><h3>Live log</h3>
         <div class="actions">
           <select class="btn btn-sm" style="height:24px"><option>All domains</option></select>
           <button class="btn btn-sm">Pause</button></div></div>
-      <div class="card-body" style="padding:var(--space-2)">
+      <div class="card-body" style="padding:var(--sp-space-2)">
         <div class="log" style="height:560px">
           <div class="row"><span class="ts">20:08:41</span><span class="host">orbis-compon…</span>
             <span class="path">/p/mlx90614-esf</span><span class="st-200">200</span>
