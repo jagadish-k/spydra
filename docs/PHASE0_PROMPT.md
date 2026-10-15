@@ -5,13 +5,40 @@ Claude Code, Cursor, OpenCode or Antigravity — opened at
 `~/projects/personal/spydra`. Nothing else is needed; everything it refers to
 is in the repository.
 
-**Run `make agents` first** if the generated role definitions for your tool
-are not there yet (or, before the Makefile exists,
-`python3 scripts/gen-agents.py`). The roles live in `docs/agents/` and are
-projected into each tool's format from there.
+The roles live in `docs/agents/` and are projected into each tool's format
+from there.
 
 Keep this file. When phase 1 starts, the prompt is the same shape with a
 different phase number and a different exit criterion.
+
+## Starting it in each tool
+
+The prompt itself is identical everywhere — it refers to roles and files, not
+to any product's features. Only the way you open the session differs.
+
+| Tool | Open it | Roles come from |
+| --- | --- | --- |
+| **OpenCode v2** | `cd ~/projects/personal/spydra && opencode`, then paste the block. Or `opencode run "$(sed -n '/^```$/,/^```$/p' docs/PHASE0_PROMPT.md)"` if you prefer non-interactive | `.opencode/agents/*.md` — `mode: subagent`, with ordered `permissions`. Invoke one by name (`@spydra-ops`); `spydra-reviewer` is genuinely blocked from writing |
+| **Claude Code** | `claude` in the repo root, paste the block | `.claude/agents/*.md` — subagents with a tool allowlist |
+| **Cursor** | open the folder, paste into the agent pane | `.cursor/rules/*.mdc` — `alwaysApply: false`; attach the rule or name the role |
+| **Antigravity** | open the folder, paste into the agent pane | `.agents/rules/*.md` — `trigger: model_decision` |
+
+All four read `AGENTS.md` without configuration, which is why the hard rules
+live there.
+
+**OpenCode v2 is the strictest of the four.** Its `permissions` are an
+ordered array where the last matching rule wins, and they cover the shell as
+well as the filesystem — so `spydra-reviewer` can run `git diff` and nothing
+else, and `drizzle-kit push` is denied at the tool layer rather than by
+convention. Cursor and Antigravity have no per-role restriction, so there
+`read-only` is prose the model can ignore. If you want the reviewer's
+read-only property actually enforced, run that step from OpenCode or Claude
+Code.
+
+**Run `make agents` once per clone** (or `python3 scripts/gen-agents.py`
+before the Makefile exists) so your tool's directory is populated. The
+adapters are committed, so normally they are already there; `make check`
+fails if they have drifted from `docs/agents/`.
 
 ---
 
