@@ -23,7 +23,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/crawler/__smoke/sse": {
+    "/api/crawler/runs/__smoke/events": {
         parameters: {
             query?: never;
             header?: never;
@@ -31,7 +31,7 @@ export interface paths {
             cookie?: never;
         };
         /** Smoke Sse */
-        get: operations["smoke_sse_api_crawler___smoke_sse_get"];
+        get: operations["smoke_sse_api_crawler_runs___smoke_events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -86,7 +86,7 @@ export interface operations {
             };
         };
     };
-    smoke_sse_api_crawler___smoke_sse_get: {
+    smoke_sse_api_crawler_runs___smoke_events_get: {
         parameters: {
             query?: never;
             header?: never;

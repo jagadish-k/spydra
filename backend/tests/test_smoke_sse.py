@@ -16,7 +16,11 @@ from spydra.api.main import app
 
 client = TestClient(app)
 
-_SMOKE_URL = "/api/crawler/__smoke/sse"
+# Must match the Caddyfile's unbuffered handle `/api/crawler/runs/*/events`.
+# The old `/api/crawler/__smoke/sse` fell through to the general
+# `handle /api/crawler/*`, so the 0.6 proof never exercised the rule order
+# or `flush_interval -1` it existed to verify (phase-0 audit, F2).
+_SMOKE_URL = "/api/crawler/runs/__smoke/events"
 
 
 def test_smoke_sse_declares_event_stream_and_disables_proxy_buffering() -> None:

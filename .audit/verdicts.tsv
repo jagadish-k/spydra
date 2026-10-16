@@ -1,1 +1,0 @@
-0.3	BROKEN	pre-push guards the CHECKED-OUT branch name only: 'git push <remote> HEAD:develop' from a feature branch was NOT refused

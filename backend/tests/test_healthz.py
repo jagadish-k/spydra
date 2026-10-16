@@ -12,5 +12,5 @@ def test_healthz_is_alive_and_reports_db() -> None:
     # No DB in the test environment — "down" is the expected reading, and the
     # endpoint is liveness-only, so 200 either way.
     assert body["db"] in {"ok", "down"}
-    # The __smoke/sse route is covered by tests/test_smoke_sse.py (0.17),
+    # The SSE smoke route is covered by tests/test_smoke_sse.py (0.17),
     # which subsumes the weaker check that used to live here.
