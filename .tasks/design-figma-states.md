@@ -102,3 +102,41 @@ not during.
 - design — components, state frames and prototype as above. Deltas against
   UI_STATES.md listed rather than silently reconciled, because several are
   judgement calls about which decomposition is right, not mistakes.
+
+## Second pass — aligned to UI_STATES.md
+
+**Screens: 30 → 56 frames.** Added per UI_STATES §1 and §4:
+
+- `— Empty` and `— Error` for the seven secondary screens, which had `— Loading`
+  only. Screens 1, 5, 7 and 8 got **both empty sub-cases** —
+  `Empty (first run)` and `Empty (filtered)` — because §1 is explicit that they
+  are different sentences with different actions. The filtered frames offer
+  _Clear filters_ and never offer to create anything.
+- `— Partial` for screens 1, 6, 7 and 9. These stay **populated** with one
+  region degraded, per §1 — not a whole-screen error. On Domains the
+  _Pages extracted_ counter is literally dashed and the banner names that
+  counter, which is the §1 example made real.
+- `— Dark` for one screen per visual pattern: Domains (table), Template review
+  (three-pane), Run monitor (live), Authoring chat (chat), per §4.
+
+**What the dark pass caught**, which is the reason §4 asks for it:
+
+| Screen          | Bound paints | Unbound                           |
+| --------------- | ------------ | --------------------------------- |
+| Domains         | 128          | **0**                             |
+| Template review | 135          | 5 — sample-value text fills       |
+| Run monitor     | 158          | 3 — chart line strokes            |
+| Authoring chat  | 103          | 13 — pane and message frame fills |
+
+21 paints across three screens carry no variable and therefore do not respond
+to the Dark mode at all. The visible symptom on Authoring chat is the page
+title dropping to near-invisible contrast. These want fixing before the React
+components are built from these frames, because an unbound paint in Figma
+becomes a hardcoded colour in TSX.
+
+**Still open from the first pass:** the component axis conflicts listed above
+(Tag, Log row, Chat message, Selection overlay, Keycap, Pagination, Select)
+are unchanged — they are decomposition judgements, not defects, and want a
+decision rather than a rewrite. The ~20 unbuilt sets from §3b are also
+unchanged. `Metric tile State=unavailable` is now a concrete blocker: the
+Partial frames need it to dash a counter inside the tile rather than beside it.
