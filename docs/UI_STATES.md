@@ -163,10 +163,12 @@ A row naming several components separated by `·` counts as one set each; the
 §3a rows collapse related ones to keep the table short, which is where an
 earlier count of 45 came from.
 
-`3.9` builds the §3b sets that screens 1–4 force into existence. The rest
-arrive with the screens that need them rather than as one 51-set phase
-(ADR-0025 §scope) — the ordering rule that components precede screens still
-holds per screen, which is what it was for.
+`3.9` builds the **shared** sets — the §3a variant completions plus the §3b
+sets used by three or more screens. The other fourteen arrive with the screen
+that needs them, still before it renders, so the ordering rule that components
+precede screens holds per screen rather than across the phase. ADR-0025
+§scope carries both lists; read it rather than re-deriving them from the
+screen counts above.
 
 ## 4. Per-screen states
 

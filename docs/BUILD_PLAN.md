@@ -227,11 +227,13 @@ Selectors are still hand-written; the model comes next._
 - [ ] `3.9` Design-system components (spec 006 §2) — build the whole set
       before the screens, so screens compose rather than improvise.
       **Each ships its full variant set from `UI_STATES.md` §3**, not only its
-      populated path, and the §3b sets screens 1–4 force into existence land
-      here; the rest arrive with the screens that need them (ADR-0025 §scope).
-      `Skeleton` heights are **asserted against `--sp-row-comfortable` in a
-      test** — a skeleton of the wrong height is a layout jump no screenshot
-      review catches.
+      populated path. **Scope: the shared sets only** — all seventeen §3a
+      variant completions plus the twenty §3b sets used by three or more
+      screens. The other fourteen land in the task for their screen, still
+      before it renders. ADR-0025 §scope carries both lists; read it rather
+      than re-deriving them. `Skeleton` heights are **asserted against
+      `--sp-row-comfortable` in a test** — a skeleton of the wrong height is a
+      layout jump no screenshot review catches.
 - [ ] `3.10` Domains screen, sorted by health ascending, fed by the BFF's
       `/overview` in **one** request. Includes first-run empty, filtered
       empty — different sentences, different actions — and **partial

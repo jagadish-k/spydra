@@ -69,9 +69,55 @@ Three shapes were considered:
 `UI_STATES.md` §4 covers all ten screens, but screens 5, 9 and 10 are not
 phase 3 work (`4.8`, `5.8`, `4.12`). §6's instruction to build phase 3
 against the matrix is therefore scoped to the screens phase 3 actually
-builds. Likewise `3.9` builds the §3b component sets that screens 1–4 force
-into existence; the remainder arrive with the screens that need them, rather
-than as one 51-set component phase.
+builds.
+
+**`3.9` builds the shared sets; screen-specific sets land with their screen.**
+This needs stating precisely, because `3.9` previously meant the fourteen
+components in spec 006 §2 and the matrix makes it fifty-one — and because the
+rule `3.9` exists to enforce ("screens built before their components produce
+ten one-off layouts that drift") is not satisfied by deferring components
+loosely.
+
+The dividing line is **how many screens consume a set**:
+
+- a set used by **three or more screens** is built in `3.9`, before any screen
+- a set used by **one or two** is built in the task for its screen, still
+  before that screen renders, so the drift rule holds at screen granularity
+
+Applied once, that produces the lists below. **The lists are the contract, not
+the rule** — a later agent reads the list rather than re-deriving it from the
+screen count, because re-deriving invites exactly the per-agent judgement this
+ADR is trying to remove.
+
+`3.9` — all seventeen §3a variant completions (the components the mockups
+already show, which need their missing states), plus twenty §3b sets:
+
+- the nine table sets — header cell, row, row skeleton, checkbox, bulk action
+  bar, pagination, row action menu, filter chip, search field (screens 1, 2,
+  5, 7, 8)
+- the seven state and feedback sets — skeleton, spinner, empty state, error
+  state, toast, modal, tooltip (every screen)
+- `Select` and `Toggle` (filters on 1, 7, 8; forms on 2, 3)
+- `Stat strip counter` (1, 6, 7, 9) and `Line chart` (6, 7, 9)
+
+The remaining fourteen §3b sets land with their screen instead:
+
+| Set                                              | Task                    |
+| ------------------------------------------------ | ----------------------- |
+| Numeric stepper · Dropzone · Validation row      | `3.13` seeds            |
+| Diff row                                         | `3.12` domain detail    |
+| Segmented control                                | `3.14` template review  |
+| Log line · Countdown                             | `3.16` run monitor      |
+| Price history chart · Image thumbnail            | `3.18` products         |
+| Chat message · Provenance badge                  | `4.12` authoring chat   |
+| Selection overlay · Keycap · Ancestor breadcrumb | `6.10` playground modes |
+
+Two of those placements are judgement rather than arithmetic. `Select` and
+`Toggle` are listed in §3b under _Forms — screens 2, 3_, which by a literal
+reading would defer them; they are in `3.9` because filters and preferences
+put them on most screens, and a table filter bar built without a `Select` is
+the drift the rule is about. Recorded here so the next reader sees a decision
+rather than an inconsistency.
 
 ### Consequence this forces elsewhere
 
@@ -98,6 +144,14 @@ recorded here rather than left as a frontend detail.
 - **The matrix can now rot.** A file nothing referenced could not go stale in
   a way that mattered; a binding one can. Nothing checks it mechanically: a
   missing state is caught by review, not by `make check`.
+- **`3.9` is still the largest task in phase 3** at thirty-seven sets, and the
+  split means a reviewer has to know which list a set is on. The lists are in
+  this ADR rather than spread across the screen tasks for that reason, and
+  BUILD_PLAN `3.9` points here instead of restating them.
+- **Fourteen sets are built against one or two screens**, so their props are
+  fitted to those screens and a third consumer may need them widened. That is
+  the accepted trade for not designing twenty component APIs with no caller —
+  see the alternatives.
 
 ## Alternatives rejected
 
@@ -111,3 +165,14 @@ recorded here rather than left as a frontend detail.
   mockups. The mockups are accurate down to spacing and colour, and a
   Markdown table is not a substitute for that. Both axes have an artifact
   that suits them.
+- **`3.9` builds all fifty-one sets before any screen renders.** The faithful
+  reading of the rule, and rejected on two counts: twenty of those sets would
+  be designed with no caller, so their props would be guesses that the first
+  real screen rewrites; and a single fifty-one-set task is not reviewable as
+  one unit, so it would have to be split into numbered sub-tasks anyway. If
+  that split is ever wanted, this is the alternative to revisit.
+- **Scoping `3.9` to "the sets screens 1–4 force into existence"** — the first
+  wording of this section. Rejected after counting: phase 3 builds screens 1,
+  2, 3, 4, 6, 7, 8 and schedules, so roughly thirty of the thirty-four new
+  sets are phase-3 work regardless. That line deferred about four sets and
+  left an ambiguous boundary in exchange, which is the worst of both.
