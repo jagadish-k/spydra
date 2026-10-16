@@ -18,7 +18,7 @@ tool's format.
 ## What this is
 
 **Spydra** — a single-user, locally-hosted crawler that extracts structured
-product data from bespoke supplier sites. A local LLM *proposes* extraction
+product data from bespoke supplier sites. A local LLM _proposes_ extraction
 rules; the operator approves them before any domain goes live. The model never
 runs during a crawl.
 
@@ -27,19 +27,24 @@ scaling. Do not add them.
 
 ## Read before writing code
 
-| Doc | When |
-| --- | --- |
-| `docs/specs/010-service-topology.md` | **First.** Six services, routing, who owns which data. |
-| `docs/ARCHITECTURE.md` | Always. Why the system is shaped this way. |
-| `docs/BUILD_PLAN.md` | Always. Tells you which phase you are in and what "done" means. |
-| `docs/adr/` | Before changing any structural decision. |
-| `docs/specs/` | Before implementing a component. One spec per component. |
-| `docs/DEVELOPMENT.md` | Before running anything. |
-| `docs/DESIGN_SYSTEM.md` + `design/mockups/` | Before writing any UI. |
+| Doc                                         | When                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------ |
+| `docs/specs/010-service-topology.md`        | **First.** Six services, routing, who owns which data.                   |
+| `docs/ARCHITECTURE.md`                      | Always. Why the system is shaped this way.                               |
+| `docs/BUILD_PLAN.md`                        | Always. Tells you which phase you are in and what "done" means.          |
+| `docs/adr/`                                 | Before changing any structural decision.                                 |
+| `docs/specs/`                               | Before implementing a component. One spec per component.                 |
+| `docs/DEVELOPMENT.md`                       | Before running anything.                                                 |
+| `docs/DESIGN_SYSTEM.md` + `design/mockups/` | Before writing any UI.                                                   |
+| `docs/UI_STATES.md`                         | Before writing any UI. Which states exist, per component and per screen. |
 
-**The mockups in `design/mockups/` are the UI specification.** They are static
-HTML, they open from disk with no build step, and they are accurate. Build the
-React components to match them, not to match your own idea of the layout.
+**The UI specification is two files, and they do not overlap** (ADR-0025).
+`design/mockups/` is authoritative for layout, spacing, typography and colour
+— static HTML, opens from disk, accurate; build the React components to match
+it, not your own idea of the layout. `docs/UI_STATES.md` is authoritative for
+**which states exist** and what each must not do. Every mockup is drawn
+populated, so a component built from one alone is complete in exactly one of
+its four mandatory states. Where the two disagree, `UI_STATES.md` wins.
 
 ---
 
@@ -54,7 +59,7 @@ React components to match them, not to match your own idea of the layout.
    before any image exists and from any tool's terminal.
 2. **Never commit secrets.** No API keys, no tokens, no credentials, no
    `.env` files — `.env.example` only. Recorded fixture HTML from public
-   supplier pages is *not* a secret and is required: a parser cannot be
+   supplier pages is _not_ a secret and is required: a parser cannot be
    tested against markup nobody has seen. The target list is recorded
    deliberately in `docs/TARGETS.md` (BUILD_PLAN `1.3`).
 3. **Do not add a message broker, a cache layer, or a second datastore.**
@@ -117,15 +122,15 @@ React components to match them, not to match your own idea of the layout.
 
 Six, plus `llama-server` on the host. Full detail in spec 010.
 
-| Service | What it is | Owns |
-| --- | --- | --- |
-| `edge` | Caddy. One origin, path routing, serves the SPA | — |
-| `web` | React SPA | — |
-| `bff` | Fastify. Scheduling, saved views, aggregation | `ui` schema |
-| `api` | FastAPI. Domains, templates, runs, pages | `crawl` schema |
-| `worker` | The crawler. Scales by replica | `crawl` schema |
-| `render` | Playwright behind HTTP. Stateless | nothing |
-| `db` | PostgreSQL | — |
+| Service  | What it is                                      | Owns           |
+| -------- | ----------------------------------------------- | -------------- |
+| `edge`   | Caddy. One origin, path routing, serves the SPA | —              |
+| `web`    | React SPA                                       | —              |
+| `bff`    | Fastify. Scheduling, saved views, aggregation   | `ui` schema    |
+| `api`    | FastAPI. Domains, templates, runs, pages        | `crawl` schema |
+| `worker` | The crawler. Scales by replica                  | `crawl` schema |
+| `render` | Playwright behind HTTP. Stateless               | nothing        |
+| `db`     | PostgreSQL                                      | —              |
 
 ```
 /                          → web
@@ -300,7 +305,7 @@ orders them. Do not reach around it — the API layer talks to ports, never to
 
 - Name things after the domain: `Frontier`, `Template`, `Observation`,
   `UnknownPage`. Not `Manager`, `Helper`, `Util`, `Service`.
-- Comments explain *why*, never *what*. If you need a comment to say what the
+- Comments explain _why_, never _what_. If you need a comment to say what the
   code does, rename the thing instead.
 - Commit messages: imperative subject under 72 chars, body explains the
   reasoning when the change is not obvious.
@@ -314,11 +319,11 @@ A task is done when all of these hold:
 - [ ] `make check` passes.
 - [ ] The behaviour is covered by a test that would fail without the change.
 - [ ] If it touched the API, `docs/specs/005-api.md` is current and
-       `make types` produced no diff.
+      `make types` produced no diff.
 - [ ] If it touched the schema, there is a migration and it runs both ways.
 - [ ] `make generated` produces no diff, and no generated file was hand-edited.
 - [ ] It is on a branch, reviewed by an agent that did not write it, and the
-       task file's handoff log is current (`docs/WORKFLOW.md`).
+      task file's handoff log is current (`docs/WORKFLOW.md`).
 - [ ] If it touched the UI, it matches the mockup and works in both themes.
 - [ ] If it changed a structural decision, there is an ADR.
 - [ ] `docs/BUILD_PLAN.md` has the task ticked.

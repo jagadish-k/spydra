@@ -1,0 +1,38 @@
+diff --git a/.githooks/pre-push b/.githooks/pre-push
+index c436727..242a20e 100755
+--- a/.githooks/pre-push
++++ b/.githooks/pre-push
+@@ -11,10 +11,30 @@ set -uo pipefail
+ 
+ RED=$'\033[0;31m'; GRN=$'\033[0;32m'; YEL=$'\033[0;33m'; OFF=$'\033[0m'
+ 
+-branch=$(git rev-parse --abbrev-ref HEAD)
+-if [ "$branch" = "develop" ] || [ "$branch" = "main" ]; then
+-  echo "${RED}✗ ${branch} is protected. Work on type/NN-slug and open a PR (WORKFLOW.md §1).${OFF}" >&2
++# Protection is a property of the ref being WRITTEN, not of the one checked
++# out. git feeds pre-push one line per ref on stdin —
++#   <local_ref> <local_sha> <remote_ref> <remote_sha>
++# — so this catches `git push origin HEAD:develop` from a feature branch,
++# which comparing $(git rev-parse --abbrev-ref HEAD) waved straight through
++# (phase-0 audit, finding F1).
++refused() {
++  echo "${RED}✗ ${1} is protected. Work on type/NN-slug and open a PR (WORKFLOW.md §1).${OFF}" >&2
+   exit 1
++}
++
++refs_seen=0
++while read -r _local_ref _local_sha remote_ref _remote_sha; do
++  refs_seen=1
++  case "$remote_ref" in
++    refs/heads/develop|refs/heads/main) refused "${remote_ref#refs/heads/}" ;;
++  esac
++done
++
++# No refs on stdin means the hook was invoked by hand, not by a push. Fall
++# back to the checked-out branch so a manual run still says something useful.
++if [ "$refs_seen" -eq 0 ]; then
++  branch=$(git rev-parse --abbrev-ref HEAD)
++  case "$branch" in develop|main) refused "$branch" ;; esac
+ fi
+ 
+ if [ ! -f Makefile ] || ! grep -qE '^check:' Makefile; then

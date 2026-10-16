@@ -207,6 +207,13 @@ Selectors are still hand-written; the model comes next._
 
 **3b — the surfaces**
 
+> **Every UI task below carries state coverage in its definition of done.**
+> The states are `UI_STATES.md` §1 (loading · empty · error · populated, plus
+> partial where a surface aggregates) and §4 (what that screen also has). A
+> component or screen PR that ships only the populated path is incomplete,
+> not a PR with a follow-up, and `spydra-reviewer` reads the matrix to say
+> which state is missing (ADR-0025).
+
 - [ ] `3.4` Crawler API: domains, seeds, templates, drafts, runs, pages
       (spec 005 §2, spec 013 §5).
 - [ ] `3.5` BFF: schedules with the fire loop, saved views, preferences, and
@@ -219,17 +226,35 @@ Selectors are still hand-written; the model comes next._
 - [ ] `3.8` Frontend shell: `AppShell`, routing, theme with no-flash load.
 - [ ] `3.9` Design-system components (spec 006 §2) — build the whole set
       before the screens, so screens compose rather than improvise.
+      **Each ships its full variant set from `UI_STATES.md` §3**, not only its
+      populated path, and the §3b sets screens 1–4 force into existence land
+      here; the rest arrive with the screens that need them (ADR-0025 §scope).
+      `Skeleton` heights are **asserted against `--sp-row-comfortable` in a
+      test** — a skeleton of the wrong height is a layout jump no screenshot
+      review catches.
 - [ ] `3.10` Domains screen, sorted by health ascending, fed by the BFF's
-      `/overview` in **one** request.
+      `/overview` in **one** request. Includes first-run empty, filtered
+      empty — different sentences, different actions — and **partial
+      counters**, which is why every counter in spec 011 §5 is nullable
+      (`UI_STATES.md` §4, ADR-0025).
 - [ ] `3.11` Schedules screen — list, create, edit, fire history.
 - [ ] `3.12` Domain detail with template versions and diff.
 - [ ] `3.13` Seeds screen with the mandatory preview step.
 - [ ] `3.14` **Template review screen** — three panes, live re-resolve,
       sample matrix, discovery rules with dry-run. Reads and writes a
       `TemplateDraft`, so phase 4 adds modes to it rather than rebuilding it.
+      **Phase 3 ships the Preview mode only**: the segmented control renders
+      Select and Skeleton as disabled segments, and they become live in `4.10`
+      and `6.10`. `UI_STATES.md` §4 lists all three because that is the end
+      state, not phase 3's.
 - [ ] `3.15` **Batch review** — the same review state rendered as a grid.
       Ships now, not later (ADR-0005, `SCREENS.md` §4).
 - [ ] `3.16` Run monitor, SSE-driven, with the two throughput series.
+      **Acceptance here, not phase 5 hardening:** a test drops the connection
+      and asserts backfill from `Last-Event-ID` with no gap in the series.
+      Server-side backfill is `3.6`; this is the client half, and the
+      reconnecting state must read as backfilling rather than frozen
+      (`UI_STATES.md` §4 screen 6).
 - [ ] `3.17` Runs history with run comparison.
 - [ ] `3.18` Products browser with observation history and field diff.
 - [ ] `3.19` Playwright e2e: seed → template → approve → run → inspect.

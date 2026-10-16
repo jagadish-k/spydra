@@ -38,3 +38,4 @@ shape everything else sits inside.
 | [0022](0022-agent-team.md)                | Specialised agents, sequential within a slice                               | Accepted                                   |
 | [0023](0023-render-egress-isolation.md)   | The render sidecar is reached through the host, not a shared network        | Accepted                                   |
 | [0024](0024-drizzle-down-migrations.md)   | `ui` down-migrations: hand-written `down.sql`, run by a ledger-aware script | Accepted                                   |
+| [0025](0025-ui-states-authority.md)       | `UI_STATES.md` is the state authority; the mockups are populated-state      | Accepted                                   |

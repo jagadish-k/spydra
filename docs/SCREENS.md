@@ -3,7 +3,14 @@
 Ten screens plus a foundations page. Each is specified below and mocked up in
 [`design/mockups/`](../design/mockups/).
 
-Screen 4 carries the visual playground as a *mode*, not as a separate screen —
+**The mockups show each screen populated.** Every state a screen also has —
+loading, empty, filtered-empty, error, partial — is in
+[`UI_STATES.md`](UI_STATES.md), which is authoritative for states and binding
+on the phase 3 components (ADR-0025). Read the two together: this file says
+what a screen is for, the mockups say what it looks like, `UI_STATES.md` says
+how many ways it has to look.
+
+Screen 4 carries the visual playground as a _mode_, not as a separate screen —
 see the note there for why.
 
 The screens are ordered by how often you will see them, not by navigation order.
@@ -16,12 +23,12 @@ The screens are ordered by how often you will see them, not by navigation order.
 
 **Layout:** six-counter summary strip, then a filterable table.
 
-*Summary strip* — Active · Awaiting review · Broken · Paused · Never crawled ·
+_Summary strip_ — Active · Awaiting review · Broken · Paused · Never crawled ·
 Pages extracted. Each counter is a **link that filters the table**, not
 decoration: every number here is a question you will want to answer by looking
 at the rows behind it.
 
-*Table columns:* Host · State · Templates · Pages · Last crawled · Extraction
+_Table columns:_ Host · State · Templates · Pages · Last crawled · Extraction
 health (7-day rolling pass rate, as a sparkline) · Crawl delay · Render mode · Actions.
 
 **Default sort: extraction health ascending.** The healthy domains need nothing
@@ -29,7 +36,7 @@ from you; the degrading ones are why you opened the screen. A domain sliding
 from 98% to 71% over a week is the single most valuable signal this system
 produces, and it belongs at the top of the first screen.
 
-*Bulk actions* on selection: pause, resume, set delay, start a run over the selection.
+_Bulk actions_ on selection: pause, resume, set delay, start a run over the selection.
 
 ---
 
@@ -79,7 +86,7 @@ selectors.
 
 **Three panes:**
 
-*Left (45%) — page view, three modes.* A segmented control: **Preview ·
+_Left (45%) — page view, three modes._ A segmented control: **Preview ·
 Select · Skeleton**.
 
 - **Preview** — a full-page screenshot from the render sidecar with a
@@ -107,12 +114,12 @@ against the same sample strip. Splitting it out would mean two screens
 competing to own one draft, two copies of the field list, and a hand-off
 between them in the middle of the only task that matters here.
 
-*Centre (35%) — field list.* One `<SelectorField>` per field: name · editable
+_Centre (35%) — field list._ One `<SelectorField>` per field: name · editable
 selector · **resolved value on this page** · match count · model confidence.
 Edits re-resolve on a 300 ms debounce against the already-loaded DOM, with no
 network round-trip.
 
-*Right (20%) — sample strip.* Three to five URLs from the same pattern with a
+_Right (20%) — sample strip._ Three to five URLs from the same pattern with a
 per-field pass/fail grid.
 
 **The sample strip is the feature that makes this screen worth building.** A
@@ -121,7 +128,7 @@ the single most common error, and it is invisible in a one-page review. A cell
 turns red the moment a selector stops resolving on any sample, before you approve
 anything.
 
-*Field controls:* required/optional · validation rule (currency, non-empty, URL,
+_Field controls:_ required/optional · validation rule (currency, non-empty, URL,
 integer, date) · transform chain (trim, strip currency symbol, resolve relative
 URL, first vs. all) · fallback selector.
 
@@ -149,15 +156,15 @@ Pages that could not be understood. Your work queue.
 cause usually produces dozens. Group by `(domain, failure_reason, url_pattern)`
 so one fix clears the group.
 
-| Reason | Meaning | Action offered |
-| --- | --- | --- |
-| `no_template` | No template matches this URL pattern | Propose a template |
-| `validation_failed` | Selectors resolved, values failed their rules | Open in review with this page loaded |
-| `fetch_error` | Non-2xx or timeout | Retry, or inspect the response |
-| `empty_extraction` | Selectors matched nothing at all | Usually a redesign — diff against last working observation |
-| `llm_low_confidence` | Proposal below threshold | Review manually |
+| Reason               | Meaning                                       | Action offered                                             |
+| -------------------- | --------------------------------------------- | ---------------------------------------------------------- |
+| `no_template`        | No template matches this URL pattern          | Propose a template                                         |
+| `validation_failed`  | Selectors resolved, values failed their rules | Open in review with this page loaded                       |
+| `fetch_error`        | Non-2xx or timeout                            | Retry, or inspect the response                             |
+| `empty_extraction`   | Selectors matched nothing at all              | Usually a redesign — diff against last working observation |
+| `llm_low_confidence` | Proposal below threshold                      | Review manually                                            |
 
-*Row expansion* shows the stored HTML snapshot (within its 7-day TTL), the
+_Row expansion_ shows the stored HTML snapshot (within its 7-day TTL), the
 template attempted, and per-field failure detail.
 
 **Dismiss-as-not-a-product-page adds a deny pattern to the domain.** Without
@@ -199,11 +206,11 @@ event log rather than showing a gap or a frozen bar that looks like a stall.
 Completed runs, newest first: run ID · started/duration · domains · pages ·
 changed · new · failures · assets · bytes.
 
-*Run detail* expands to per-domain breakdown, validation summary, failing pages,
+_Run detail_ expands to per-domain breakdown, validation summary, failing pages,
 and a **diff against the previous run of the same domain set** — the view that
 answers "did this redesign break us, or did we always have 12% failures here."
 
-*Comparison mode:* select two runs → side-by-side counts and the domains whose
+_Comparison mode:_ select two runs → side-by-side counts and the domains whose
 health moved materially.
 
 ---
@@ -213,7 +220,7 @@ health moved materially.
 Browse what was extracted. Filters: domain · category · validation state ·
 last-seen window · price range · has-images · free text.
 
-*Table view* for scanning; *card view* with thumbnails for visual verification —
+_Table view_ for scanning; _card view_ with thumbnails for visual verification —
 the fastest way to spot that a selector has started picking up a placeholder or a
 related-product image.
 
@@ -257,12 +264,12 @@ what you want in plain language, and watch a draft fill in.
 
 **Two panes:**
 
-*Left (35%) — conversation.* Your instructions and the system's replies.
-Each reply is a short statement of what it did, not prose: *"fetched 3 pages ·
-proposed 7 fields · 5 verified · `lead_time` found on 1 of 3."* Streamed over
+_Left (35%) — conversation._ Your instructions and the system's replies.
+Each reply is a short statement of what it did, not prose: _"fetched 3 pages ·
+proposed 7 fields · 5 verified · `lead_time` found on 1 of 3."_ Streamed over
 SSE (ADR-0012), same transport as run progress.
 
-*Right (65%) — the draft, live.* The same field list and sample strip as
+_Right (65%) — the draft, live._ The same field list and sample strip as
 screen 4, filling in as candidates verify. Each field shows its provenance
 badge — **form · chat · clicked** — because knowing a selector came from a
 model rather than from a click changes how hard you look at it.
