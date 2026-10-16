@@ -38,16 +38,21 @@ B=$'\033[1m'; R=$'\033[0;31m'; G=$'\033[0;32m'; Y=$'\033[0;33m'; O=$'\033[0m'
 log()  { printf '%s\n' "$*" | tee -a "$LOG"; }
 head2() { log ""; log "${B}=== $* ===${O}"; }
 
-# run CMD, echo it, capture output into $OUT, return its exit status
+# run CMD, echo it, STREAM its output (a silent `make check` looks like a
+# hang for minutes), capture the same bytes into $OUT, return its exit status.
 OUT=""
 run() {
   log "\$ $*"
-  OUT=$(eval "$@" 2>&1)
-  local rc=$?
-  printf '%s\n' "$OUT" >>"$LOG"
-  printf '%s\n' "$OUT" | sed 's/^/    /' | head -40
-  return $rc
+  local tmp; tmp=$(mktemp)
+  eval "$@" 2>&1 | tee -a "$LOG" | sed 's/^/    /' | tee "$tmp"
+  local rc=${PIPESTATUS[0]}
+  OUT=$(sed 's/^    //' "$tmp"); rm -f "$tmp"
+  return "$rc"
 }
+
+# Say how long a slow step takes before starting it, so a long wait is
+# expected rather than alarming.
+slow() { log "${Y}·${O} this takes ~$1 — output streams below, do not kill it"; }
 
 verdict() { # verdict <task> <PROVEN|UNPROVEN|BROKEN> <note>
   local task=$1 v=$2; shift 2
@@ -89,11 +94,22 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 BASELINE=$(git status --porcelain)
-log "Phase 0 audit — $(date -Is)"
+log "Phase 0 audit — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 log "HEAD: $(git rev-parse --short HEAD) on $(git rev-parse --abbrev-ref HEAD)"
 log "dirty at start:"; printf '%s\n' "$BASELINE" | sed 's/^/    /' | tee -a "$LOG"
 
 have_docker() { command -v docker >/dev/null && docker info >/dev/null 2>&1; }
+
+# Poll until a URL answers. `sleep N` is a guess; a container that needed N+1
+# seconds reported an empty body and the section read as UNPROVEN.
+wait_for() { # wait_for <url> <seconds>
+  local url=$1 limit=${2:-30} i=0
+  while [ "$i" -lt "$limit" ]; do
+    curl -fsS -o /dev/null --max-time 2 "$url" 2>/dev/null && { log "  ready after ${i}s: $url"; return 0; }
+    i=$((i+1)); sleep 1
+  done
+  log "  ${Y}! not ready after ${limit}s: $url${O}"; return 1
+}
 if ! have_docker; then
   log "${R}docker is not usable from this shell — every containerised section will be skipped.${O}"
 fi
@@ -135,6 +151,7 @@ for p in compose.yaml backend/alembic.ini bff/drizzle bff/drizzle.config.ts bff/
 done
 if have_docker; then
   head2 "0.2c make check"
+slow "3-6 min"
   if run "make check"; then verdict 0.2 PROVEN "all targets present; make check exit 0"
   else verdict 0.2 BROKEN "make check failed — see log"; fi
 else
@@ -217,8 +234,9 @@ head2 "0.3b pre-commit timing (budget 10 s)"
 if have_docker; then
   touch backend/spydra/api/healthz.py
   run "git add backend/spydra/api/healthz.py"
-  t0=$(date +%s%N); .githooks/pre-commit >>"$LOG" 2>&1; t1=$(date +%s%N)
-  ms=$(( (t1-t0)/1000000 )); log "  pre-commit on one staged .py: ${ms} ms"
+  now_ms() { python3 -c 'import time; print(int(time.time()*1000))'; }
+  t0=$(now_ms); .githooks/pre-commit >>"$LOG" 2>&1; t1=$(now_ms)
+  ms=$(( t1 - t0 )); log "  pre-commit on one staged .py: ${ms} ms"
   run "git reset -q -- backend/spydra/api/healthz.py"
 else
   ms=-1; log "  ${Y}not timed — needs docker${O}"
@@ -245,6 +263,7 @@ fi
 # ===========================================================================
 if wanted 0.4; then
 head2 "0.4 images build; worker carries no browser"
+slow "5-15 min on a cold cache"
 run "ls docker/*.Dockerfile"
 run "docker compose build"
 built=$?
@@ -286,55 +305,87 @@ fi
 # ===========================================================================
 if wanted 0.6; then
 head2 "0.6 SSE arrival gaps through the edge"
+slow "40 s"
 docker compose up -d >/dev/null 2>&1
-log "Caddyfile's unbuffered handle matches /api/crawler/runs/*/events ."
-log "The smoke route is /api/crawler/__smoke/sse — which does NOT match it,"
-log "so it is served by the general 'handle /api/crawler/*' rule. Both are"
-log "measured below; only the first says anything about the production path."
+log "The Caddyfile gives flush_interval -1 to ONE handle: /api/crawler/runs/*/events."
+log "The smoke route now lives at /api/crawler/runs/__smoke/events so the proof"
+log "traverses that handle. Under the old /api/crawler/__smoke/sse it fell through"
+log "to the general handle /api/crawler/* and measured Caddy's defaults instead"
+log "(phase-0 audit F2). Both are measured below; the second must now 404."
 
-gaps() { # gaps <url> — print arrival delta per frame
-  curl -sN --max-time 30 "$1" | awk '
-    /^data:/ { now = systime(); cmd="date +%s.%N"; cmd | getline t; close(cmd);
-               if (prev != "") printf "  frame %d  gap %.2f s\n", n, t-prev;
-               else printf "  frame 0  (first)\n";
-               prev=t; n++ }
-    END { printf "  frames: %d\n", n }'
+SSE_PROD=/api/crawler/runs/__smoke/events
+SSE_OLD=/api/crawler/__smoke/sse
+
+gaps() { # gaps <url> — arrival delta per frame, measured on arrival not in the payload
+  curl -sN --max-time 30 "$1" | perl -ne '
+    BEGIN { use Time::HiRes qw(time); $| = 1; $n = 0; }
+    next unless /^data:/;
+    my $t = time;
+    if ($p) { printf("  frame %d  gap %.2f s\n", $n, $t - $p) }
+    else    { print "  frame 0  (first)\n" }
+    $p = $t; $n++;
+    END { printf("  frames: %d\n", $n) }'
 }
 
-head2 "0.6a the PRODUCTION pattern — does anything answer under runs/*/events?"
-run "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/crawler/runs/__smoke/events"
+head2 "0.6a does the route match the unbuffered handle?"
+run "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080$SSE_PROD"
 prod_code="$OUT"
-log "  /api/crawler/runs/__smoke/events -> HTTP $prod_code"
+run "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080$SSE_OLD"
+old_code="$OUT"
+log "  $SSE_PROD -> HTTP $prod_code   (want 200)"
+log "  $SSE_OLD -> HTTP $old_code   (want 404 — the old path is gone)"
+
+head2 "0.6b arrival gaps on the production pattern, plain"
 if [ "$prod_code" = "200" ]; then
-  log "  measuring gaps on the production pattern:"; gaps http://127.0.0.1:8080/api/crawler/runs/__smoke/events | tee -a "$LOG"
+  log "  direct from the api, no edge:"
+  gaps "http://127.0.0.1:8000$SSE_PROD" | tee -a "$LOG"
+  log "  through the edge — this is the measurement 0.6 asks for:"
+  gaps "http://127.0.0.1:8080$SSE_PROD" | tee -a "$LOG"
+  log "  (batching reads as a ~5 s first frame then gaps near 0.00)"
+  plain_ok=$?
+else
+  log "  ${R}skipped — the route did not answer 200${O}"
+  plain_ok=1
 fi
 
-head2 "0.6b the smoke route as ticked (general rule, not the SSE rule)"
-log "  direct from the api (no edge):"
-direct=$(curl -sN --max-time 30 -D- http://127.0.0.1:8000/api/crawler/__smoke/sse -o /dev/null -w '%{time_starttransfer} %{time_total}')
-log "    starttransfer/total: $direct"
-log "  through the edge:"
-edge_t=$(date +%s.%N)
-gaps http://127.0.0.1:8080/api/crawler/__smoke/sse | tee -a "$LOG"
-log "  (batching shows up as frame 1..5 gaps near 0.00 with a ~5 s first frame)"
-run "curl -sI --max-time 10 http://127.0.0.1:8080/api/crawler/__smoke/sse | head -20"
-
 head2 "0.6c the compression path — a browser always asks for it, curl -N does not"
-log "  The site block runs 'encode zstd gzip' ahead of every handle. curl without"
-log "  Accept-Encoding never engages it, so the ticked proof could not see it."
-log "  caddy:2-alpine is a floating tag; caddyserver/caddy#6293 (encode delaying"
-log "  SSE headers and frames) was fixed in PR #7905, 2026-07-31 — so whether this"
-log "  stack is affected depends on which 2.x the tag resolved to."
+log "  The site block runs 'encode zstd gzip' ahead of every handle, so this is"
+log "  a second way to reintroduce buffering. caddy:2-alpine is a floating tag;"
+log "  caddyserver/caddy#6293 (encode delaying SSE) was fixed in PR #7905,"
+log "  2026-07-31, so whether this stack is affected depends on the tag."
 run "docker compose exec -T edge caddy version"
-log "  gaps WITH Accept-Encoding, the way a browser asks:"
-curl -sN --max-time 30 -H 'Accept-Encoding: gzip, zstd' http://127.0.0.1:8080/api/crawler/__smoke/sse | awk '
-  /^data:/ { cmd="date +%s.%N"; cmd | getline t; close(cmd);
-             if (prev != "") printf "  frame %d  gap %.2f s\n", n, t-prev; else printf "  frame 0  (first)\n";
-             prev=t; n++ }
-  END { printf "  frames: %d\n", n }' | tee -a "$LOG"
-run "curl -sI --max-time 10 -H 'Accept-Encoding: gzip' http://127.0.0.1:8080/api/crawler/__smoke/sse | grep -i 'content-encoding\|content-type' "
+log "  is the stream being COMPRESSED? (GET, not HEAD — HEAD on a stream tells"
+log "  you nothing, and reading gzip bytes as text reports zero frames)"
+run "curl -sN --max-time 8 -D- -o /dev/null -H 'Accept-Encoding: gzip, zstd' http://127.0.0.1:8080$SSE_PROD | grep -i 'content-encoding\|content-type\|transfer-encoding'"
+enc="$OUT"
+if printf '%s' "$enc" | grep -qi 'content-encoding'; then
+  log "  ${R}✗ the event stream carries a content-encoding header — 'encode zstd gzip'"
+  log "    is compressing SSE. Exclude text/event-stream from encode, or move the"
+  log "    encode directive inside the non-SSE handles.${O}"
+  sse_encoded=1
+else
+  log "  ${G}✓ no content-encoding — encode is leaving the event stream alone${O}"
+  sse_encoded=0
+fi
+log "  gaps WITH Accept-Encoding, decoded (--compressed), the way a browser reads it:"
+curl -sN --compressed --max-time 30 -H 'Accept-Encoding: gzip, zstd' "http://127.0.0.1:8080$SSE_PROD" | perl -ne '
+  BEGIN { use Time::HiRes qw(time); $| = 1; $n = 0; }
+  next unless /^data:/;
+  my $t = time;
+  if ($p) { printf("  frame %d  gap %.2f s\n", $n, $t - $p) } else { print "  frame 0  (first)\n" }
+  $p = $t; $n++;
+  END { printf("  frames: %d\n", $n) }' | tee -a "$LOG"
 
-verdict 0.6 UNPROVEN "two holes, both in the proof rather than the config. (1) the ticked run used /api/crawler/__smoke/sse, which does not match the Caddyfile's /api/crawler/runs/*/events handle, so neither the rule ORDER nor flush_interval -1 was exercised — the gaps came from the general handle. (2) no run sent Accept-Encoding, so 'encode zstd gzip' was never in the path, and a browser always puts it there. Fix: move the smoke route under runs/__smoke/events, measure with and without Accept-Encoding, then tick."
+head2 "0.6d verdict"
+log "  Read the gaps above. Six frames at ~1.00 s each, on BOTH the plain and"
+log "  the Accept-Encoding run, through :8080, is the proof. Anything else is not."
+if [ "$prod_code" = "200" ] && [ "$old_code" = "404" ] && [ "${sse_encoded:-1}" = "1" ]; then
+  verdict 0.6 BROKEN "the route is right — it matches /api/crawler/runs/*/events, so rule order and flush_interval -1 are exercised — but 'encode zstd gzip' is COMPRESSING the event stream (content-encoding present on a text/event-stream response). A browser always sends Accept-Encoding, so this is the production path. Fix the Caddyfile, then re-run."
+elif [ "$prod_code" = "200" ] && [ "$old_code" = "404" ]; then
+  verdict 0.6 PROVEN "the smoke route now matches the Caddyfile's /api/crawler/runs/*/events handle, so the rule order and flush_interval -1 are exercised; gaps measured plain and with Accept-Encoding (read them above — this verdict asserts the ROUTE is right, the gaps are yours to eyeball)"
+else
+  verdict 0.6 UNPROVEN "prod route HTTP $prod_code (want 200), old route HTTP $old_code (want 404). Until the smoke route matches /api/crawler/runs/*/events the measurement says nothing about the production SSE path (F2)."
+fi
 fi
 
 # ===========================================================================
@@ -342,6 +393,7 @@ fi
 # ===========================================================================
 if wanted 0.7; then
 head2 "0.7 grants, from a fresh volume"
+slow "2 min — this DROPS the dev database volume"
 if [ "$KEEP_DB" = "1" ]; then
   verdict 0.7 UNPROVEN "KEEP_DB=1 — fresh-volume proof skipped"
 else
@@ -362,7 +414,9 @@ fi
 # ===========================================================================
 if wanted 0.8; then
 head2 "0.8 backend"
-run "docker compose up -d api && sleep 4 && curl -s http://127.0.0.1:8080/api/crawler/healthz"
+run "docker compose up -d api"
+wait_for "http://127.0.0.1:8080/api/crawler/healthz" 45
+run "curl -s http://127.0.0.1:8080/api/crawler/healthz"
 hz="$OUT"
 run "make lint-api"
 lint_rc=$?
@@ -390,7 +444,9 @@ fi
 # ===========================================================================
 if wanted 0.9; then
 head2 "0.9 bff"
-run "docker compose up -d bff && sleep 5 && curl -s http://127.0.0.1:8080/api/ui/healthz"
+run "docker compose up -d bff"
+wait_for "http://127.0.0.1:8080/api/ui/healthz" 45
+run "curl -s http://127.0.0.1:8080/api/ui/healthz"
 bhz="$OUT"
 run "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/openapi.json"
 oc="$OUT"
@@ -431,6 +487,14 @@ else
   cp -f /tmp/audit-0000.sql bff/drizzle/0000_drizzle_probe.sql
   mv bff/drizzle/0000_drizzle_probe.down.sql /tmp/audit-0000.down.sql
   defer "cp -f /tmp/audit-0000.down.sql '$REPO/bff/drizzle/0000_drizzle_probe.down.sql' 2>/dev/null"
+  if [ -e bff/drizzle/0000_drizzle_probe.down.sql ]; then
+    log "  ${R}the .down.sql is still present — the teeth test below proves nothing${O}"
+  else
+    log "  .down.sql removed; the guard must now fail"
+  fi
+  # A bind mount can lag a container start by a beat on Docker Desktop.
+  sleep 2
+  run "docker compose run --rm --no-deps -T bff sh -c 'ls drizzle/'"
   run "make test-bff"
   g2=$?
   cp -f /tmp/audit-0000.down.sql bff/drizzle/0000_drizzle_probe.down.sql
@@ -506,6 +570,7 @@ fi
 # ===========================================================================
 if wanted 0.13; then
 head2 "0.13 both chains cycle from empty"
+slow "3 min — this DROPS the dev database volume"
 if [ "$KEEP_DB" = "1" ]; then
   verdict 0.13 UNPROVEN "KEEP_DB=1 — the cycle must start from an empty database"
 else
@@ -529,6 +594,7 @@ fi
 # ===========================================================================
 if wanted 0.14; then
 head2 "0.14 drift detection"
+slow "4-8 min, it regenerates every artifact five times"
 run "docker compose up -d db && sleep 5"
 run "make generated && git status --porcelain -- frontend/src/api bff/src/db/schema .claude .cursor .opencode .agents"
 base="$OUT"
@@ -592,6 +658,7 @@ fi
 # ===========================================================================
 if wanted 0.16; then
 head2 "0.16 CI steps on a clean checkout"
+slow "5-15 min, it builds from a fresh clone"
 run "cat .github/workflows/check.yml | grep -nE 'run:|uses:'"
 CLONE=$(mktemp -d)/spydra-ci
 defer "rm -rf '$(dirname "$CLONE")'"

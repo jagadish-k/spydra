@@ -35,6 +35,18 @@ mirrored in `tokens.json` (W3C format, for Figma and other tooling), exposed
 to Tailwind v4 by
 [`design/tokens/tailwind-theme.css`](../design/tokens/tailwind-theme.css).
 
+**`tokens.css` is canonical; the other two follow it.** The direction matters
+because two of the three are easy to forget:
+
+- `tailwind-theme.css` must map a new token into `--color-*` / `--spacing-*`
+  or it generates no utility, and `bg-skeleton` then paints nothing — it
+  compiles, resolves to an undefined `var()`, and fails silently. That was
+  true of the skeleton, overlay and disabled tokens for four commits.
+- `tokens.json` is a **curated light-theme subset**, not a 1:1 copy: literal
+  hex, no aliases, no dark extension, no `-bg` tints. It exists for Figma and
+  other tooling, nothing in the build reads it, and nothing checks it is in
+  step. A token that a Figma frame needs has to be added here by hand.
+
 **Every token is prefixed `--sp-*`.** Tailwind v4 claims `--color-*`,
 `--text-*`, `--font-*`, `--radius-*`, `--shadow-*`, `--leading-*`,
 `--tracking-*` and `--ease-*` as theme namespaces; an unprefixed
@@ -43,19 +55,19 @@ remove the prefix.
 
 ### Utility reference
 
-| Need | Class |
-| --- | --- |
-| App background | `bg-canvas` |
-| Card / panel | `bg-surface border border-line rounded-lg` |
-| Table header | `bg-subtle` |
-| Body text | `text-ink` |
-| Secondary text | `text-ink-muted` |
-| Metadata | `text-ink-subtle` |
-| Primary button | `bg-brand text-white hover:bg-brand-hover` |
-| Active nav item | `bg-selected text-ink-brand` |
-| Broken state pill | `bg-state-broken-tint text-state-broken` |
-| Focus ring | `ring-2 ring-focus ring-offset-2` |
-| Chart series | `stroke-viz-1` … `stroke-viz-6` |
+| Need              | Class                                      |
+| ----------------- | ------------------------------------------ |
+| App background    | `bg-canvas`                                |
+| Card / panel      | `bg-surface border border-line rounded-lg` |
+| Table header      | `bg-subtle`                                |
+| Body text         | `text-ink`                                 |
+| Secondary text    | `text-ink-muted`                           |
+| Metadata          | `text-ink-subtle`                          |
+| Primary button    | `bg-brand text-white hover:bg-brand-hover` |
+| Active nav item   | `bg-selected text-ink-brand`               |
+| Broken state pill | `bg-state-broken-tint text-state-broken`   |
+| Focus ring        | `ring-2 ring-focus ring-offset-2`          |
+| Chart series      | `stroke-viz-1` … `stroke-viz-6`            |
 
 ### Theme
 
@@ -69,14 +81,14 @@ try/catch — it throws in a private window and the app must still render.
 
 ### Lifecycle colour
 
-| State | Light | Dark | Meaning |
-| --- | --- | --- | --- |
-| `discovered` | `#6B7280` | `#9CA3AF` | Seeded, nothing known |
-| `pending` | `#B45309` | `#F59E0B` | Awaiting your approval |
-| `active` | `#047857` | `#34D399` | Approved template, crawling |
-| `broken` | `#B91C1C` | `#F87171` | Failures over threshold |
-| `paused` | `#C2410C` | `#FB923C` | Stopped deliberately |
-| `archived` | `#9CA3AF` | `#6E7684` | Retired, data retained |
+| State        | Light     | Dark      | Meaning                     |
+| ------------ | --------- | --------- | --------------------------- |
+| `discovered` | `#6B7280` | `#9CA3AF` | Seeded, nothing known       |
+| `pending`    | `#B45309` | `#F59E0B` | Awaiting your approval      |
+| `active`     | `#047857` | `#34D399` | Approved template, crawling |
+| `broken`     | `#B91C1C` | `#F87171` | Failures over threshold     |
+| `paused`     | `#C2410C` | `#FB923C` | Stopped deliberately        |
+| `archived`   | `#9CA3AF` | `#6E7684` | Retired, data retained      |
 
 Hues are identical across themes; only lightness shifts. The mapping a user
 learns in one theme still holds in the other. Both themes are checked against
@@ -85,11 +97,11 @@ most often.
 
 ### Typography
 
-| Role | Face | Notes |
-| --- | --- | --- |
-| UI | **Inter** (variable) | Neutral, excellent at 13–14 px, true tabular figures |
-| Data / code | **JetBrains Mono** | Selectors, URLs, JSON, log lines |
-| Wordmark | **Space Grotesk** 500, −2% | Logo only — never in the interface |
+| Role        | Face                       | Notes                                                |
+| ----------- | -------------------------- | ---------------------------------------------------- |
+| UI          | **Inter** (variable)       | Neutral, excellent at 13–14 px, true tabular figures |
+| Data / code | **JetBrains Mono**         | Selectors, URLs, JSON, log lines                     |
+| Wordmark    | **Space Grotesk** 500, −2% | Logo only — never in the interface                   |
 
 **Self-host both UI families.** This is a local tool that must work with the
 network down, and a font request would be the only outbound call the UI makes.
@@ -142,24 +154,24 @@ than 400, nothing heavier than 600.
 Shared widgets, built once and composed everywhere. In the mockups these are CSS
 classes; in the React app they are the components named here.
 
-| Component | Class | Behaviour |
-| --- | --- | --- |
-| `<DomainStatePill>` | `.pill` | Lifecycle state, dot + label, tooltip explains why |
-| `<SelectorField>` | `.selector-field` | Editable selector + live resolved value + match count. Red when it resolves to nothing, amber when it resolves to several |
-| `<PagePreview>` | `.preview-frame` | Screenshot + overlay canvas; active selector's matches outlined in place. No iframe — spec 014 §1 |
-| `<ValidationBadge>` | `.pill` + count | Per-field pass/fail with the failing rule named |
-| `<ProgressBar>` | `.progress` | Queued / in-flight / done / failed as a **stacked bar, never a percentage** |
-| `<Sparkline>` | `.spark` | 7-day health trend, coloured by band |
-| `<ObservationTimeline>` | — | Time series with change points and template-version markers |
-| `<DataTable>` | `.table-wrap` | Server-side pagination, column filters, URL-encoded state |
-| `<Confidence>` | `.confidence` | Four-bar model confidence, coloured by band |
-| `<SampleMatrix>` | `.sample-grid` | Per-field pass/fail across sample URLs |
-| `<Banner>` | `.banner` | Info / warn / danger, with inline actions |
-| `<ProvenanceBadge>` | `.prov` | Where a selector came from — form · chat · clicked · escalated |
-| `<SelectionOverlay>` | `.sel-box` | Absolutely positioned boxes over the screenshot: hovered, picked, other matches, container. Translucent, never opaque — they sit **over** the content being selected |
-| `<AncestryBar>` | `.ancestry` | The clicked node's ancestor chain; `[` / `]` walk it, rejected classes struck through |
-| `<FieldVocabulary>` | `.vocab` | The canonical field list a click assigns to |
-| `<ChatMessage>` | `.msg` | Operator / system / refusal, with the terse mono variant for what the system did |
+| Component               | Class             | Behaviour                                                                                                                                                            |
+| ----------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<DomainStatePill>`     | `.pill`           | Lifecycle state, dot + label, tooltip explains why                                                                                                                   |
+| `<SelectorField>`       | `.selector-field` | Editable selector + live resolved value + match count. Red when it resolves to nothing, amber when it resolves to several                                            |
+| `<PagePreview>`         | `.preview-frame`  | Screenshot + overlay canvas; active selector's matches outlined in place. No iframe — spec 014 §1                                                                    |
+| `<ValidationBadge>`     | `.pill` + count   | Per-field pass/fail with the failing rule named                                                                                                                      |
+| `<ProgressBar>`         | `.progress`       | Queued / in-flight / done / failed as a **stacked bar, never a percentage**                                                                                          |
+| `<Sparkline>`           | `.spark`          | 7-day health trend, coloured by band                                                                                                                                 |
+| `<ObservationTimeline>` | —                 | Time series with change points and template-version markers                                                                                                          |
+| `<DataTable>`           | `.table-wrap`     | Server-side pagination, column filters, URL-encoded state                                                                                                            |
+| `<Confidence>`          | `.confidence`     | Four-bar model confidence, coloured by band                                                                                                                          |
+| `<SampleMatrix>`        | `.sample-grid`    | Per-field pass/fail across sample URLs                                                                                                                               |
+| `<Banner>`              | `.banner`         | Info / warn / danger, with inline actions                                                                                                                            |
+| `<ProvenanceBadge>`     | `.prov`           | Where a selector came from — form · chat · clicked · escalated                                                                                                       |
+| `<SelectionOverlay>`    | `.sel-box`        | Absolutely positioned boxes over the screenshot: hovered, picked, other matches, container. Translucent, never opaque — they sit **over** the content being selected |
+| `<AncestryBar>`         | `.ancestry`       | The clicked node's ancestor chain; `[` / `]` walk it, rejected classes struck through                                                                                |
+| `<FieldVocabulary>`     | `.vocab`          | The canonical field list a click assigns to                                                                                                                          |
+| `<ChatMessage>`         | `.msg`            | Operator / system / refusal, with the terse mono variant for what the system did                                                                                     |
 
 ### Three decisions worth keeping
 
