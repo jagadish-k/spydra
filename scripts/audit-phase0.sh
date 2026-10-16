@@ -306,7 +306,25 @@ fi
 if wanted 0.6; then
 head2 "0.6 SSE arrival gaps through the edge"
 slow "40 s"
-docker compose up -d >/dev/null 2>&1
+run "docker compose up -d edge api"
+
+# The Caddyfile is a read-only bind mount and Caddy does NOT watch it. Worse,
+# `docker compose up -d edge` is a no-op when only the file's CONTENTS changed
+# — the service definition is identical — so the container keeps serving the
+# config it loaded at boot. Every "the fix did not work" reading of this
+# section traces back to here. Validate, then reload.
+run "docker compose exec -T edge caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile"
+if [ $? -ne 0 ]; then
+  log "  ${R}the Caddyfile does not validate — fix it before reading anything below${O}"
+else
+  run "docker compose exec -T edge caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile"
+  [ $? -ne 0 ] && { log "  reload failed, falling back to a restart"; run "docker compose restart edge"; }
+fi
+
+# A 502 here is the edge reporting an upstream that has not finished booting,
+# not a routing answer. Wait for the api before asking anything about routes.
+wait_for "http://127.0.0.1:8080/api/crawler/healthz" 60 || \
+  log "  ${R}the api never answered — every reading below is meaningless${O}"
 log "The Caddyfile gives flush_interval -1 to ONE handle: /api/crawler/runs/*/events."
 log "The smoke route now lives at /api/crawler/runs/__smoke/events so the proof"
 log "traverses that handle. Under the old /api/crawler/__smoke/sse it fell through"
@@ -383,6 +401,8 @@ if [ "$prod_code" = "200" ] && [ "$old_code" = "404" ] && [ "${sse_encoded:-1}" 
   verdict 0.6 BROKEN "the route is right — it matches /api/crawler/runs/*/events, so rule order and flush_interval -1 are exercised — but 'encode zstd gzip' is COMPRESSING the event stream (content-encoding present on a text/event-stream response). A browser always sends Accept-Encoding, so this is the production path. Fix the Caddyfile, then re-run."
 elif [ "$prod_code" = "200" ] && [ "$old_code" = "404" ]; then
   verdict 0.6 PROVEN "the smoke route now matches the Caddyfile's /api/crawler/runs/*/events handle, so the rule order and flush_interval -1 are exercised; gaps measured plain and with Accept-Encoding (read them above — this verdict asserts the ROUTE is right, the gaps are yours to eyeball)"
+elif [ "$prod_code" = "502" ] || [ "$prod_code" = "000" ]; then
+  verdict 0.6 UNPROVEN "HTTP $prod_code from the edge means the api upstream was not reachable, so nothing was measured. This is the harness, not the config — bring the stack up and re-run: bash scripts/audit-phase0.sh 0.6"
 else
   verdict 0.6 UNPROVEN "prod route HTTP $prod_code (want 200), old route HTTP $old_code (want 404). Until the smoke route matches /api/crawler/runs/*/events the measurement says nothing about the production SSE path (F2)."
 fi
@@ -595,25 +615,31 @@ fi
 if wanted 0.14; then
 head2 "0.14 drift detection"
 slow "4-8 min, it regenerates every artifact five times"
-run "docker compose up -d db && sleep 5"
+run "docker compose up -d db"
+wait_for_db() { local i=0; while [ "$i" -lt 45 ]; do docker compose exec -T db pg_isready -U spydra >/dev/null 2>&1 && return 0; i=$((i+1)); sleep 1; done; return 1; }
+wait_for_db && log "  db accepting connections"
+# The committed crawl.generated.ts was introspected with BOTH chains applied —
+# crawl.alembic_version included. Section 0.10 leaves the database with `ui`
+# migrated and `crawl` empty, so without this the baseline reads as drift and
+# every teeth result below is measured against a broken baseline.
+log "  restoring both chains first — the committed artifacts were generated with both applied"
+run "make migrate"
 run "make generated && git status --porcelain -- frontend/src/api bff/src/db/schema .claude .cursor .opencode .agents"
 base="$OUT"
 log "  baseline drift (should be empty): '${base}'"
 run "make -s generated-check"; gc0=$?
 
-head2 "0.14a hand-edit a generated TS artifact"
-gf=frontend/src/api/schema.ui.d.ts
-cp "$gf" /tmp/audit-schema.d.ts; defer "cp -f /tmp/audit-schema.d.ts '$REPO/$gf'"
-printf '\nexport type AuditHandEdit = true;\n' >> "$gf"
-run "make -s generated-check"; gc1=$?
-cp -f /tmp/audit-schema.d.ts "$gf"
-
-head2 "0.14b hand-edit a generated agent adapter"
-af=$(ls .claude/agents/*.md | head -1)
-cp "$af" /tmp/audit-agent.md; defer "cp -f /tmp/audit-agent.md '$REPO/$af'"
-printf '\nhand edit\n' >> "$af"
-run "make -s generated-check"; gc2=$?
-cp -f /tmp/audit-agent.md "$af"
+head2 "0.14a an UNCOMMITTED hand-edit is not what generated-check catches"
+log "  generated-check runs 'make generated' FIRST, then reads git status — so a"
+log "  hand-edit to a file in the working tree is overwritten by the regeneration"
+log "  before the check looks. That is by design, and it is why the guarantee is"
+log "  split across two mechanisms:"
+log "    · commit time — the pre-commit hook refuses a staged generated file"
+log "      (proven in the gate section: 'hand-edited generated role rejected')"
+log "    · check time  — generated-check catches an artifact that is STALE with"
+log "      respect to its source, which is 0.14c below"
+log "  The audit previously tested the uncommitted case and scored it as a"
+log "  failure. It was the test that was wrong, not the chain."
 
 head2 "0.14c edit the CANONICAL role without regenerating"
 rf=docs/agents/spydra-ops.md
@@ -630,10 +656,10 @@ log "  run it by hand if you want it re-proven — the 0.14 handoff log records 
 log "  original run (crawl.proof -> stale crawl.generated.ts -> make check failed)."
 
 run "make -s generated-check"; gc5=$?
-if [ $gc0 -eq 0 ] && [ $gc1 -ne 0 ] && [ $gc2 -ne 0 ] && [ $gc4 -ne 0 ] && [ $gc5 -eq 0 ]; then
-  verdict 0.14 PROVEN "clean at baseline; detects a hand-edited .d.ts, a hand-edited adapter and an unregenerated canonical role; clean again after revert"
+if [ $gc0 -eq 0 ] && [ $gc3 -ne 0 ] && [ $gc4 -ne 0 ] && [ $gc5 -eq 0 ]; then
+  verdict 0.14 PROVEN "clean at baseline with both chains applied; an edited canonical role with no 'make agents' fails BOTH gen-agents --check and generated-check; clean again after regenerating. The hand-edit-a-generated-file case is enforced at commit time by pre-commit (see the gate section), not by generated-check, which regenerates before it reads git status."
 else
-  verdict 0.14 UNPROVEN "baseline=$gc0 handedit-ts=$gc1 handedit-adapter=$gc2 gen-agents--check=$gc3 role-unregenerated=$gc4 restored=$gc5"
+  verdict 0.14 UNPROVEN "baseline=$gc0 (want 0) gen-agents--check=$gc3 (want nonzero) role-unregenerated=$gc4 (want nonzero) restored=$gc5 (want 0)"
 fi
 fi
 
