@@ -6,6 +6,9 @@ on them behaving, or the guarantees built on top of them are decoration. None
 of it is expressible in SQLite, which is why TESTING.md §1 rules SQLite out.
 """
 
+from datetime import UTC, datetime
+from decimal import Decimal
+
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
@@ -152,10 +155,12 @@ async def test_page_current_returns_exactly_the_newest_observation(
         ),
         {"d": domain_id},
     )
+    # datetime and Decimal objects, not strings: asyncpg binds parameters by
+    # type and refuses to parse a timestamptz out of text.
     for price, when in (
-        ("10.0000", "2026-10-02 00:00:00+00"),
-        ("30.0000", "2026-10-03 00:00:00+00"),  # newest, inserted in the middle
-        ("20.0000", "2026-10-01 00:00:00+00"),
+        (Decimal("10.0000"), datetime(2026, 10, 2, tzinfo=UTC)),
+        (Decimal("30.0000"), datetime(2026, 10, 3, tzinfo=UTC)),  # newest, inserted middle
+        (Decimal("20.0000"), datetime(2026, 10, 1, tzinfo=UTC)),
     ):
         await conn.execute(
             sa.text(
@@ -174,7 +179,7 @@ async def test_page_current_returns_exactly_the_newest_observation(
     ).all()
 
     assert len(rows) == 1
-    assert rows[0].price_amount == pytest.approx(30.0)
+    assert rows[0].price_amount == Decimal("30.0000")
 
 
 async def test_observations_dedupe_nothing_and_keep_every_row(conn: AsyncConnection) -> None:

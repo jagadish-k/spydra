@@ -1,6 +1,6 @@
 # 002 — Scheduler, politeness and the three pools
 
-**Phase 1** · depends on 001 · ADR-0002, ADR-0003, ADR-0004, ADR-0016
+**Phase 1** · depends on 001 · ADR-0002, ADR-0003, ADR-0004, ADR-0016, ADR-0026
 
 This is the component most expensive to get wrong. Being blocked is the
 operator's stated worst outcome, and the politeness guarantee is enforced
@@ -15,32 +15,55 @@ One worker, one URL, one domain at a time. The guarantee lives in SQL:
 ```sql
 WITH eligible AS (
     SELECT d.id
-    FROM domains d
+    FROM crawl.domains d
     WHERE d.state = 'active'
       AND d.next_eligible_at <= now()
       AND d.in_flight < d.max_concurrency
     ORDER BY d.next_eligible_at
+    FOR UPDATE SKIP LOCKED          -- on domains: the politeness gate
     LIMIT 1
+),
+claimed AS (
+    UPDATE crawl.crawl_queue q
+    SET state = 'in_flight',
+        locked_until = now() + interval '120 seconds',
+        attempts = attempts + 1
+    WHERE q.id = (
+        SELECT q2.id
+        FROM crawl.crawl_queue q2
+        WHERE q2.domain_id = (SELECT id FROM eligible)
+          AND q2.state = 'pending'
+        ORDER BY q2.depth, q2.id     -- breadth-first: listings before products
+        FOR UPDATE SKIP LOCKED       -- on crawl_queue: the dequeue
+        LIMIT 1
+    )
+    RETURNING q.*
 )
-UPDATE crawl_queue q
-SET state = 'in_flight',
-    locked_until = now() + interval '120 seconds',
-    attempts = attempts + 1
-WHERE q.id = (
-    SELECT q2.id
-    FROM crawl_queue q2
-    JOIN eligible e ON e.id = q2.domain_id
-    WHERE q2.state = 'pending'
-    ORDER BY q2.depth, q2.id          -- breadth-first: listings before products
-    FOR UPDATE SKIP LOCKED
-    LIMIT 1
-)
-RETURNING q.*;
+UPDATE crawl.domains d
+SET in_flight = d.in_flight + 1
+WHERE d.id = (SELECT domain_id FROM claimed)
+RETURNING (SELECT row_to_json(c) FROM claimed c);
 ```
 
-`domains.in_flight INT NOT NULL DEFAULT 0` is incremented in the same
-transaction and decremented on completion. `SKIP LOCKED` means workers never
-block each other; they take the next eligible row.
+**There are two row locks and they are not interchangeable** (ADR-0026).
+The one on `domains` serialises the *eligibility decision*; the one on
+`crawl_queue` is the dequeue. An earlier version of this spec had only the
+second, and it did not hold the guarantee §9's first test asserts: two
+workers both read the same eligible domain, neither had committed its
+`in_flight` increment, so `SKIP LOCKED` handed them two different queue rows
+**of the same domain** — two concurrent connections to one host. Measured on
+real Postgres, that happened in **twenty rounds out of twenty**, with no
+error raised. Read ADR-0026 before simplifying this back.
+
+`domains.in_flight INT NOT NULL DEFAULT 0` is incremented in the **same
+statement** and decremented on completion. `SKIP LOCKED` on both means
+workers never block each other: they skip a domain someone else is deciding
+about and take the next eligible one.
+
+The domain lock lives for the claim transaction only — microseconds — and is
+**not** held across the fetch. The fetch is gated by `in_flight` and
+`next_eligible_at`, which are committed state; a lock held through a two
+second polite delay would idle a connection for the whole crawl.
 
 **Order by `depth` first.** Listing pages fan out into product URLs, so
 draining them early keeps the frontier full and stops workers starving at the
@@ -69,6 +92,12 @@ is why that counter must be reconciled rather than trusted.
 
 Run the sweep at the start of every claim loop iteration — a separate janitor
 process is one more thing to supervise.
+
+**Since ADR-0026 the sweep is load-bearing rather than hygiene.** `in_flight`
+now gates claiming, so a counter left high by a killed worker stops that
+domain being fetched at all until the sweep reconciles it. The failure is a
+stall rather than a rudeness, which is the right direction, but it is a real
+failure mode and the sweep is the only thing that clears it.
 
 ## 4. Backoff and blocking (ADR-0004)
 
@@ -170,7 +199,11 @@ product page can yield six.
 ## 9. Acceptance
 
 - [ ] Two workers against one active domain never fetch concurrently
-      (integration test, real Postgres, asserts on observed fetch timestamps).
+      (integration test, real Postgres, **two separate connections**, asserts
+      on observed fetch timestamps). This is the test ADR-0026 exists for: it
+      fails against a claim query that locks only the queue row, so a green
+      result here with one connection, a mocked clock or a rolled-back
+      transaction means the test was weakened rather than the query fixed.
 - [ ] Two workers against four active domains reach four concurrent fetches.
 - [ ] A killed worker's leased row returns to `pending` after `locked_until`
       and `in_flight` is reconciled.

@@ -73,6 +73,35 @@ def test_a_revision_that_does_something_also_undoes_it(path: Path) -> None:
     )
 
 
+# Postgres will not coerce an integer default onto a boolean column, and
+# alembic's renderer produces exactly that from sa.true()/sa.false(). It cost
+# a failed `make migrate` once; these are the two spellings that fail.
+_BOOLEAN_INTEGER_DEFAULTS = ("sa.text(\"0\")", "sa.text('0')", "sa.text(\"1\")", "sa.text('1')")
+
+
+@pytest.mark.parametrize("path", revision_files(), ids=lambda p: p.stem)
+def test_no_boolean_column_defaults_to_an_integer(path: Path) -> None:
+    """`DEFAULT 0` on a BOOLEAN column is a hard error in Postgres:
+    "column is of type boolean but default expression is of type integer".
+
+    `sa.true()` and `sa.false()` compile correctly through SQLAlchemy but
+    render into a migration as `sa.text("1")` and `sa.text("0")`, so a
+    metadata-level DDL check passes and the migration still fails. Static,
+    so it catches the mistake without a database — which is the whole point,
+    because the database is what it otherwise fails against.
+    """
+    offenders = [
+        line.strip()
+        for line in path.read_text().splitlines()
+        if "sa.Boolean" in line and any(bad in line for bad in _BOOLEAN_INTEGER_DEFAULTS)
+    ]
+    assert not offenders, (
+        f"{path.name}: boolean column(s) defaulting to an integer:\n  "
+        + "\n  ".join(offenders)
+        + '\n\nUse sa.text("true") / sa.text("false").'
+    )
+
+
 def test_the_chain_is_linear() -> None:
     """One head. A branched chain makes `downgrade -1` ambiguous, and nothing
     in this project needs branching (spec 001 §5)."""

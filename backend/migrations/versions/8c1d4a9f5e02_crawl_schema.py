@@ -235,7 +235,7 @@ def upgrade() -> None:
         sa.Column("url_pattern", sa.Text(), nullable=False),
         sa.Column("page_kind", sa.Text(), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False),
-        sa.Column("is_active", sa.Boolean(), server_default=sa.text("0"), nullable=False),
+        sa.Column("is_active", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.Column(
             "discovery",
             postgresql.JSONB(astext_type=sa.Text()),

@@ -25,6 +25,12 @@ SCHEMA = "crawl"
 metadata = sa.MetaData(schema=SCHEMA)
 
 _NOW = sa.text("now()")
+# Spelled as SQL text, not sa.true()/sa.false(). Those compile correctly here
+# but alembic's migration RENDERER turns them into sa.text("1")/sa.text("0"),
+# and `DEFAULT 0` on a boolean column is a hard error in Postgres. Rendering
+# is how this file reaches a migration, so the trap is removed at the source.
+_TRUE = sa.text("true")
+_FALSE = sa.text("false")
 _EMPTY_JSONB = sa.text("'{}'::jsonb")
 _EMPTY_ARRAY = sa.text("'{}'")
 
@@ -73,7 +79,7 @@ domains = sa.Table(
     sa.Column("asset_concurrency", sa.Integer, nullable=False, server_default=sa.text("5")),
     sa.Column("max_depth", sa.Integer, nullable=False, server_default=sa.text("5")),
     sa.Column("deny_patterns", pg.ARRAY(sa.Text), nullable=False, server_default=_EMPTY_ARRAY),
-    sa.Column("respect_robots", sa.Boolean, nullable=False, server_default=sa.true()),
+    sa.Column("respect_robots", sa.Boolean, nullable=False, server_default=_TRUE),
     sa.Column("user_agent", sa.Text),
     sa.Column("next_eligible_at", sa.DateTime(timezone=True), nullable=False, server_default=_NOW),
     sa.Column("consecutive_failures", sa.Integer, nullable=False, server_default=sa.text("0")),
@@ -104,7 +110,7 @@ templates = sa.Table(
     sa.Column("url_pattern", sa.Text, nullable=False),  # regex over path+query
     sa.Column("page_kind", sa.Text, nullable=False),  # 'listing' | 'product'
     sa.Column("version", sa.Integer, nullable=False),
-    sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.false()),
+    sa.Column("is_active", sa.Boolean, nullable=False, server_default=_FALSE),
     sa.Column("discovery", pg.JSONB, nullable=False, server_default=_EMPTY_JSONB),
     sa.Column("extraction", pg.JSONB, nullable=False, server_default=_EMPTY_JSONB),
     sa.Column("proposed_by", sa.Text, nullable=False, server_default="human"),

@@ -131,12 +131,16 @@ the phase can be written and, because of F1–F3, so that it can be *tested*.
   exists as an empty untracked file in the working tree. It is the human's
   (phase-1 brief: "do not write TARGETS.md"). 1.4 and all of lane C's
   fixtures wait on it.
-- **F4 — the claim query in spec 002 §1 does not hold its own guarantee**
-  (no row lock on `domains`, so two workers can claim two rows of one domain;
-  and `FOR UPDATE` applied to a `WITH` reference may be rejected by Postgres
-  outright). Not this slice's file set. It must be resolved — probably by an
-  ADR — **before lane A opens 1.5**, because spec 002 §9's first acceptance
-  test fails against the SQL as written.
+- ~~**F4 — the claim query**~~ — **settled by the human: lock the domains
+  row.** ADR-0026 written first (rule 1), then spec 002 §1, §3 and §9
+  corrected to match. Both queries were then raced against real Postgres on
+  two connections: the original claimed twice in **20 rounds out of 20**, the
+  ADR's in 0. One claim in the planning note was **wrong** and is corrected
+  in the ADR — Postgres does *not* reject `FOR UPDATE` on a `WITH`
+  reference; it accepts the statement and quietly locks only `crawl_queue`,
+  which is worse, because an error would at least have been visible. Lane A
+  implements it in 1.5; the committed two-worker test is 1.5's, not this
+  slice's.
 - **F13 (new, found writing the parity test)** — `DESIGN_SYSTEM.md`'s
   lifecycle-colour table lists `pending`; the enum has `awaiting_approval`.
   Spec 001 §6 asserts every documented state exists in the enum, and one does
@@ -190,7 +194,46 @@ the phase can be written and, because of F1–F3, so that it can be *tested*.
   write the code, and the roles were not available as spawnable subagents
   here — the same deviation `chore/phase-0-audit` recorded. The diff is the
   thing to hand it.
-- integrator — **the gate has NOT been run. This environment has no Docker.**
+- backend (second pass) — **`make migrate` failed on the human's machine**:
+  `column "is_active" is of type boolean but default expression is of type
+  integer`. Same defect class as the `respect_robots` one caught during
+  rendering, and the reason the first pass missed it is worth keeping: the
+  DDL check that was run compiled `tables.py` **directly**, where
+  `sa.false()` renders correctly as `DEFAULT false`. The corruption happens
+  in the *render* step on the way into the migration, so checking the
+  metadata could never have found it. Fixed in both files, and
+  `sa.true()`/`sa.false()` are now spelled `sa.text("true")`/`sa.text("false")`
+  in `tables.py` so the trap is gone at the source rather than patched
+  downstream. `test_migrations.py` gained a static guard for the class.
+- integrator (second pass) — **the containerised gate still has not run**,
+  but a throwaway PostgreSQL 16.15 cluster was available in the cloud
+  sandbox, so most of what was unproven is now proven against a real
+  database — outside this repository and outside the development machine,
+  nothing installed on the host:
+
+  | Proof | Result |
+  | --- | --- |
+  | `init-schemas.sql` + `init-test-db.sql` on a fresh cluster | `crawl` and the three roles in **both** `spydra` and `spydra_test`; the `\i` include ran twice as intended (F2) |
+  | `alembic upgrade head` | 12 tables, 1 view, 2 enum types, 4 partial indexes |
+  | `downgrade base` | leaves only `alembic_version`; **0 enum types** — the explicit DROP TYPE works |
+  | `upgrade head` a second time | clean, which is the cycle an un-dropped type would have failed |
+  | column defaults | `is_active = false`, `respect_robots = true` |
+  | full `pytest`, integration included | **73 passed, 1 skipped** |
+  | the claim query, two connections, 20 rounds each | original 20/20 wrong, ADR-0026 0/20 |
+
+  One real test defect surfaced that no static check would have: the
+  `page_current` test bound `observed_at` as a string, and asyncpg binds by
+  type and refuses to parse a timestamptz out of text. Fixed to `datetime`
+  and `Decimal`.
+
+  **Still unproven, and still needs the development machine:** Postgres 18
+  rather than 16; Python 3.15 rather than 3.13; `make test-render`;
+  `make verify-grants` after its SQL moved file; `make reset && make up`,
+  which is the only thing that exercises the initdb mounts as compose wires
+  them; and `make check` whole, with the pre-commit hook, against the
+  versions the lockfile pins.
+
+- integrator (first pass) — **the gate had NOT been run. This environment has no Docker.**
   It is a Linux VM with the repository mounted, the same limitation
   `chore/phase-0-audit` recorded under Deviations, and its Python is 3.10
   where the project pins 3.15. `make check`, `make migrate` and
