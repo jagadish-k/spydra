@@ -33,10 +33,17 @@ anything, because the data exists and the filter is hiding it. Screens 1, 5,
 where one counter's query timed out shows five numbers and one dash with a
 tooltip, not a whole-screen error. Screens 1, 6, 7 and 9.
 
-## 2. Tokens this requires that do not exist yet
+## 2. Tokens this requires
 
-`DESIGN_SYSTEM.md` forbids a raw hex inside a component, so these go in
-`design/tokens/tokens.css` before any of the components below are built.
+`DESIGN_SYSTEM.md` forbids a raw hex inside a component, so these live in
+`design/tokens/tokens.css` — and are **also** mapped into Tailwind's
+`--color-*` namespace in `design/tokens/tailwind-theme.css`, without which
+they resolve but generate no utility and `bg-skeleton` silently paints
+nothing. Both files or neither.
+
+**Status: landed.** All ten are in `tokens.css` with dark values, and all ten
+are mapped in `tailwind-theme.css`. Kept here as the specification of what
+they are for.
 
 ```css
 /* Skeletons — a surface that is deliberately not content */
@@ -151,25 +158,35 @@ _Screens 6–9 — monitoring and reporting_
 | Image thumbnail     | default · deduped · missing · broken                                          |
 | Stat strip counter  | value · zero · unavailable · active-filter                                    |
 
-That is **45 component sets**, of which 20 exist in some form and 25 do not.
+That is **51 component sets**, of which 17 exist in some form and 34 do not.
+A row naming several components separated by `·` counts as one set each; the
+§3a rows collapse related ones to keep the table short, which is where an
+earlier count of 45 came from.
+
+`3.9` builds the **shared** sets — the §3a variant completions plus the §3b
+sets used by three or more screens. The other fourteen arrive with the screen
+that needs them, still before it renders, so the ordering rule that components
+precede screens holds per screen rather than across the phase. ADR-0025
+§scope carries both lists; read it rather than re-deriving them from the
+screen counts above.
 
 ## 4. Per-screen states
 
 Beyond the four from §1, each screen has states that are specific to what it
 does. These are the ones that get missed.
 
-| Screen                | Additional states                                                                                                                                                                                                                                                                                                                                              |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 Domains**         | filtered-empty · partial-counters (one counter failed) · bulk-selection-active · sorting · all-paused                                                                                                                                                                                                                                                          |
-| **2 Domain detail**   | per-tab loading · `robots.txt` unavailable · `Crawl-delay` overriding your value · template diff with no differences · domain auto-paused (banner)                                                                                                                                                                                                             |
-| **3 Seeds**           | dropzone idle/drag-over/parsing/error · preview with all-valid · preview with some-invalid · preview with **all** invalid (confirm disabled) · CSV template downloading                                                                                                                                                                                        |
-| **4 Template review** | **three modes** (Preview · Select · Skeleton) × loading screenshot · screenshot unavailable · field resolving · field no-match · field multi-match (the warning overlay) · sample strip partially resolved · sample strip with a failing column · dry-run discovery empty/huge · batch grid loading/mixed/all-approved · approve submitting · approve rejected |
-| **5 Unknown pages**   | grouped-empty · group expanded with snapshot · **snapshot expired past its 7-day TTL** · dismiss-as-deny-pattern confirm                                                                                                                                                                                                                                       |
-| **6 Run monitor**     | connecting · live · **SSE reconnecting** (backfilling, not frozen) · reconnect failed · run paused · run stopping · a domain auto-paused and sorted to top · asset queue backpressure · log pane paused · run complete                                                                                                                                         |
-| **7 Runs history**    | no runs yet · run detail expanded · comparison with two selected · comparison with nothing materially changed                                                                                                                                                                                                                                                  |
-| **8 Products**        | table view · card view · no images · product detail with one observation (no history to chart) · price history with a template-version change marked                                                                                                                                                                                                           |
-| **9 Reports**         | each report loading · report with no rows in range · export generating · export failed                                                                                                                                                                                                                                                                         |
-| **10 Authoring chat** | idle (no URLs yet) · fetching · streaming reply · **refusal** (over the 5-page limit, another domain, asking for a run) · draft partially verified · draft complete · open-in-review handoff                                                                                                                                                                   |
+| Screen                | Additional states                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **1 Domains**         | filtered-empty · partial-counters (one counter failed) · bulk-selection-active · sorting · all-paused                                                                                                                                                                                                                                                                                                                                                        |
+| **2 Domain detail**   | per-tab loading · `robots.txt` unavailable · `Crawl-delay` overriding your value · template diff with no differences · domain auto-paused (banner)                                                                                                                                                                                                                                                                                                           |
+| **3 Seeds**           | dropzone idle/drag-over/parsing/error · preview with all-valid · preview with some-invalid · preview with **all** invalid (confirm disabled) · CSV template downloading                                                                                                                                                                                                                                                                                      |
+| **4 Template review** | **three modes** (Preview · Select · Skeleton — Preview is phase 3; Select and Skeleton render as disabled segments until `4.10` and `6.10`) × loading screenshot · screenshot unavailable · field resolving · field no-match · field multi-match (the warning overlay) · sample strip partially resolved · sample strip with a failing column · dry-run discovery empty/huge · batch grid loading/mixed/all-approved · approve submitting · approve rejected |
+| **5 Unknown pages**   | grouped-empty · group expanded with snapshot · **snapshot expired past its 7-day TTL** · dismiss-as-deny-pattern confirm                                                                                                                                                                                                                                                                                                                                     |
+| **6 Run monitor**     | connecting · live · **SSE reconnecting** (backfilling, not frozen) · reconnect failed · run paused · run stopping · a domain auto-paused and sorted to top · asset queue backpressure · log pane paused · run complete                                                                                                                                                                                                                                       |
+| **7 Runs history**    | no runs yet · run detail expanded · comparison with two selected · comparison with nothing materially changed                                                                                                                                                                                                                                                                                                                                                |
+| **8 Products**        | table view · card view · no images · product detail with one observation (no history to chart) · price history with a template-version change marked                                                                                                                                                                                                                                                                                                         |
+| **9 Reports**         | each report loading · report with no rows in range · export generating · export failed                                                                                                                                                                                                                                                                                                                                                                       |
+| **10 Authoring chat** | idle (no URLs yet) · fetching · streaming reply · **refusal** (over the 5-page limit, another domain, asking for a run) · draft partially verified · draft complete · open-in-review handoff                                                                                                                                                                                                                                                                 |
 
 **Screen 6's reconnecting state is the one to get right.** The browser will
 sleep, SSE will drop, and the difference between "reconnecting, backfilling
@@ -208,13 +225,21 @@ checks.
 ## 6. What this means for the build plan
 
 The React components in phase 3 are built against this matrix, not against a
-populated screenshot. Concretely:
+populated screenshot. This is binding, not advisory (ADR-0025). Concretely:
 
 - A component PR that adds only the populated path is incomplete, and the
-  reviewer (`spydra-reviewer`) reads this file to know what is missing.
-- `Skeleton` heights are asserted against `--sp-row-comfortable` in a test,
-  because a skeleton that is the wrong height is a layout jump that no
-  screenshot review catches.
-- The SSE reconnect path (screen 6) gets a test that drops the connection
-  and asserts backfill from `Last-Event-ID`, which is BUILD_PLAN `3.x`
-  acceptance, not a phase 5 hardening task.
+  reviewer (`spydra-reviewer`) reads this file to know what is missing — its
+  role file says so, and BUILD_PLAN §3b carries it in the definition of done.
+- `Skeleton` heights are asserted against `--sp-row-comfortable` in a test
+  (BUILD_PLAN `3.9`), because a skeleton that is the wrong height is a layout
+  jump that no screenshot review catches.
+- The SSE reconnect path (screen 6) gets a test that drops the connection and
+  asserts backfill from `Last-Event-ID`. Server-side backfill is `3.6`; this
+  client-side test is **`3.16` acceptance**, not a phase 5 hardening task.
+- Screen 1's partial-counter state requires every counter in
+  `/api/ui/overview` to be nullable (spec 011 §5). A flat `number` cannot
+  express one counter that did not resolve.
+
+**§4 spans more than phase 3.** Screens 5, 9 and 10 arrive in `4.8`, `5.8`
+and `4.12`; the instruction above is scoped to the screens the phase actually
+builds, so a reviewer does not file findings against unbuilt surfaces.

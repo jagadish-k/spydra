@@ -1,11 +1,20 @@
 # 006 — React application
 
-**Phase 3** · depends on 005, 011 · ADR-0013, ADR-0015, ADR-0018
+**Phase 3** · depends on 005, 011 · ADR-0013, ADR-0015, ADR-0018, ADR-0025
 
-The UI specification is **`design/mockups/`**. Those pages are static HTML,
-open from disk with no build step, and are accurate down to spacing and
-colour. Build components to match them. `docs/SCREENS.md` says what each
-screen is for; `docs/DESIGN_SYSTEM.md` holds the tokens and rules.
+The UI specification is two files, and they do not overlap (ADR-0025):
+
+- **`design/mockups/`** — layout, spacing, typography and colour, in the
+  **populated** state. Static HTML, opens from disk with no build step,
+  accurate down to spacing and colour. Build components to match it.
+- **`docs/UI_STATES.md`** — **which states exist** and what each must not do:
+  §1's four mandatory states and the partial fifth, §3's component variant
+  matrix, §4's per-screen states. The mockups have no loading, empty, error or
+  partial frames, so a component built only from them is incomplete by
+  construction. Where the two disagree, `UI_STATES.md` is newer and wins.
+
+`docs/SCREENS.md` says what each screen is for; `docs/DESIGN_SYSTEM.md` holds
+the tokens and rules.
 
 ---
 
@@ -35,22 +44,27 @@ is the only structural rule the frontend needs and it is worth enforcing.
 From `docs/DESIGN_SYSTEM.md`. The Figma library has all of these; the mockup
 CSS class in brackets is the reference implementation.
 
-| Component | Mockup class | Notes |
-| --- | --- | --- |
-| `AppShell` | `.app` | Sidebar + topbar; the only layout component |
-| `DomainStatePill` | `.pill` | Six lifecycle states |
-| `SelectorField` | `.selector-field` | Editable selector, live resolved value, match count |
-| `PagePreview` | `.preview-frame` | Screenshot + overlay canvas (Preview / Select / Skeleton), active selector's matches outlined. No iframe — spec 014 §1 |
-| `SampleMatrix` | `.sample-grid` | Per-field × per-URL pass/fail |
-| `ValidationBadge` | `.pill` + count | |
-| `ProgressBar` | `.progress` | Stacked segments, **never a percentage** |
-| `Sparkline` | `.spark` | Hand-written SVG, seven points |
-| `Confidence` | `.confidence` | Four bars; count carries signal as well as colour |
-| `DataTable` | `.table-wrap` | TanStack Table, headless |
-| `MetricTile` | `.metric` | Links to the filtered rows behind it |
-| `Banner` | `.banner` | info / warning / danger |
-| `Tabs` | `.tabs` | Within-screen only, never navigation |
-| `ObservationTimeline` | — | Recharts; marks template-version changes |
+**This table names the components; `UI_STATES.md` §3 names their states.** The
+fourteen below are the set the mockups show. §3 adds the variants each one is
+missing and the sets the screens force into existence that the library has
+none of — build from both (ADR-0025).
+
+| Component             | Mockup class      | Notes                                                                                                                  |
+| --------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `AppShell`            | `.app`            | Sidebar + topbar; the only layout component                                                                            |
+| `DomainStatePill`     | `.pill`           | Six lifecycle states                                                                                                   |
+| `SelectorField`       | `.selector-field` | Editable selector, live resolved value, match count                                                                    |
+| `PagePreview`         | `.preview-frame`  | Screenshot + overlay canvas (Preview / Select / Skeleton), active selector's matches outlined. No iframe — spec 014 §1 |
+| `SampleMatrix`        | `.sample-grid`    | Per-field × per-URL pass/fail                                                                                          |
+| `ValidationBadge`     | `.pill` + count   |                                                                                                                        |
+| `ProgressBar`         | `.progress`       | Stacked segments, **never a percentage**                                                                               |
+| `Sparkline`           | `.spark`          | Hand-written SVG, seven points                                                                                         |
+| `Confidence`          | `.confidence`     | Four bars; count carries signal as well as colour                                                                      |
+| `DataTable`           | `.table-wrap`     | TanStack Table, headless                                                                                               |
+| `MetricTile`          | `.metric`         | Links to the filtered rows behind it                                                                                   |
+| `Banner`              | `.banner`         | info / warning / danger                                                                                                |
+| `Tabs`                | `.tabs`           | Within-screen only, never navigation                                                                                   |
+| `ObservationTimeline` | —                 | Recharts; marks template-version changes                                                                               |
 
 ## 3. Rules that matter in this UI
 
@@ -128,6 +142,11 @@ Three panes: preview (45%), fields (35%), samples (20%).
 ## 7. Acceptance
 
 - [ ] Every screen matches its mockup at 1440 px in both themes.
+- [ ] Every state `UI_STATES.md` §4 lists for that screen is reachable and
+      rendered, and every component ships the variant set §3 names for it
+      (ADR-0025). A populated-only component is incomplete.
+- [ ] `Skeleton` heights are asserted against `--sp-row-comfortable` in a
+      test, not reviewed by eye.
 - [ ] `tsc --noEmit` clean with `strict` and `noUncheckedIndexedAccess`.
 - [ ] No `any` in `src/` (ESLint rule, not convention).
 - [ ] Both generated schema files are untouched by hand (CI checks

@@ -1,13 +1,21 @@
 # Spydra edge — one origin, four routes (spec 010 §2).
 #
-# The two load-bearing lines, both easy to break by "tidying":
+# The three load-bearing lines, all easy to break by "tidying":
 #   1. the SSE handle comes BEFORE handle /api/crawler/* — the first
 #      matching handle wins and the general rule would buffer the stream;
 #   2. flush_interval -1 — without it Caddy buffers and SSE arrives in
 #      chunks or not at all. This presents as a frontend bug (spec 010).
+#   3. `encode` must NOT see the event stream. A site-wide `encode zstd gzip`
+#      compresses text/event-stream, which reintroduces buffering through the
+#      compressor and is invisible to any curl that does not send
+#      Accept-Encoding — a browser always sends it (phase-0 audit, F3).
 
 :8080 {
-	encode zstd gzip
+	# Everything except the event stream is compressible. Excluding by PATH
+	# rather than content-type keeps this readable against the handles below,
+	# and there is exactly one streaming route.
+	@compressible not path /api/crawler/runs/*/events
+	encode @compressible zstd gzip
 
 	# SSE: straight to Python, no BFF hop, no buffering.
 	handle /api/crawler/runs/*/events {

@@ -1,0 +1,95 @@
+# EditorConfig — https://editorconfig.org
+#
+# This file exists because an editor silently re-indented
+# `frontend/tsconfig.json` to tabs, and `frontend`'s lint script is
+# `eslint . && prettier --check .` with that file not in `.prettierignore`.
+# The result was `make check` failing on `lint-web` for a reason that looked
+# unrelated to whatever was actually being changed (phase-0 audit).
+#
+# It encodes what the toolchain ALREADY enforces; it does not introduce a
+# style. Prettier has no config in this repo, so its defaults are the
+# contract for everything it formats (2 spaces, LF, final newline). Python is
+# ruff's defaults at line-length 100 (backend/pyproject.toml). Where this
+# file and a formatter ever disagree, the formatter wins and this file is the
+# bug — `make fmt` is the arbiter.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# --- Python: ruff ----------------------------------------------------------
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+# --- Tabs are load-bearing, not a preference -------------------------------
+# A Makefile recipe line MUST begin with a tab; spaces are a syntax error.
+[Makefile]
+indent_style = tab
+
+[{Makefile,*.mk}]
+indent_style = tab
+
+# The Caddyfile is tab-indented as `caddy fmt` writes it.
+[Caddyfile]
+indent_style = tab
+
+[docker/Caddyfile]
+indent_style = tab
+
+# --- Shell: the git hooks and scripts --------------------------------------
+[*.sh]
+indent_size = 2
+
+[.githooks/*]
+indent_style = space
+indent_size = 2
+
+# --- Everything prettier touches ------------------------------------------
+# Prettier's defaults, stated so an editor does not fight it on save.
+[*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc,css,html,md,yml,yaml}]
+indent_size = 2
+
+# Markdown: trailing whitespace is a hard line break, so leave it alone.
+[*.md]
+trim_trailing_whitespace = false
+
+# --- Generated artifacts ---------------------------------------------------
+# Committed build artifacts (ADR-0013, ADR-0021, ADR-0022). Their generators
+# own the formatting, and `make check` fails on any diff — so an editor must
+# not touch them at all. Never hand-edit these; `make generated` writes them.
+[frontend/src/api/schema.*.d.ts]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false
+insert_final_newline = unset
+
+[bff/src/db/schema/crawl.generated.ts]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false
+insert_final_newline = unset
+
+[bff/drizzle/**]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false
+insert_final_newline = unset
+
+[{.claude,.cursor,.opencode,.agents}/**]
+indent_style = unset
+indent_size = unset
+trim_trailing_whitespace = false
+insert_final_newline = unset
+
+# --- Lockfiles -------------------------------------------------------------
+[{package-lock.json,uv.lock}]
+indent_style = unset
+indent_size = unset
+insert_final_newline = unset

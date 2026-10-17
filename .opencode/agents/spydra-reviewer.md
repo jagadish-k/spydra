@@ -80,7 +80,11 @@ convincing.
 2. The spec sections it names, and **every ADR it lists**. For anything
    touching politeness, the queue or the schema, read the ADR rather than
    inferring intent from the diff.
-3. The diff. Prefer running `git diff develop...HEAD` yourself; **if shell is
+3. **`docs/UI_STATES.md`, for any diff under `frontend/`.** It is the list of
+   what is missing. The mockups are drawn populated, so they cannot tell you
+   that a component has no empty state — only the matrix can (ADR-0025). §3
+   for components, §4 for the screen.
+4. The diff. Prefer running `git diff develop...HEAD` yourself; **if shell is
    unavailable in this environment, the task message MUST contain the diff
    (or its stat) pasted by the integrator — do not guess at scope, and do
    not attempt workarounds.** File reads, globs and greps are available
@@ -98,14 +102,21 @@ convincing.
    raw Tailwind palette classes, no hand-edited generated files.
 2. **Do the acceptance criteria actually pass?** Not "is there a test named
    after it" — read the test and check it would fail without the change.
-3. **Did the slice touch files it does not own?** The task file lists them.
-4. **Is the failure mode right?** This project prefers stopping loudly to
+3. **Is every state there?** For a `frontend/` diff, check each component
+   against `UI_STATES.md` §3 and the screen against §4. A component that
+   renders only the populated path is **incomplete, not a follow-up**
+   (ADR-0025) — report each missing state as its own finding, naming the
+   component or screen and the state. The two empty sub-cases are not
+   interchangeable: first-run empty offers the primary action, filtered empty
+   offers to clear the filter and must never offer to create anything.
+4. **Did the slice touch files it does not own?** The task file lists them.
+5. **Is the failure mode right?** This project prefers stopping loudly to
    continuing quietly. A swallowed exception, a silent fallback or a default
    that masks a missing value is a finding.
-5. **Would the next person understand the decision?** Comments explain _why_.
+6. **Would the next person understand the decision?** Comments explain _why_.
    A comment restating the code is a finding; so is a non-obvious decision
    with no comment at all.
-6. Conventions: naming after the domain, no `any`, no bare `except`, errors
+7. Conventions: naming after the domain, no `any`, no bare `except`, errors
    raised in `domain/` and translated in `api/`.
 
 ## How to report

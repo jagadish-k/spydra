@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # Build first so a broken image fails the build step, not a test step.
       - name: Build images
@@ -39,6 +39,42 @@ jobs:
 
       - name: Migrate both chains down # CI asserts this works (WORKFLOW.md §2)
         run: make migrate-down
+
+      # 0.13 is a CYCLE, not a one-way trip. up -> down alone leaves the
+      # re-apply untested, which is the half that breaks when a hand-written
+      # down.sql is not the exact inverse of its up (ADR-0024).
+      - name: Migrate both chains up again
+        run: make migrate
+
+      # BUILD_PLAN 0.6 and 0.7 are the two the plan says cost a day each if
+      # deferred, and both fail silently: a dropped grant looks like nothing
+      # until the BFF writes a table it should not, and buffered SSE looks
+      # like a frontend bug. Proved once by hand in phase 0; these two steps
+      # are what stop them regressing (phase-0 audit, finding F4).
+      - name: Prove the BFF role cannot write crawl # 0.7, spec 010 §3
+        run: make verify-grants
+
+      - name: Prove SSE streams unbuffered through the edge # 0.6, spec 010 §2
+        run: |
+          docker compose up -d edge api
+          timeout 60 bash -c 'until curl -fsS http://127.0.0.1:8080/api/crawler/healthz >/dev/null; do sleep 1; done'
+          # Assert on ARRIVAL GAPS, not on the payload — a batched response
+          # contains exactly the right bytes. Accept-Encoding is sent because
+          # a browser always sends it, and the site block runs `encode zstd
+          # gzip` ahead of every handle; --compressed decodes so the frames
+          # are readable as text either way.
+          curl -sN --compressed -H 'Accept-Encoding: gzip' \
+            http://127.0.0.1:8080/api/crawler/runs/__smoke/events \
+          | perl -ne 'BEGIN { use Time::HiRes qw(time); $n = 0 }
+                      next unless /^data:/;
+                      my $t = time;
+                      if ($p) {
+                        my $g = $t - $p;
+                        die sprintf("batched: frame %d arrived %.2fs after the last\n", $n, $g)
+                          if $g < 0.5;
+                      }
+                      $p = $t; $n++;
+                      END { die "got $n frames, want 6\n" unless $n == 6 }'
 
       - name: make check # lint · types · tests · generated drift
         run: make check

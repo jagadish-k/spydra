@@ -5,33 +5,36 @@ Start with [`../AGENTS.md`](../AGENTS.md) — the operating rules — then
 
 ## Orientation
 
-| Doc | Read it when |
-| --- | --- |
-| [`../AGENTS.md`](../AGENTS.md) | Every session, first. Rules, stack, commands, definition of done. |
-| [`BUILD_PLAN.md`](BUILD_PLAN.md) | Every session. Which phase you are in and what "done" means. |
-| [`DEVELOPMENT.md`](DEVELOPMENT.md) | Before running anything. Docker topology, commands, macOS gotchas. |
-| [`TESTING.md`](TESTING.md) | Before writing tests. What must be covered and why. |
-| [`WORKFLOW.md`](WORKFLOW.md) | Before your first commit. Branches, the two gates, and which agent owns which part of a change. |
-| [`agents/`](agents/README.md) | Changing how an agent role behaves. Canonical, tool-neutral; `make agents` generates the rest. |
-| [`PHASE0_PROMPT.md`](PHASE0_PROMPT.md) | Starting a build session. The prompt to paste, and why it is shaped that way. |
+| Doc                                    | Read it when                                                                                    |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`../AGENTS.md`](../AGENTS.md)         | Every session, first. Rules, stack, commands, definition of done.                               |
+| [`BUILD_PLAN.md`](BUILD_PLAN.md)       | Every session. Which phase you are in and what "done" means.                                    |
+| [`DEVELOPMENT.md`](DEVELOPMENT.md)     | Before running anything. Docker topology, commands, macOS gotchas.                              |
+| [`TESTING.md`](TESTING.md)             | Before writing tests. What must be covered and why.                                             |
+| [`WORKFLOW.md`](WORKFLOW.md)           | Before your first commit. Branches, the two gates, and which agent owns which part of a change. |
+| [`agents/`](agents/README.md)          | Changing how an agent role behaves. Canonical, tool-neutral; `make agents` generates the rest.  |
+| [`PHASE0_PROMPT.md`](PHASE0_PROMPT.md) | Starting a build session. The prompt to paste, and why it is shaped that way.                   |
 
 ## Design
 
-| Doc | Content |
-| --- | --- |
+| Doc                                  | Content                                                                     |
+| ------------------------------------ | --------------------------------------------------------------------------- |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Why the system is shaped this way. Intent; the specs hold the exact shapes. |
 
 | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Tokens, typography, components, anti-patterns. |
 | [`SCREENS.md`](SCREENS.md) | What each of the ten screens is for. |
+| [`UI_STATES.md`](UI_STATES.md) | The state matrix — which states every component and screen has. Binding on phase 3 (ADR-0025). |
 | [`BRAND.md`](BRAND.md) | Logo construction, variants, usage. |
 | [`deck/index.html`](deck/index.html) | **Developer briefing deck.** Sixteen slides: the problem, the five decisions worth arguing about, the screens, and where to start. Open it from disk; arrow keys, `o` for an overview, `p` for presenter notes, Cmd-P prints to PDF. |
 
-The UI specification is `design/mockups/` — static HTML, opens from disk,
-accurate. Build to match it.
+The UI specification is two files (ADR-0025): `design/mockups/` for layout,
+spacing, typography and colour — static HTML, opens from disk, accurate —
+and `UI_STATES.md` for which states exist. The mockups are populated-state
+only; build to match both.
 
 ## Decisions
 
-[`adr/`](adr/README.md) — twenty-one records. Read the relevant one before
+[`adr/`](adr/README.md) — twenty-four records. Read the relevant one before
 changing anything structural. Each states its cost.
 
 The four most likely to be questioned, and most likely to be wrong to change:
