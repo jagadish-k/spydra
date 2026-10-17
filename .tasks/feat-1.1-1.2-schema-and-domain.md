@@ -233,6 +233,37 @@ the phase can be written and, because of F1–F3, so that it can be *tested*.
   them; and `make check` whole, with the pre-commit hook, against the
   versions the lockfile pins.
 
+- backend (third pass) — **`make test-api` errored on all ten integration
+  tests, and the cause was mine.** The signal was at the bottom of the run,
+  not the top: `PytestConfigWarning: Unknown config option: asyncio_mode`.
+  pytest-asyncio was added to `pyproject.toml` and **`backend/uv.lock` was
+  not re-resolved**, so `docker/api.Dockerfile`'s `uv sync --frozen` had
+  never installed it; without the plugin every async fixture is unhandled and
+  the ten `engine`-dependent tests error at setup. The
+  `pytest_fixture_post_finalizer` assertions underneath are downstream noise
+  from the same single cause.
+
+  Two things follow:
+
+  1. `uv.lock` re-resolved with **uv 0.13.1**, the version
+     `api.Dockerfile` pins and the version that wrote the existing lock, and
+     against a real CPython 3.15.0 — not with whatever uv was to hand, since
+     the lock records which uv produced it. The diff is one package:
+     `pytest-asyncio 1.4.0`. `version`/`revision` unchanged at 1/5. The suite
+     was then re-run against exactly that pin: **73 passed, 1 skipped.**
+  2. **`make lock` added**, because this will recur. `uv sync --frozen`
+     failing on a stale lock is correct behaviour — it is what stops a
+     dependency reaching an image unlocked — but it makes adding a dependency
+     a two-step operation with no sanctioned second step, and the failure
+     surfaces as ten unrelated-looking fixture errors rather than as "the
+     lock is stale". Every lane that adds a dependency would have found this
+     the same way.
+
+  Not done, and outside this slice's file set: `make lock` is absent from
+  `AGENTS.md` § Commands and from `DEVELOPMENT.md` § Commands, which
+  BUILD_PLAN 0.2 makes the Makefile's mirror. **Two one-line additions for
+  you, or say the word and I will take them.**
+
 - integrator (first pass) — **the gate had NOT been run. This environment has no Docker.**
   It is a Linux VM with the repository mounted, the same limitation
   `chore/phase-0-audit` recorded under Deviations, and its Python is 3.10

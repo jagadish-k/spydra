@@ -39,7 +39,7 @@ flat = $(subst $(NL), ,$(1))
 .PHONY: help hooks agents agents-check \
         up down reset reset-deps logs ps \
         shell-api shell-bff shell-web psql verify-grants \
-        migrate migrate-api migrate-ui migrate-down migrate-down-api \
+        lock migrate migrate-api migrate-ui migrate-down migrate-down-api \
         migrate-down-ui revision revision-ui drizzle-pull drizzle-studio \
         test test-api test-bff test-web test-render e2e seed-dev \
         lint lint-api lint-bff lint-web fmt \
@@ -141,6 +141,17 @@ migrate-down-api:
 
 migrate-down-ui:
 	$(call skip_if_missing,bff/drizzle) && $(COMPOSE) run --rm bff npm run migrate:down
+
+lock: ## re-resolve backend/uv.lock after editing pyproject.toml deps
+	# `uv sync --frozen` in docker/api.Dockerfile FAILS on a lock that does
+	# not match pyproject.toml — deliberately, so a dependency cannot reach
+	# an image without a lock entry. The consequence is that adding a dep is
+	# two steps, and this is the second one. Runs in the image that already
+	# has the pinned uv, so the lock is never resolved by whatever uv happens
+	# to be on someone's host (the lock records which uv wrote it).
+	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm --no-deps \
+		--entrypoint sh api -c "cd /repo/backend && uv lock"
+	@echo "·  uv.lock re-resolved. Now: make reset-deps && make up"
 
 revision: ## autogenerate a crawl migration — make revision m="add asset_queue"
 	$(call skip_if_missing,backend/alembic.ini) && $(COMPOSE) run --rm api alembic revision --autogenerate -m "$(m)"
