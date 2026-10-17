@@ -15,13 +15,34 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from spydra.adapters.postgres.tables import PAGE_CURRENT_NAME, metadata
+
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)  # alembic.ini's [logger_alembic] audit lines
 
-# target_metadata stays None until the domain models exist; autogenerate
-# (make revision) is wired to them by BUILD_PLAN 1.1.
-target_metadata = None
+# The crawl schema's single description (BUILD_PLAN 1.1, ADR-0014). Core
+# Table objects, not ORM models — spec 001 §3 makes the entities frozen
+# dataclasses and repositories translate rows by hand, so nothing is mapped.
+target_metadata = metadata
+
+_VIEWS = {PAGE_CURRENT_NAME.split(".")[-1]}
+
+
+def include_object(
+    obj: object, name: str | None, type_: str, reflected: bool, compare_to: object
+) -> bool:
+    """Keep autogenerate off the views.
+
+    `page_current` is a view (ADR-0007) and so has no place in the metadata.
+    Reflection returns it looking like a table it has never heard of, and
+    autogenerate's next move is to propose dropping it — in a revision
+    someone would then run. Filtering it is cheaper than discovering that.
+    """
+    if type_ == "table" and name in _VIEWS:
+        return False
+    return True
+
 
 # The alembic ledger lives inside crawl — the same ownership rule as the
 # drizzle chain, whose ledger lives in ui (spec 010 §3): each chain's
@@ -35,6 +56,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=os.environ["DATABASE_URL"],
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         version_table_schema=VERSION_TABLE_SCHEMA,
@@ -50,6 +72,7 @@ def do_run_migrations(connection: Connection) -> None:
         # include_schemas=False: only crawl objects are migrated and they are
         # addressed explicitly; the api role's search_path stays untouched.
         include_schemas=False,
+        include_object=include_object,
         version_table_schema=VERSION_TABLE_SCHEMA,
     )
     with context.begin_transaction():

@@ -1,0 +1,183 @@
+"""The entities. Frozen, slotted, no I/O (spec 001 §3).
+
+Repositories translate rows to these and back; nothing here knows a row
+exists. `tests/test_import_contracts.py` holds that line.
+"""
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
+from decimal import Decimal
+
+from .enums import (
+    DomainState,
+    PageKind,
+    ProposedBy,
+    RenderMode,
+    RuleName,
+    Strategy,
+    TransformName,
+)
+from .ids import DomainId, PageId, RunId, TemplateId
+
+# A field's extracted value before it reaches a column or JSONB. `many` rules
+# yield a sequence; `pairs` yields a mapping (spec 003 §2).
+FieldValue = str | Decimal | int | Sequence[str] | Mapping[str, str] | None
+ExtractedFields = Mapping[str, FieldValue]
+
+
+@dataclass(frozen=True, slots=True)
+class Transform:
+    """One step of a transform chain (spec 003 §2).
+
+    A dataclass rather than a bare enum member because `pairs(th, td)` takes
+    arguments. Modelling six of the seven as enum members and the seventh as
+    a special case is the shape that makes the chain grow an `if`; carrying
+    args that are usually empty does not.
+    """
+
+    name: TransformName
+    args: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Rule:
+    """One validation rule (spec 003 §3).
+
+    `min_count(n)` and `matches(re)` take an argument; the rest do not.
+    """
+
+    name: RuleName
+    arg: str | int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationResult:
+    """What a rule saw, recorded rather than raised.
+
+    Spec 003 §3: validation never raises. It lands in
+    `page_observations.validation` as {field: {rule, ok, saw}}, which is what
+    makes a silently broken selector visible in a report instead of as quiet
+    bad data.
+    """
+
+    rule: RuleName
+    ok: bool
+    saw: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FieldRule:
+    """How one field is found and checked (spec 001 §3)."""
+
+    selector: str
+    attr: str = "text"  # 'text' | an attribute name
+    many: bool = False
+    required: bool = False
+    transform: tuple[Transform, ...] = ()
+    validation: tuple[Rule, ...] = ()
+    fallback: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryRules:
+    """How a listing page yields more URLs (`templates.discovery`, spec 001 §1).
+
+    Empty is legitimate and common: a product template discovers nothing.
+    """
+
+    next_page: str | None = None
+    product_links: str | None = None
+    subcategory_links: str | None = None
+    allow_patterns: tuple[str, ...] = ()
+    deny_patterns: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Domain:
+    """A host and the politeness contract for it (spec 001 §3).
+
+    `next_eligible_at` and `consecutive_failures` are carried here because the
+    scheduler's whole question — may I fetch from this host now — is answered
+    from them (ADR-0002). `in_flight` is deliberately absent: spec 001 §1
+    calls it a cache that must be reconciled rather than trusted, so it stays
+    in the row and out of the entity.
+    """
+
+    id: DomainId
+    host: str
+    state: DomainState
+    render_mode: RenderMode
+    crawl_delay_ms: int
+    max_concurrency: int
+    asset_concurrency: int
+    respect_robots: bool
+    next_eligible_at: datetime
+    consecutive_failures: int
+    user_agent: str | None = None
+    max_depth: int = 5
+    deny_patterns: tuple[str, ...] = ()
+
+    @property
+    def crawls(self) -> bool:
+        """Spec 001 §2: a domain that is not ACTIVE sends no requests."""
+        return self.state is DomainState.ACTIVE
+
+
+@dataclass(frozen=True, slots=True)
+class Template:
+    """Extraction and discovery rules for one (domain, url_pattern) (ADR-0006).
+
+    `url_pattern` is a compiled pattern, not a string: it is matched against
+    every discovered URL, and compiling it at the repository boundary means an
+    unusable regex fails when the template is read rather than mid-crawl.
+    """
+
+    id: TemplateId
+    domain_id: DomainId
+    name: str
+    url_pattern: str
+    page_kind: PageKind
+    version: int
+    is_active: bool
+    discovery: DiscoveryRules
+    extraction: Mapping[str, FieldRule]
+    proposed_by: ProposedBy
+    approved_at: datetime | None = None
+
+    @property
+    def required_fields(self) -> frozenset[str]:
+        """The fields whose failure routes a page to the review inbox."""
+        return frozenset(n for n, r in self.extraction.items() if r.required)
+
+
+@dataclass(frozen=True, slots=True)
+class Observation:
+    """One crawl of one page. Append-only (ADR-0007, AGENTS.md rule 13).
+
+    There is no `id` and no setter. An Observation is constructed, written
+    once and never updated; a mutable one would make rule 13 a convention
+    instead of a type.
+    """
+
+    page_id: PageId
+    run_id: RunId
+    template_id: TemplateId | None
+    observed_at: datetime
+    http_status: int
+    strategy: Strategy
+    content_hash: bytes
+    fields: ExtractedFields
+    validation: Mapping[str, ValidationResult] = field(default_factory=dict)
+    unchanged: bool = False
+
+    @property
+    def failed_validation(self) -> frozenset[str]:
+        """Fields whose validation did not pass.
+
+        Which of them were *required* is the Template's knowledge, not this
+        one's, so the routing decision in spec 003 §3 is
+        `failed_validation & template.required_fields` and lives with the
+        caller that holds both. Named for what it can actually tell you.
+        """
+        return frozenset(n for n, v in self.validation.items() if not v.ok)

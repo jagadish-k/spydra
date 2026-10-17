@@ -13,6 +13,14 @@
 
 COMPOSE := docker compose
 
+# Integration tests run against their own database, never the dev one
+# (TESTING.md §1: SKIP LOCKED, DISTINCT ON and partial unique indexes rule
+# SQLite out, so the suite needs real Postgres — and a suite that shares the
+# dev database destroys the data you were looking at). Kept here as well as
+# in compose's x-py-env so `make test-api` reads it without the api service
+# having to be the thing that defines it.
+TEST_DATABASE_URL := postgresql+asyncpg://spydra_api:spydra@db:5432/spydra_test
+
 # First line of a recipe, joined to the command with && so the whole target
 # stops when the guard trips:
 #   $(call skip_if_missing,compose.yaml) && $(COMPOSE) up -d
@@ -33,7 +41,7 @@ flat = $(subst $(NL), ,$(1))
         shell-api shell-bff shell-web psql verify-grants \
         migrate migrate-api migrate-ui migrate-down migrate-down-api \
         migrate-down-ui revision revision-ui drizzle-pull drizzle-studio \
-        test test-api test-bff test-web e2e seed-dev \
+        test test-api test-bff test-web test-render e2e seed-dev \
         lint lint-api lint-bff lint-web fmt \
         fmt-staged fmt-staged-js typecheck-changed typecheck-changed-py \
         types types-crawler types-ui generated generated-check check
@@ -155,16 +163,28 @@ drizzle-studio: ## browse the ui schema
 
 # --- tests --------------------------------------------------------------------
 
-test: test-api test-bff test-web ## everything
+test: test-api test-bff test-web test-render ## everything
 
+# NOT --no-deps: the suite needs the database up (phase-1 finding F1 — it
+# was --no-deps, which made every integration test in TESTING.md §2
+# unrunnable, starting with the two the politeness guarantee rests on).
+# compose starts `db` and waits for its healthcheck via api's depends_on.
 test-api:
-	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm --no-deps api pytest -q
+	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm \
+		-e DATABASE_URL=$(TEST_DATABASE_URL) api pytest -q
 
 test-bff:
 	$(call skip_if_missing,bff/package.json) && $(COMPOSE) run --rm --no-deps bff npm test
 
 test-web:
 	$(call skip_if_missing,frontend/package.json) && $(COMPOSE) run --rm --no-deps web npm test
+
+# The sidecar's own suite, which is the half of spec 012 that drives a real
+# browser (TESTING.md §1). It had no target at all and so was never gated
+# (phase-1 finding F3) — `make check` is the contract in ADR-0022 §3 and an
+# ungated service is not covered by it.
+test-render:
+	$(call skip_if_missing,render/package.json) && $(COMPOSE) run --rm --no-deps render npm test
 
 e2e: ## Playwright against the running stack
 	$(call skip_if_missing,frontend/playwright.config.ts) && $(COMPOSE) run --rm --no-deps web npx playwright test
