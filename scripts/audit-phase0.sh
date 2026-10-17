@@ -103,6 +103,9 @@ have_docker() { command -v docker >/dev/null && docker info >/dev/null 2>&1; }
 # Poll until a URL answers. `sleep N` is a guess; a container that needed N+1
 # seconds reported an empty body and the section read as UNPROVEN.
 wait_for() { # wait_for <url> <seconds>
+  # Anything that follows a `make reset` is a FIRST boot: down -v drops
+  # spydra_venv, bff_modules and web_modules too, so the container re-seeds
+  # its dependencies before it can serve. That is minutes, not seconds.
   local url=$1 limit=${2:-30} i=0
   while [ "$i" -lt "$limit" ]; do
     curl -fsS -o /dev/null --max-time 2 "$url" 2>/dev/null && { log "  ready after ${i}s: $url"; return 0; }
@@ -434,10 +437,14 @@ fi
 # ===========================================================================
 if wanted 0.8; then
 head2 "0.8 backend"
-run "docker compose up -d api"
-wait_for "http://127.0.0.1:8080/api/crawler/healthz" 45
+# The probe below goes through the edge on :8080, so `edge` must be up —
+# `up -d api` starts api and db via depends_on and NOTHING else, and 0.7's
+# `make reset` took the edge down with everything else.
+run "docker compose up -d edge api"
+wait_for "http://127.0.0.1:8080/api/crawler/healthz" 180
 run "curl -s http://127.0.0.1:8080/api/crawler/healthz"
 hz="$OUT"
+[ -z "$hz" ] && log "  ${R}empty body — the api did not answer through the edge; nothing below is measured${O}"
 run "make lint-api"
 lint_rc=$?
 head2 "0.8b import contract — it currently SKIPS (no spydra/domain). Give it a domain to judge."
@@ -454,6 +461,8 @@ teeth=$?
 run "rm -rf backend/spydra/domain"
 if [ $lint_rc -eq 0 ] && printf '%s' "$hz" | grep -q '"status":"ok"' && [ $teeth -ne 0 ]; then
   verdict 0.8 PROVEN "healthz 200 through the edge; ruff+mypy clean; import contract failed on an injected violation (teeth) and skips only because spydra/domain does not exist yet"
+elif [ -z "$hz" ]; then
+  verdict 0.8 UNPROVEN "the api never answered through the edge, so healthz was not measured. lint_rc=$lint_rc and the import contract's teeth fired correctly (rc=$teeth). Harness, not the repo — re-run: bash scripts/audit-phase0.sh 0.8"
 else
   verdict 0.8 UNPROVEN "healthz=$hz lint_rc=$lint_rc contract-teeth-rc=$teeth (nonzero expected)"
 fi
@@ -464,10 +473,11 @@ fi
 # ===========================================================================
 if wanted 0.9; then
 head2 "0.9 bff"
-run "docker compose up -d bff"
-wait_for "http://127.0.0.1:8080/api/ui/healthz" 45
+run "docker compose up -d edge bff"
+wait_for "http://127.0.0.1:8080/api/ui/healthz" 180
 run "curl -s http://127.0.0.1:8080/api/ui/healthz"
 bhz="$OUT"
+[ -z "$bhz" ] && log "  ${R}empty body — the bff did not answer through the edge; nothing below is measured${O}"
 run "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/openapi.json"
 oc="$OUT"
 run "curl -s http://127.0.0.1:3000/openapi.json | head -c 300"
@@ -475,6 +485,8 @@ run "make lint-bff"
 blint=$?
 if printf '%s' "$bhz" | grep -q '"status":"ok"' && [ "$oc" = "200" ] && [ $blint -eq 0 ]; then
   verdict 0.9 PROVEN "healthz via edge, /openapi.json 200, eslint+prettier+tsc clean"
+elif [ -z "$bhz" ]; then
+  verdict 0.9 UNPROVEN "the bff never answered through the edge, so healthz was not measured. openapi=$oc and lint_rc=$blint were fine. Harness, not the repo — re-run: bash scripts/audit-phase0.sh 0.9"
 else
   verdict 0.9 UNPROVEN "healthz=$bhz openapi=$oc lint_rc=$blint"
 fi
