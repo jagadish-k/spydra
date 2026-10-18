@@ -21,15 +21,75 @@ const BANNER = [
 ].join("\n");
 
 const introspected = existsSync(SRC) ? readFileSync(SRC, "utf8") : "";
-const hasTables = /pgTable|pgEnum|pgView/.test(introspected);
+// Match DECLARATIONS, not the import line. The previous test was
+// /pgTable|pgEnum|pgView/, which matches `import { pgTable } from …` — so a
+// zero-table introspection scored as a successful one and was copied through
+// verbatim. drizzle-kit's output for an empty schema is
+// `export const crawl = pgSchema("crawl")` with pgSchema NOT imported, so the
+// committed artifact then failed tsc with "Cannot find name 'pgSchema'".
+// Verified against a migrated database: real output declares `crawl.table(`
+// and `crawl.enum(` and imports pgSchema correctly.
+const hasTables = /\bcrawl\.(table|enum|view)\(/.test(introspected);
+
+// drizzle-kit has no `bytea` in pg-core, so introspect emits `unknown(...)`
+// as a placeholder for every BYTEA column — and `unknown` is a TYPE, not a
+// function, so the artifact fails tsc with TS2693. The crawl schema has five
+// of them (`pages.url_hash`, `crawl_queue.url_hash` and three
+// `content_hash` columns), all load-bearing: spec 001 §1 uses url_hash for
+// the dedupe indexes and content_hash for ADR-0007's change detection.
+//
+// This script is where introspected output becomes a committed artifact
+// (ADR-0021 §2), so mapping the placeholder onto a declared custom type is
+// its job rather than a hand edit to the artifact — which the pre-commit
+// hook rejects, correctly.
+function withBytea(source: string): string {
+  if (!/\bunknown\(/.test(source)) return source;
+
+  const declaration = [
+    "",
+    "// `bytea` is not in drizzle-orm/pg-core; introspect emits `unknown(...)`",
+    "// for it. Declared here by scripts/write-crawl-generated.ts so the",
+    "// mirror typechecks. Buffer in both directions — these columns hold",
+    "// sha256 digests (spec 001 §1, ADR-0007).",
+    "const bytea = customType<{ data: Buffer; driverData: Buffer }>({",
+    "  dataType() {",
+    '    return "bytea";',
+    "  },",
+    "});",
+    "",
+  ].join("\n");
+
+  let out = source.replace(
+    /^(import \{)([^}]*)(\} from "drizzle-orm\/pg-core")/m,
+    (_match, open: string, names: string, close: string) =>
+      `${open}${names}, customType${close}`,
+  );
+  out = out.replace(/\bunknown\(/g, "bytea(");
+
+  const lines = out.split("\n");
+  let lastImport = -1;
+  for (const [i, line] of lines.entries()) {
+    if (line.startsWith("import ")) lastImport = i;
+  }
+  lines.splice(lastImport + 1, 0, declaration);
+  return lines.join("\n");
+}
 
 const body = hasTables
-  ? introspected
-  : "// crawl has no tables yet — the first arrives with BUILD_PLAN 1.1.\n";
+  ? withBytea(introspected)
+  : [
+      "// crawl has no tables in the database this was introspected from.",
+      "//",
+      "// If BUILD_PLAN 1.1 has landed, that means the DEV database is not at",
+      "// alembic head — run `make migrate` and `make generated` again. The",
+      "// mirror is only ever as current as the schema it was pulled from.",
+      "",
+    ].join("\n");
 
 writeFileSync(DST, `${BANNER}${body}`);
+const declared = (introspected.match(/\bcrawl\.table\(/g) ?? []).length;
 console.log(
   hasTables
-    ? `·  crawl.generated.ts written from introspected crawl tables`
-    : `·  crawl.generated.ts written empty (crawl has no tables until BUILD_PLAN 1.1)`,
+    ? `·  crawl.generated.ts written from ${declared} introspected crawl table(s)`
+    : `·  crawl.generated.ts written EMPTY — crawl had no tables. If 1.1 has landed, the dev database is not at head: run 'make migrate'.`,
 );

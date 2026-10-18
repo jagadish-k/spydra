@@ -303,8 +303,14 @@ fmt-staged-js:
 	  $(COMPOSE) run --rm --no-deps -T bff sh -c "cd /repo && npx prettier --write $$root" || exit 1; \
 	fi
 
+# `set -e`, because the recipe's last command is an `if` whose condition is
+# false whenever no frontend file is staged — so a `tsc` failure inside the
+# FIRST `if` was masked and the hook printed "✓ pre-commit" over a file that
+# does not compile. Observed live on bff/src/db/schema/crawl.generated.ts.
+# Same class as findings F14 and F15: a gate that cannot fail.
 typecheck-changed:
-	@if [ ! -f bff/package.json ] && [ ! -f frontend/package.json ]; then echo "·  skip $@ — no TS packages yet"; exit 0; fi; \
+	@set -e; \
+	if [ ! -f bff/package.json ] && [ ! -f frontend/package.json ]; then echo "·  skip $@ — no TS packages yet"; exit 0; fi; \
 	files=$$(printf '%s\n' '$(call flat,$(FILES))' | tr ' ' '\n'); \
 	if printf '%s\n' "$$files" | grep -q '^bff/' && [ -f bff/package.json ]; then \
 	  $(COMPOSE) run --rm --no-deps -T bff tsc --noEmit; \
