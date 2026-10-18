@@ -332,11 +332,24 @@ class Observation:
 ```
 
 `render_mode` has three values. `AUTO` fetches statically and, if the
-template's required fields fail to resolve on a 200 response, retries once
-through the browser and records which path succeeded. After a few runs the
-flag can be pinned from observed behaviour rather than guessed at onboarding
-— so the cost of a wrong guess is one wasted cheap fetch, not a silently
-empty extraction.
+extraction yields **nothing usable** on a 200 response, retries once through
+the browser and records which path succeeded. After a few runs the flag can
+be pinned from observed behaviour rather than guessed at onboarding — so the
+cost of a wrong guess is one wasted cheap fetch, not a silently empty
+extraction.
+
+> **The fallback condition was "the template's required fields fail to
+> resolve" and is amended by [ADR-0027](../adr/0027-no-required-fields.md).**
+> No field is required any more, so that condition could never be true and
+> `AUTO` would have silently become `STATIC` — on a target list where every
+> domain needs rendering. It is now the same `empty_extraction` predicate
+> that spec 003 §3 uses, so the fallback and the redesign detector cannot
+> disagree.
+
+`FieldRule.required` below is **inert** for the same reason: it stays in the
+type and in the `templates.extraction` JSONB so prior template versions
+(ADR-0006) keep their shape, the loader rejects any attempt to set it, and
+nothing reads it.
 
 ---
 

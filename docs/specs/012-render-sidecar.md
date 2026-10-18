@@ -111,10 +111,14 @@ This is cheap to configure and the only real isolation boundary in the stack.
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `static`   | `HttpxFetcher` only                                                                                                                    |
 | `rendered` | `RenderServiceFetcher` only                                                                                                            |
-| `auto`     | static first; if the template's **required** fields fail to resolve on a 200, retry once through the sidecar and record which path won |
+| `auto`     | static first; if the extraction yields **nothing usable** on a 200, retry once through the sidecar and record which path won |
 
 `auto` is why the cost of a wrong onboarding guess is one wasted cheap fetch
-rather than a silently empty extraction. After a few runs the flag can be
+rather than a silently empty extraction.
+
+**"Nothing usable" is the `empty_extraction` predicate from spec 003 §3**, not
+a failure of required fields — [ADR-0027](../adr/0027-no-required-fields.md)
+removed requiredness, and the old wording would have made `auto` unreachable. After a few runs the flag can be
 pinned from observed behaviour.
 
 **The per-domain politeness gate is unchanged.** A rendered fetch claims the

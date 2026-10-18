@@ -146,7 +146,8 @@ expensive to get wrong, so they come first and are proven in isolation._
 - [ ] `1.12` A YAML template loader so a domain can be configured without a
       UI. **This is scaffolding with a known end date** — it is deleted in
       `3.2` once templates come from the API. Do not build a format anyone
-      could grow attached to.
+      could grow attached to. It **rejects** `required: true` rather than
+      ignoring it (ADR-0027).
 
 **Exit:** one static domain **and** one JS-rendered domain crawled politely
 end to end, data in Postgres, from a YAML template. Both fetchers exercised

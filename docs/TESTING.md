@@ -66,9 +66,16 @@ These are not negotiable; each maps to a stated failure mode.
 
 **Silent extraction failure (spec 003)** — the one that produces no error.
 
-- Required field failing validation routes to `unknown_pages` *and* writes
-  the observation.
-- 21% failure rate breaks the domain and halts it; 19% does not.
+- A failing field is **recorded** in `page_observations.validation`, writes
+  the observation, and does **not** route to `unknown_pages` or halt the
+  domain (ADR-0027 — nothing is `required`, so a validation failure is
+  evidence, never control flow).
+- A template declaring `required: true` is **rejected** by the loader, not
+  ignored.
+- 21% of a domain's pages yielding `empty_extraction` breaks the domain and
+  halts it; 19% does not. **Counted on empty extraction, not on per-field
+  validation** — counted the latter way this never fires and a redesign
+  fills the dataset silently, which is the failure this list exists for.
 - A price of "POA" is a validation failure, not `0.00`.
 - Unchanged page → identical `content_hash`, no duplicate full row.
 - A redesigned fixture (same URL, new markup) produces `empty_extraction`.
