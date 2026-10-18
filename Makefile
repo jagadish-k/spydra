@@ -74,8 +74,19 @@ reset: ## stop and DROP every volume, database included
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) down -v
 
 reset-deps: ## drop the venv/node_modules volumes only (corrupt-install fix, DEVELOPMENT.md)
-	$(call skip_if_missing,compose.yaml) && $(COMPOSE) stop && \
-	docker volume rm -f spydra_venv spydra_bff_modules spydra_web_modules || true
+	# `down`, not `stop`. A STOPPED container still holds a reference to its
+	# volumes, so `docker volume rm` fails with "volume is in use" — and the
+	# old `|| true` swallowed that, so this target printed nothing, exited 0
+	# and did nothing. It is how a stale venv survived a lockfile change, an
+	# image rebuild and three runs of this target (phase-1 finding F14).
+	#
+	# No `|| true`: `volume rm -f` is already a no-op for a volume that does
+	# not exist, so the only thing the guard could hide is a real failure.
+	# `down` keeps named volumes (that needs -v), which is the point — this
+	# target drops three of them by name and must not touch pgdata.
+	$(call skip_if_missing,compose.yaml) && $(COMPOSE) down && \
+	docker volume rm -f spydra_venv spydra_bff_modules spydra_web_modules
+	@echo "·  venv + node_modules volumes dropped. Next 'make up' reseeds them from the images."
 
 logs: ## follow all service logs
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) logs -f --tail=50

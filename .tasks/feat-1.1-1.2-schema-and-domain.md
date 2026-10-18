@@ -264,6 +264,39 @@ the phase can be written and, because of F1–F3, so that it can be *tested*.
   BUILD_PLAN 0.2 makes the Makefile's mirror. **Two one-line additions for
   you, or say the word and I will take them.**
 
+- ops (F14, new) — **`make reset-deps` has never worked**, and that is the
+  whole reason the pytest-asyncio failure survived three rounds:
+
+  ```make
+  $(COMPOSE) stop && docker volume rm -f spydra_venv ... || true
+  ```
+
+  `stop` stops containers; it does not remove them, and a **stopped**
+  container still holds a reference to its volumes, so `docker volume rm`
+  fails with "volume is in use". `|| true` then swallowed that, so the target
+  printed nothing, exited 0 and did nothing. The venv volume therefore
+  survived a lockfile change, an image rebuild and three runs of the target
+  that exists to drop it — while `make up --build` dutifully rebuilt an image
+  whose `/app/.venv` was shadowed by the old volume every time.
+
+  Proof it was not the lock or the Dockerfile: `uv sync --frozen` was run
+  against the committed `pyproject.toml` + `uv.lock` with the pinned uv
+  0.13.1, and it installs `pytest-asyncio==1.4.0`. The build step was correct
+  throughout.
+
+  Fixed: `down` instead of `stop`, and the `|| true` removed —
+  `volume rm -f` is already a no-op for a volume that does not exist, so the
+  only thing that guard could hide was a real failure. The target now says
+  what it dropped.
+
+  **This is a phase-0 defect** (BUILD_PLAN 0.2's Makefile), folded into this
+  branch rather than split to a `fix/` branch because F1's acceptance —
+  `make test-api` running against a real Postgres — is unreachable while the
+  venv cannot be refreshed. Declared rather than hidden; say the word and I
+  will split it. It is also a defect the phase-0 audit could not have caught:
+  its harness had no Docker, which is the same reason it took three rounds
+  here.
+
 - integrator (first pass) — **the gate had NOT been run. This environment has no Docker.**
   It is a Linux VM with the repository mounted, the same limitation
   `chore/phase-0-audit` recorded under Deviations, and its Python is 3.10
