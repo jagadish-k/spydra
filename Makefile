@@ -73,17 +73,17 @@ down: ## stop the stack, keep volumes
 reset: ## stop and DROP every volume, database included
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) down -v
 
+# `down`, not `stop`. A STOPPED container still holds a reference to its
+# volumes, so `docker volume rm` fails with "volume is in use" — and the
+# old `|| true` swallowed that, so this target printed nothing, exited 0
+# and did nothing. It is how a stale venv survived a lockfile change, an
+# image rebuild and three runs of this target (phase-1 finding F14).
+#
+# No `|| true`: `volume rm -f` is already a no-op for a volume that does
+# not exist, so the only thing the guard could hide is a real failure.
+# `down` keeps named volumes (that needs -v), which is the point — this
+# target drops three of them by name and must not touch pgdata.
 reset-deps: ## drop the venv/node_modules volumes only (corrupt-install fix, DEVELOPMENT.md)
-	# `down`, not `stop`. A STOPPED container still holds a reference to its
-	# volumes, so `docker volume rm` fails with "volume is in use" — and the
-	# old `|| true` swallowed that, so this target printed nothing, exited 0
-	# and did nothing. It is how a stale venv survived a lockfile change, an
-	# image rebuild and three runs of this target (phase-1 finding F14).
-	#
-	# No `|| true`: `volume rm -f` is already a no-op for a volume that does
-	# not exist, so the only thing the guard could hide is a real failure.
-	# `down` keeps named volumes (that needs -v), which is the point — this
-	# target drops three of them by name and must not touch pgdata.
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) down && \
 	docker volume rm -f spydra_venv spydra_bff_modules spydra_web_modules
 	@echo "·  venv + node_modules volumes dropped. Next 'make up' reseeds them from the images."
@@ -108,32 +108,60 @@ shell-web: ## sh inside the web container
 psql: ## psql into the dev database (both schemas)
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) exec db psql -U spydra
 
+# Rewritten in phase 1 (finding F15). The previous version could not fail,
+# and after BUILD_PLAN 1.1 it was pointed at a real table:
+#
+#   - It used `crawl.runs` as its throwaway table. Before 1.1 that was free;
+#     after 1.1 `crawl.runs` is the run history, and the target's last act is
+#     to DROP it. Today the FKs from page_observations, crawl_queue and
+#     asset_queue refuse the drop — so the data survives by luck, not design.
+#   - **No psql call carried `-v ON_ERROR_STOP=1`**, and psql exits 0 on a
+#     failed statement by default. Every assertion here was therefore unable
+#     to fail, including the CREATE that silently did nothing.
+#   - The rejection check was `grep -q "permission denied" && echo ✓`,
+#     followed by `;`. An INSERT that failed for any OTHER reason — wrong
+#     table, no connection — passed.
+#   - The recipe's exit status was the final DROP's, not the assertions'.
+#
+# So it printed "✓ grants hold" while proving nothing. It now uses a probe
+# table that cannot collide, stops on the first SQL error, demands the
+# specific error it is looking for, and cleans up on any exit path.
 verify-grants: ## PROVE the BFF role cannot write crawl (spec 010 §3, BUILD_PLAN 0.7)
 	$(call skip_if_missing,compose.yaml) && \
-	echo "·  as spydra_api (schema owner): create a throwaway crawl.runs" && \
-	$(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
-	  -c "CREATE TABLE crawl.runs (id integer)" >/dev/null && \
-	echo "·  as spydra_bff: INSERT must be REJECTED" && \
-	if $(COMPOSE) exec -T db psql postgres://spydra_bff:spydra@localhost:5432/spydra \
-	    -c "INSERT INTO crawl.runs VALUES (1)" >/dev/null 2>/tmp/spydra-grant.err; then \
-	  $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
-	    -c "DROP TABLE crawl.runs" >/dev/null; \
-	  echo "✗ INSERT INTO crawl.runs SUCCEEDED from spydra_bff — the data-ownership boundary is broken"; exit 1; \
-	else \
-	  grep -q "permission denied" /tmp/spydra-grant.err && echo "  ✓ rejected: $$(grep -m1 'permission denied' /tmp/spydra-grant.err | sed 's/ERROR: //')"; \
+	set -e; \
+	PROBE=crawl.__grant_probe; \
+	as_api() { $(COMPOSE) exec -T db psql -v ON_ERROR_STOP=1 -q \
+	    postgres://spydra_api:spydra@localhost:5432/spydra "$$@"; }; \
+	as_bff() { $(COMPOSE) exec -T db psql -v ON_ERROR_STOP=1 -q \
+	    postgres://spydra_bff:spydra@localhost:5432/spydra "$$@"; }; \
+	cleanup() { as_api -c "DROP TABLE IF EXISTS $$PROBE" >/dev/null 2>&1 || true; }; \
+	trap cleanup EXIT; \
+	err=$$(mktemp); \
+	echo "·  probe table $$PROBE — never a real table (see the note above)"; \
+	as_api -c "DROP TABLE IF EXISTS $$PROBE" >/dev/null; \
+	as_api -c "CREATE TABLE $$PROBE (id integer)" >/dev/null; \
+	echo "·  as spydra_bff: INSERT must be REJECTED"; \
+	if as_bff -c "INSERT INTO $$PROBE VALUES (1)" >/dev/null 2>"$$err"; then \
+	  echo "✗ INSERT INTO $$PROBE SUCCEEDED from spydra_bff — the data-ownership boundary is broken"; \
+	  exit 1; \
 	fi; \
-	echo "·  as spydra_bff: SELECT must be ALLOWED (aggregation path)" && \
-	$(COMPOSE) exec -T db psql postgres://spydra_bff:spydra@localhost:5432/spydra \
-	  -c "SELECT count(*) FROM crawl.runs" >/dev/null && echo "  ✓ select granted"; \
-	echo "·  as spydra_api: the ui schema must be INVISIBLE" && \
-	if $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
-	    -c "CREATE TABLE ui.probe (id integer)" >/dev/null 2>&1; then \
-	  echo "✗ spydra_api wrote to ui — no route in should exist"; $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra -c "DROP TABLE crawl.runs" >/dev/null; exit 1; \
-	else \
-	  echo "  ✓ rejected (no route into ui)"; \
+	grep -q "permission denied" "$$err" || { \
+	  echo "✗ the INSERT failed, but NOT with 'permission denied', so this proves nothing:"; \
+	  sed 's/^/      /' "$$err"; \
+	  exit 1; \
+	}; \
+	echo "   ✓ rejected: permission denied"; \
+	echo "·  as spydra_bff: SELECT must be ALLOWED (the aggregation path)"; \
+	as_bff -c "SELECT count(*) FROM $$PROBE" >/dev/null; \
+	echo "   ✓ select granted"; \
+	echo "·  as spydra_api: the ui schema must be INVISIBLE"; \
+	if as_api -c "CREATE TABLE ui.__grant_probe (id integer)" >/dev/null 2>&1; then \
+	  as_api -c "DROP TABLE ui.__grant_probe" >/dev/null 2>&1 || true; \
+	  echo "✗ spydra_api wrote into ui — no route in should exist"; \
+	  exit 1; \
 	fi; \
-	$(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
-	  -c "DROP TABLE crawl.runs" >/dev/null && echo "✓ grants hold: bff reads crawl, writes nothing; api never sees ui"
+	echo "   ✓ rejected (no route into ui)"; \
+	echo "✓ grants hold: bff reads crawl and writes nothing; api never sees ui"
 
 # --- migrations: two chains, two owners (spec 010 §3) ------------------------
 
@@ -153,13 +181,13 @@ migrate-down-api:
 migrate-down-ui:
 	$(call skip_if_missing,bff/drizzle) && $(COMPOSE) run --rm bff npm run migrate:down
 
+# `uv sync --frozen` in docker/api.Dockerfile FAILS on a lock that does
+# not match pyproject.toml — deliberately, so a dependency cannot reach
+# an image without a lock entry. The consequence is that adding a dep is
+# two steps, and this is the second one. Runs in the image that already
+# has the pinned uv, so the lock is never resolved by whatever uv happens
+# to be on someone's host (the lock records which uv wrote it).
 lock: ## re-resolve backend/uv.lock after editing pyproject.toml deps
-	# `uv sync --frozen` in docker/api.Dockerfile FAILS on a lock that does
-	# not match pyproject.toml — deliberately, so a dependency cannot reach
-	# an image without a lock entry. The consequence is that adding a dep is
-	# two steps, and this is the second one. Runs in the image that already
-	# has the pinned uv, so the lock is never resolved by whatever uv happens
-	# to be on someone's host (the lock records which uv wrote it).
 	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm --no-deps \
 		--entrypoint sh api -c "cd /repo/backend && uv lock"
 	@echo "·  uv.lock re-resolved. Now: make reset-deps && make up"
@@ -253,7 +281,8 @@ fmt-staged:
 	    *)         inrepo="$$inrepo /repo/$$f" ;; \
 	  esac; \
 	done; \
-	[ -n "$$inapi$$inrepo" ] && $(COMPOSE) run --rm --no-deps -T api sh -c \
+	if [ -z "$$inapi$$inrepo" ]; then echo "·  $@ — nothing to format"; exit 0; fi; \
+	$(COMPOSE) run --rm --no-deps -T api sh -c \
 	  "ruff format $$inapi $$inrepo && ruff check --fix $$inapi $$inrepo"
 
 # Split staged files by the package whose container can see them. Root-level
@@ -294,6 +323,7 @@ typecheck-changed-py:
 	    *)         mapped="$$mapped /repo/$$f" ;; \
 	  esac; \
 	done; \
+	if [ -z "$$mapped" ]; then echo "·  $@ — nothing to typecheck"; exit 0; fi; \
 	$(COMPOSE) run --rm --no-deps -T api mypy $$mapped
 
 # --- generated artifacts (ADR-0013, ADR-0021, ADR-0022) -------------------------

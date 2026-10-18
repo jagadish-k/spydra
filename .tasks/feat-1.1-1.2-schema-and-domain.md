@@ -297,6 +297,61 @@ the phase can be written and, because of F1–F3, so that it can be *tested*.
   its harness had no Docker, which is the same reason it took three rounds
   here.
 
+- ops (F15 + the sweep, on the human's instruction to stop costing rounds) —
+  swept the Makefile for the F14 class: **a target that reports success while
+  doing nothing.** Three more found.
+
+  **F15 · `make verify-grants` could not fail, and after 1.1 it was aimed at a
+  real table.** This is the proof spec 010 §6 and BUILD_PLAN 0.7 both rest
+  on — the only thing standing between two schemas and a distributed
+  monolith — and it printed "✓ grants hold" while proving nothing:
+
+  - Its throwaway table was **`crawl.runs`**. Free before 1.1; after 1.1 that
+    is the run history, and the target's last act is `DROP TABLE crawl.runs`.
+    It survives today only because page_observations, crawl_queue and
+    asset_queue hold foreign keys into it — luck, not design.
+  - **No psql call carried `-v ON_ERROR_STOP=1`** (grep: zero occurrences in
+    the whole file), and psql exits 0 on a failed statement by default. Every
+    assertion in the target was therefore incapable of failing, including the
+    CREATE that was silently doing nothing.
+  - The rejection check was `grep -q "permission denied" && echo ✓` followed
+    by `;`, so an INSERT that failed for any other reason — no connection,
+    wrong table — passed.
+  - The recipe's exit status was the final `DROP`'s, not the assertions'.
+
+  Rewritten: a probe table that cannot collide (`crawl.__grant_probe`),
+  `set -e`, `ON_ERROR_STOP=1` on every connection, the specific error demanded
+  rather than any failure accepted, and cleanup on every exit path via `trap`.
+
+  **Also fixed:** `fmt-staged` ended on `[ -n "$files" ] && ...`, so it
+  exited 1 — failing the pre-commit hook — whenever nothing matched;
+  `typecheck-changed-py` would have called `mypy` with no arguments in the
+  same case. And while rewriting `verify-grants` I put its
+  `skip_if_missing` guard on its own recipe line, where `exit 0` ends only
+  that line's shell and make runs the body anyway. Caught by the new test,
+  not by reading.
+
+  **`backend/tests/test_makefile_guards.py` — the class is now gated.** Seven
+  checks, in `make check` by way of `make test-api`, stdlib only, following
+  task 0.8's precedent of a pytest over a lint because it blocks CI where a
+  lint warns: every guarded path exists or is declared pending; the pending
+  list only shrinks; no guard sits alone on its line; no docker command's
+  result is swallowed; volumes are never removed after a mere `stop`; every
+  psql assertion stops on error; the grant probe never names a real table.
+
+  **The tests were then verified by mutation** — each defect re-introduced
+  one at a time, nine in all, to check the guard actually fires. Worth
+  recording that **two of the first five were decoration**: both matched on
+  physical lines, and the Makefile's shell functions wrap, so `psql` sat on
+  one line and its connection URL on the next. A third was too broad and
+  flagged a legitimate best-effort cleanup. The unit is now the shell
+  command — logical lines split on `;` — and all nine mutations are caught
+  while the real Makefile is clean. A guard test nobody tried to break is
+  itself the F14 pattern.
+
+  Verified: ruff clean, mypy --strict clean over 26 files, **80 passed, 1
+  skipped** against real Postgres.
+
 - integrator (first pass) — **the gate had NOT been run. This environment has no Docker.**
   It is a Linux VM with the repository mounted, the same limitation
   `chore/phase-0-audit` recorded under Deviations, and its Python is 3.10
