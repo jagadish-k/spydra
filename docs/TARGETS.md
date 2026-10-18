@@ -9,9 +9,17 @@ crawler fetches and honours `robots.txt` at run time, once per domain per run
 this file says. Everything below was read by hand on **2026-10-18** and will
 drift; the live file wins.
 
-> **Nothing here is legal advice.** Two of the three terms-of-use documents
-> could not be retrieved at all (below). The operator confirmed these targets
-> with that gap open and on the record.
+> **These three are development examples, not production targets.**
+> Confirmed by the operator on 2026-10-18: they exist so phases 1 and 2 have
+> real markup and real `robots.txt` files to work against. Two of the three
+> terms-of-use documents could not be retrieved at all and the third only
+> through a third-party tracker (below); the operator reviewed that and chose
+> to proceed on that basis.
+>
+> **Nothing here is legal advice, and this note does not survive promotion.**
+> Anything that becomes a production target — crawled on a schedule, its data
+> relied on — needs its live terms read first. The gap is recorded per domain
+> below so that conversation starts from facts.
 
 ---
 
@@ -83,8 +91,10 @@ Seed: `https://www.thermofisher.com/search/browse/category/in/en/80013650`
     IP addresses.
 
   That is indicative, not authoritative: it is a third party's capture of a
-  document with inconsistent dating. **Read the live Terms of Use before this
-  domain goes `active`.**
+  document with inconsistent dating. The operator has reviewed this and
+  accepted it **for development use**: the browser-only licence and the
+  database right are recorded here rather than treated as a blocker. They
+  become one again if this domain is ever promoted beyond an example.
 
 ### 2. Rapid Electronics — `rapidonline.com`
 
