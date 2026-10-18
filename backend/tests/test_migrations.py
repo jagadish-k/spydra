@@ -76,7 +76,7 @@ def test_a_revision_that_does_something_also_undoes_it(path: Path) -> None:
 # Postgres will not coerce an integer default onto a boolean column, and
 # alembic's renderer produces exactly that from sa.true()/sa.false(). It cost
 # a failed `make migrate` once; these are the two spellings that fail.
-_BOOLEAN_INTEGER_DEFAULTS = ("sa.text(\"0\")", "sa.text('0')", "sa.text(\"1\")", "sa.text('1')")
+_BOOLEAN_INTEGER_DEFAULTS = ('sa.text("0")', "sa.text('0')", 'sa.text("1")', "sa.text('1')")
 
 
 @pytest.mark.parametrize("path", revision_files(), ids=lambda p: p.stem)

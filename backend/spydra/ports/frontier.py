@@ -89,6 +89,13 @@ class Frontier(Protocol):
 
         For `Backpressure` only (spec 002 §6): the sidecar's queue was full,
         so this is not an attempt the domain should be charged for.
+
+        **It must still decrement `in_flight`.** Since ADR-0026 that counter
+        gates claiming, so releasing without decrementing leaves the domain
+        unclaimable until the lease sweep — a stall caused by our own sidecar
+        being busy, which is what "try another domain" exists to avoid. No
+        penalty means no `consecutive_failures`, no backoff, no attempt
+        charged; it does not mean holding the gate.
         """
         ...
 

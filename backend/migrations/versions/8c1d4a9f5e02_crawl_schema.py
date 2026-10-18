@@ -17,7 +17,10 @@ rendered mechanically from tables.py rather than transcribed.
 
 Two things are NOT auto-generated and are handled explicitly:
 
-1. **The enum types.** `op.create_table` emits CREATE TYPE on first use, but
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("host"),
+        schema="crawl",
+    )1. **The enum types.** `op.create_table` emits CREATE TYPE on first use, but
    `op.drop_table` does not drop it. An un-dropped type makes the second
    `upgrade head` after a `downgrade base` fail with "type already exists",
    which is exactly the cycle `make migrate-down` and CI run (TESTING.md §2).

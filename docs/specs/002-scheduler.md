@@ -46,7 +46,7 @@ RETURNING (SELECT row_to_json(c) FROM claimed c);
 ```
 
 **There are two row locks and they are not interchangeable** (ADR-0026).
-The one on `domains` serialises the *eligibility decision*; the one on
+The one on `domains` serialises the _eligibility decision_; the one on
 `crawl_queue` is the dequeue. An earlier version of this spec had only the
 second, and it did not hold the guarantee §9's first test asserts: two
 workers both read the same eligible domain, neither had committed its
@@ -101,12 +101,12 @@ failure mode and the sweep is the only thing that clears it.
 
 ## 4. Backoff and blocking (ADR-0004)
 
-| Response | Action |
-| --- | --- |
-| 429, 503 | `crawl_delay_ms ×= 2`, capped at 15 min. `consecutive_failures += 1`. Domain stays active. |
-| 403 | `consecutive_failures += 1`. **Three consecutive → domain to `paused`**, remaining queue rows for that domain abandoned, event emitted. |
-| 5xx (other) | Retry up to 3 attempts, then `failed`. No domain-level penalty. |
-| 2xx | `consecutive_failures = 0`. Decay `crawl_delay_ms` toward its configured value by 10% per success, never below it. |
+| Response    | Action                                                                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 429, 503    | `crawl_delay_ms ×= 2`, capped at 15 min. `consecutive_failures += 1`. Domain stays active.                                              |
+| 403         | `consecutive_failures += 1`. **Three consecutive → domain to `paused`**, remaining queue rows for that domain abandoned, event emitted. |
+| 5xx (other) | Retry up to 3 attempts, then `failed`. No domain-level penalty.                                                                         |
+| 2xx         | `consecutive_failures = 0`. Decay `crawl_delay_ms` toward its configured value by 10% per success, never below it.                      |
 
 Never retry through a 403. The abandoned rows stay in the queue marked
 `abandoned` so the run report can show the work that was not done, rather than
@@ -130,11 +130,11 @@ Fetched once per domain per run, cached for the run's duration.
 
 One worker process, three `asyncio.TaskGroup` loops over one connection pool.
 
-| Pool | Default size | Per-host | Gate |
-| --- | --- | --- | --- |
-| Static pages | 12 | 1 concurrent, 2 s gap | Postgres (§1) |
-| Rendered pages | 3 in flight | 1 concurrent, same gate | Postgres (§1) |
-| Assets | 24 | `asset_concurrency` (default 5), 200 ms gap | in-process semaphore |
+| Pool           | Default size | Per-host                                    | Gate                 |
+| -------------- | ------------ | ------------------------------------------- | -------------------- |
+| Static pages   | 12           | 1 concurrent, 2 s gap                       | Postgres (§1)        |
+| Rendered pages | 3 in flight  | 1 concurrent, same gate                     | Postgres (§1)        |
+| Assets         | 24           | `asset_concurrency` (default 5), 200 ms gap | in-process semaphore |
 
 A rendered fetch claims the **same** per-domain lock as a static one. Only
 pool sizing differs; the scheduler neither knows nor cares which adapter ran.
@@ -148,6 +148,13 @@ browsers — keep it at or just below `RENDER_CONTEXTS`.
 A 503 from the sidecar means its queue is full: treat it as backpressure,
 return the row to `pending`, and try another domain. It is not a fetch
 failure and must not increment `consecutive_failures`.
+
+**It must still decrement `in_flight`.** Since ADR-0026 that counter gates
+claiming, so a row released without decrementing leaves the domain
+unclaimable until the lease sweep — a stall caused by our own sidecar being
+busy, which is precisely what "try another domain" is meant to avoid. "No
+penalty" means no `consecutive_failures`, no backoff and no attempt charged;
+it does not mean leaving the gate held.
 
 ```python
 class AssetGate:

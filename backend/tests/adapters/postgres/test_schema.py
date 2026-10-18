@@ -34,10 +34,14 @@ async def test_the_migration_created_every_table_in_the_metadata(conn: AsyncConn
 
 
 async def test_spec_001_section_1_is_complete(conn: AsyncConnection) -> None:
-    """Named explicitly rather than derived from the metadata.
+    """The spec's table list, against the DATABASE.
 
-    Deriving it from `tables.py` would make this test agree with whatever
-    `tables.py` happens to say; the point is to agree with the spec.
+    The list below is written from spec 001 §1 by hand. It is compared to
+    what the migration actually built — not to `EXPECTED_TABLES`, which is
+    derived from `tables.py` and so could only ever prove that the metadata
+    matches this list. A reviewer caught that: the earlier version claimed in
+    its own docstring to avoid the metadata and then compared against it.
+
     `template_drafts` and `field_vocabulary` are absent on purpose — spec 001
     §4 puts them in phase 4 and §1 does not contain them.
     """
@@ -55,7 +59,21 @@ async def test_spec_001_section_1_is_complete(conn: AsyncConnection) -> None:
         "asset_queue",
         "template_samples",
     }
-    assert expected == EXPECTED_TABLES
+    rows = await conn.execute(
+        sa.text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = :s AND table_type = 'BASE TABLE'"
+        ),
+        {"s": SCHEMA},
+    )
+    # alembic's own ledger lives in `crawl` (see migrations/env.py) and is not
+    # part of the spec's schema.
+    built = {r[0] for r in rows} - {"alembic_version"}
+
+    assert expected == built, (
+        f"missing from the database: {sorted(expected - built)}; "
+        f"present but not in spec 001 §1: {sorted(built - expected)}"
+    )
 
 
 async def test_page_current_is_a_view_not_a_table(conn: AsyncConnection) -> None:
@@ -209,6 +227,35 @@ async def test_observations_dedupe_nothing_and_keep_every_row(conn: AsyncConnect
         {"p": page_id},
     )
     assert count == 3
+
+
+async def test_in_flight_cannot_go_negative(conn: AsyncConnection) -> None:
+    """ADR-0026's backstop.
+
+    `in_flight` gates claiming, so a negative value lets two workers past the
+    gate and fetch one host concurrently — rudeness arrived at through the
+    mechanism meant to prevent it. Completion (spec 002 §2) and the lease
+    sweep (§3) both decrement, so they can race and double-decrement. The
+    CHECK makes that loud instead of silent.
+    """
+    domain_id = await _a_domain(conn, "in-flight.test")
+
+    # The ordinary path is fine.
+    await conn.execute(
+        sa.text(f"UPDATE {SCHEMA}.domains SET in_flight = in_flight + 1 WHERE id = :d"),
+        {"d": domain_id},
+    )
+    await conn.execute(
+        sa.text(f"UPDATE {SCHEMA}.domains SET in_flight = in_flight - 1 WHERE id = :d"),
+        {"d": domain_id},
+    )
+
+    # One decrement too many is refused by the database.
+    with pytest.raises(IntegrityError):
+        await conn.execute(
+            sa.text(f"UPDATE {SCHEMA}.domains SET in_flight = in_flight - 1 WHERE id = :d"),
+            {"d": domain_id},
+        )
 
 
 async def test_crawl_queue_dedupes_within_a_run(conn: AsyncConnection) -> None:

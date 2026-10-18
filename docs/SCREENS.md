@@ -128,8 +128,10 @@ the single most common error, and it is invisible in a one-page review. A cell
 turns red the moment a selector stops resolving on any sample, before you approve
 anything.
 
-_Field controls:_ required/optional · validation rule (currency, non-empty, URL,
+_Field controls:_ validation rule (currency, non-empty, URL,
 integer, date) · transform chain (trim, strip currency symbol, resolve relative
+There is no required/optional control: no field is ever required (ADR-0027),
+so the screen has nothing to offer there.
 URL, first vs. all) · fallback selector.
 
 **Discovery rules live on the same screen** — `next_page`, `product_link`,

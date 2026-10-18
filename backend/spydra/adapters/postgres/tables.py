@@ -85,6 +85,13 @@ domains = sa.Table(
     sa.Column("consecutive_failures", sa.Integer, nullable=False, server_default=sa.text("0")),
     sa.Column("notes", sa.Text),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=_NOW),
+    # ADR-0026: the counter gates claiming, so a NEGATIVE one lets two workers
+    # past the gate and fetch one host concurrently — real rudeness, arrived
+    # at through the mechanism meant to prevent it. Completion (spec 002 §2)
+    # and the lease sweep (§3) both decrement, so a race between them can
+    # double-decrement. This is a backstop, not the gate: it makes that bug
+    # loud rather than silent.
+    sa.CheckConstraint("in_flight >= 0", name="in_flight_non_negative"),
     # The claim query's driving index (spec 002 §1). Partial, because only
     # active domains are ever eligible.
     sa.Index(

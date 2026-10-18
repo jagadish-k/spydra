@@ -38,7 +38,7 @@ class DomainEvent(StrEnum):
     PAUSE = "pause"  # operator
     BLOCK = "block"  # three consecutive 403s — ADR-0004
     RESUME = "resume"
-    BREAK = "break"  # validation failures over threshold — spec 003 §3
+    BREAK = "break"  # empty_extraction rate over threshold — spec 003 §3, ADR-0027
     RE_REVIEW = "re_review"
     ARCHIVE = "archive"
 
@@ -59,9 +59,10 @@ class RenderMode(StrEnum):
     """How a domain is fetched.
 
     AUTO fetches statically and retries through the browser once if the
-    template's required fields fail to resolve on a 200 (spec 001 §3), so a
-    wrong guess at onboarding costs one cheap fetch rather than a silently
-    empty extraction.
+    extraction yields nothing usable on a 200 — the `empty_extraction`
+    predicate, not a failure of required fields, which ADR-0027 removed
+    (spec 001 §3, spec 012 §4). So a wrong guess at onboarding costs one
+    cheap fetch rather than a silently empty extraction.
     """
 
     STATIC = "static"

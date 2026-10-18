@@ -60,7 +60,7 @@ export const crawlQueueInCrawl = crawl.table("crawl_queue", {
 	lockedUntil: timestamp("locked_until", { withTimezone: true, mode: 'string' }),
 	enqueuedAt: timestamp("enqueued_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	index("ix_crawl_queue_domain_pending").using("btree", table.domainId.asc().nullsLast().op("int8_ops"), table.state.asc().nullsLast().op("int8_ops")).where(sql`(state = 'pending'::text)`),
+	index("ix_crawl_queue_domain_pending").using("btree", table.domainId.asc().nullsLast().op("int8_ops"), table.state.asc().nullsLast().op("text_ops")).where(sql`(state = 'pending'::text)`),
 	foreignKey({
 			columns: [table.domainId],
 			foreignColumns: [domainsInCrawl.id],
@@ -122,7 +122,7 @@ export const templatesInCrawl = crawl.table("templates", {
 	approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-	uniqueIndex("one_active_per_pattern").using("btree", table.domainId.asc().nullsLast().op("int8_ops"), table.urlPattern.asc().nullsLast().op("text_ops")).where(sql`is_active`),
+	uniqueIndex("one_active_per_pattern").using("btree", table.domainId.asc().nullsLast().op("text_ops"), table.urlPattern.asc().nullsLast().op("int8_ops")).where(sql`is_active`),
 	foreignKey({
 			columns: [table.domainId],
 			foreignColumns: [domainsInCrawl.id],

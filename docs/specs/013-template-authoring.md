@@ -42,30 +42,37 @@ The unit all three modes produce.
   "selector": "span[itemprop='price']",
   "attr": "text",
   "many": false,
-  "required": true,
+  "required": false,
+  // always false — ADR-0027 makes `required` inert and the loader
+  // rejects `true`. The authoring pipeline never sets it.
   "transform": ["strip_currency", "parse_decimal"],
   "validation": ["currency"],
   "fallback": null,
 
   "provenance": {
-    "mode": "playground",            // form | chat | playground
-    "examples": [                     // playground: what was clicked
-      {"sample_url": "…/flap-disc", "node_path": "html>body>div:nth(3)>…",
-       "text": "£4.85", "box": [412, 338, 96, 28]}
+    "mode": "playground", // form | chat | playground
+    "examples": [
+      // playground: what was clicked
+      {
+        "sample_url": "…/flap-disc",
+        "node_path": "html>body>div:nth(3)>…",
+        "text": "£4.85",
+        "box": [412, 338, 96, 28],
+      },
     ],
-    "prompt": null,                   // chat: the instruction that produced it
-    "model": null,                    // chat: model + sample index (ADR-0020)
-    "generalised_by": "multi_example" // heuristic | multi_example | llm | manual
+    "prompt": null, // chat: the instruction that produced it
+    "model": null, // chat: model + sample index (ADR-0020)
+    "generalised_by": "multi_example", // heuristic | multi_example | llm | manual
   },
 
   "verification": {
     "verified": true,
     "match_count": 1,
     "resolved": "£4.85",
-    "per_sample": {"…/flap-disc": "pass", "…/SKU-8841": "fail"},
-    "score": 85,                      // ADR-0020 ranking
-    "confidence": "high"
-  }
+    "per_sample": { "…/flap-disc": "pass", "…/SKU-8841": "fail" },
+    "score": 85, // ADR-0020 ranking
+    "confidence": "high",
+  },
 }
 ```
 
@@ -165,16 +172,16 @@ The loop:
    proposes fields + selectors, best-of-N (ADR-0020).
 4. Verification runs. Survivors become `FieldCandidate`s on the draft.
 5. The operator sees the draft filling in live and replies to refine:
-   *"the price should exclude VAT"*, *"also grab the datasheet link"*.
+   _"the price should exclude VAT"_, _"also grab the datasheet link"_.
 
 **Hard limits:**
 
-| Limit | Value | Why |
-| --- | --- | --- |
-| Sample pages per draft | 5 | It is authoring, not crawling |
-| Cannot start a run | — | Otherwise the politeness model has a hole |
-| Cannot modify another domain | — | A draft is scoped to one domain |
-| Cannot write `templates` | — | Only `approve` promotes a draft |
+| Limit                        | Value | Why                                       |
+| ---------------------------- | ----- | ----------------------------------------- |
+| Sample pages per draft       | 5     | It is authoring, not crawling             |
+| Cannot start a run           | —     | Otherwise the politeness model has a hole |
+| Cannot modify another domain | —     | A draft is scoped to one domain           |
+| Cannot write `templates`     | —     | Only `approve` promotes a draft           |
 
 The chat is a **template-authoring interface that happens to use
 conversation**. It is not an agent. If a request needs more than five pages

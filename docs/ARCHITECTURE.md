@@ -5,15 +5,15 @@ the extraction chain and the failure modes. **This document holds intent.**
 Anything with an exact shape — schema, routes, topology, screens — lives in
 the spec that owns it:
 
-| For | Read |
-| --- | --- |
+| For                               | Read                                                             |
+| --------------------------------- | ---------------------------------------------------------------- |
 | Services, routing, data ownership | [`specs/010-service-topology.md`](specs/010-service-topology.md) |
-| Schema | [`specs/001-domain-model.md`](specs/001-domain-model.md) |
-| HTTP API and SSE | [`specs/005-api.md`](specs/005-api.md) |
-| Screens | [`SCREENS.md`](SCREENS.md) · mockups in `design/mockups/` |
-| Visual language | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) · [`BRAND.md`](BRAND.md) |
-| Running it | [`DEVELOPMENT.md`](DEVELOPMENT.md) |
-| What to build next | [`BUILD_PLAN.md`](BUILD_PLAN.md) |
+| Schema                            | [`specs/001-domain-model.md`](specs/001-domain-model.md)         |
+| HTTP API and SSE                  | [`specs/005-api.md`](specs/005-api.md)                           |
+| Screens                           | [`SCREENS.md`](SCREENS.md) · mockups in `design/mockups/`        |
+| Visual language                   | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) · [`BRAND.md`](BRAND.md)  |
+| Running it                        | [`DEVELOPMENT.md`](DEVELOPMENT.md)                               |
+| What to build next                | [`BUILD_PLAN.md`](BUILD_PLAN.md)                                 |
 
 Decisions are recorded in [`adr/`](adr/README.md), each with its stated cost.
 Where this document and a spec disagree, the spec is more specific and wins
@@ -25,18 +25,18 @@ A single-user, locally-hosted crawler that discovers and extracts structured pro
 
 The system is deliberately a **single application with an embedded datastore**, not a distributed one. Every constraint below points away from the usual web-scale crawler architecture.
 
-| Constraint | Value | Architectural consequence |
-| --- | --- | --- |
-| Users | One (the operator), local only | No auth, no multi-tenancy, no horizontal scaling |
-| Domains | 2–3 onboarded at a time, growing toward \~1200 | Onboarding loop is the primary interface; crawling is the batch job |
-| Worst failure | Being blocked by a remote site | Politeness is a correctness requirement, not a nicety |
-| Seeds | Category/listing pages, entered via UI or CSV | Discovery layer required, with hard bounds |
-| Crawl depth | 5, following pagination, subcategories, product links | Needs per-domain URL-pattern allowlists and a run-level URL cap |
-| Cadence | Manual, infrequent | No scheduler; no need for a long-running daemon |
-| Extraction | Operator-approved CSS/XPath per `(domain, url_pattern)` | Templates are versioned, first-class entities in Postgres |
-| Model role | Propose selectors once per template; never per page | Inference speed is near-irrelevant; model quality matters |
-| History | Append-only observations, change tracking | Observations table, not in-place updates |
-| Host | Mac Studio Ultra, Docker + host-side llama-server | Unified memory allows a 30B-class model |
+| Constraint    | Value                                                   | Architectural consequence                                           |
+| ------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
+| Users         | One (the operator), local only                          | No auth, no multi-tenancy, no horizontal scaling                    |
+| Domains       | 2–3 onboarded at a time, growing toward \~1200          | Onboarding loop is the primary interface; crawling is the batch job |
+| Worst failure | Being blocked by a remote site                          | Politeness is a correctness requirement, not a nicety               |
+| Seeds         | Category/listing pages, entered via UI or CSV           | Discovery layer required, with hard bounds                          |
+| Crawl depth   | 5, following pagination, subcategories, product links   | Needs per-domain URL-pattern allowlists and a run-level URL cap     |
+| Cadence       | Manual, infrequent                                      | No scheduler; no need for a long-running daemon                     |
+| Extraction    | Operator-approved CSS/XPath per `(domain, url_pattern)` | Templates are versioned, first-class entities in Postgres           |
+| Model role    | Propose selectors once per template; never per page     | Inference speed is near-irrelevant; model quality matters           |
+| History       | Append-only observations, change tracking               | Observations table, not in-place updates                            |
+| Host          | Mac Studio Ultra, Docker + host-side llama-server       | Unified memory allows a 30B-class model                             |
 
 ### Out of scope for v1
 
@@ -70,7 +70,7 @@ No raw HTML is retained beyond a short window, and some retention is necessary b
 
 ### Append-only observations
 
-Timestamps alone record *when* a page was looked at, not *what changed*. Change tracking is a requirement, so every crawl writes an observation row; current state is a view over the latest per page. Retrofitting history onto an in-place-update schema means reconstructing data that was never captured.
+Timestamps alone record _when_ a page was looked at, not _what changed_. Change tracking is a requirement, so every crawl writes an observation row; current state is a view over the latest per page. Retrofitting history onto an in-place-update schema means reconstructing data that was never captured.
 
 ### llama-server on the host, outside Docker
 
@@ -110,18 +110,18 @@ Faceted navigation is the classic trap: `?color=red&size=M&sort=price` generates
 
 **Extraction is a strategy chain.** Each rung is tried only if the previous one fails or is absent:
 
-| Order | Strategy | Cost | When it applies |
-| --- | --- | --- | --- |
-| 1 | JSON-LD / microdata (`schema.org/Product`) | Free | Site emits structured data; most reliable where present |
-| 2 | Approved template selectors | Free | An active template matches the URL pattern |
-| 3 | LLM selector proposal | \~seconds, once per template | No template matches; result goes to review, not to data |
-| 4 | Unknown queue | — | Nothing worked; the page is listed for review |
+| Order | Strategy                                   | Cost                         | When it applies                                         |
+| ----- | ------------------------------------------ | ---------------------------- | ------------------------------------------------------- |
+| 1     | JSON-LD / microdata (`schema.org/Product`) | Free                         | Site emits structured data; most reliable where present |
+| 2     | Approved template selectors                | Free                         | An active template matches the URL pattern              |
+| 3     | LLM selector proposal                      | \~seconds, once per template | No template matches; result goes to review, not to data |
+| 4     | Unknown queue                              | —                            | Nothing worked; the page is listed for review           |
 
-Only rungs 1 and 2 produce stored observations. Rung 3 produces a *proposal*, which is why unapproved domains never generate data.
+Only rungs 1 and 2 produce stored observations. Rung 3 produces a _proposal_, which is why unapproved domains never generate data.
 
 ### Validation
 
-Every extracted field is checked against its rule before the observation is written: `price` must parse as a currency amount, `title` must be non-empty, `images` must yield at least one resolvable URL. Required-field failures route the page to `unknown_pages` with reason `validation_failed`, and after a threshold (default 20% of a domain's pages in one run) the domain is marked `broken` and the run for that domain halts.
+Every extracted field is checked against its rule before the observation is written: `price` must parse as a currency amount, `title` must be non-empty, `images` must yield at least one resolvable URL. **No field is ever required** ([ADR-0027](adr/0027-no-required-fields.md)) — a per-field failure is recorded in `page_observations.validation` for the operator to read, and routes nothing. What routes is emptiness: a 200 response from which no field resolved lands in `unknown_pages` as `empty_extraction`, and once that exceeds 20% of a domain's pages in one run the domain is marked `broken` and the run for that domain halts. That is the redesign detector, and it is pointed at the signal that survives having nothing required.
 
 This is the defence against a site redesign silently turning a working template into one that returns empty strings. Without it, you get a clean-looking run full of nulls.
 
@@ -129,14 +129,14 @@ This is the defence against a site redesign silently turning a working template 
 
 Domain state is explicit, stored on the domain row, and it gates everything. A domain that is not `active` consumes no crawl budget and sends no requests — which is why a stalled review queue costs you nothing operationally, and why "block until I approve" is a cheap guarantee rather than an expensive one.
 
-| State | Meaning | Crawls? | Exit |
-| --- | --- | --- | --- |
-| `discovered` | Seeded, nothing known about it | No | A template proposal is requested |
-| `awaiting_approval` | A proposal exists, verified, waiting on you | No | You approve or reject |
-| `active` | At least one approved template | Yes | You pause, or it breaks |
-| `broken` | Validation failures exceeded threshold | No | Re-review the template |
-| `paused` | You paused it, or 3 consecutive 403s auto-paused it | No | You resume |
-| `archived` | Retired, data retained | No | Terminal |
+| State               | Meaning                                             | Crawls? | Exit                             |
+| ------------------- | --------------------------------------------------- | ------- | -------------------------------- |
+| `discovered`        | Seeded, nothing known about it                      | No      | A template proposal is requested |
+| `awaiting_approval` | A proposal exists, verified, waiting on you         | No      | You approve or reject            |
+| `active`            | At least one approved template                      | Yes     | You pause, or it breaks          |
+| `broken`            | Validation failures exceeded threshold              | No      | Re-review the template           |
+| `paused`            | You paused it, or 3 consecutive 403s auto-paused it | No      | You resume                       |
+| `archived`          | Retired, data retained                              | No      | Terminal                         |
 
 **The loop:** a seed enters → the domain is `discovered` → the crawler fetches one sample page per URL pattern (the only fetching an unapproved domain does, and it respects the same politeness gate) → the DOM is skeletonised and sent to the model → the proposal is verified deterministically against the real DOM → the domain moves to `awaiting_approval` → you review → approve promotes the template and moves the domain to `active`, which releases its seeds into the queue.
 
@@ -188,13 +188,13 @@ After each fetch the worker sets `domains.next_eligible_at = now() + crawl_delay
 
 There are **two independent pools**, because HTML and assets have different risk profiles and different bottlenecks.
 
-|  | Page pool | Asset pool |
-| --- | --- | --- |
-| Fetches | HTML (listing + product pages) | Images |
-| Workers | 8–16 async tasks | 16–32 async tasks |
-| Per-host limit | **1 concurrent**, 2 s gap | **4–6 concurrent**, 200 ms gap |
-| Gated by | `domains.next_eligible_at` | `asset_hosts.semaphore` |
-| Blocked response | pause the domain | pause assets only; pages continue |
+|                  | Page pool                      | Asset pool                        |
+| ---------------- | ------------------------------ | --------------------------------- |
+| Fetches          | HTML (listing + product pages) | Images                            |
+| Workers          | 8–16 async tasks               | 16–32 async tasks                 |
+| Per-host limit   | **1 concurrent**, 2 s gap      | **4–6 concurrent**, 200 ms gap    |
+| Gated by         | `domains.next_eligible_at`     | `asset_hosts.semaphore`           |
+| Blocked response | pause the domain               | pause assets only; pages continue |
 
 Both pools run inside the same worker process, as two `asyncio.TaskGroup` loops over the same connection pool. They are separate queues, not separate services.
 
@@ -237,7 +237,7 @@ An in-process semaphore is sufficient here precisely because the limit is loose.
 
 The per-domain politeness gate is unchanged — a rendered fetch claims the same `domains.next_eligible_at` lock as a static one, so a domain is still fetched one page at a time whichever adapter serves it. Only the pool sizing differs. Both adapters sit behind one `Fetcher` port and are selected by the domain's `render_mode` flag (`static` | `rendered` | `auto`), so the scheduler neither knows nor cares which one ran.
 
-`auto` is worth having from the start: fetch statically, and if the template's required fields fail to resolve but the page returned 200, re-fetch once through the browser and record which path succeeded. After a few runs the flag can be pinned per domain from observed behaviour rather than guessed at onboarding. The cost of a wrong guess is then one wasted static fetch, not a silently empty extraction.
+`auto` is worth having from the start: fetch statically, and if the extraction yields nothing usable on a 200, re-fetch once through the browser and record which path succeeded. (The condition was "the template's required fields fail to resolve"; [ADR-0027](adr/0027-no-required-fields.md) removed requiredness, so it is the `empty_extraction` predicate — otherwise `auto` could never fire.) After a few runs the flag can be pinned per domain from observed behaviour rather than guessed at onboarding. The cost of a wrong guess is then one wasted static fetch, not a silently empty extraction.
 
 Block images, fonts, and media in the browser context via route interception — the asset pool downloads images separately, so rendering them twice is pure waste and typically halves render time.
 
@@ -263,7 +263,7 @@ The model is invoked **once per template**, not once per page. That single fact 
 
 ### The proposal task
 
-Input to the model is deliberately *not* raw HTML — a product page is often 500 KB of markup and scripts, most of it irrelevant and expensive to attend to. Preprocess first:
+Input to the model is deliberately _not_ raw HTML — a product page is often 500 KB of markup and scripts, most of it irrelevant and expensive to attend to. Preprocess first:
 
 1. Strip `<script>`, `<style>`, comments, SVG bodies.
 2. Collapse the DOM to a skeleton: tag, `id`, `class`, and truncated text content per node.
@@ -351,22 +351,21 @@ Observations are kept indefinitely — they are small and they are the point of 
 
 ## Failure modes
 
-| Failure | Detection | Response |
-| --- | --- | --- |
-| Blocked by a site (403/429) | HTTP status, per-domain failure counter | Exponential backoff; 3 consecutive 403s auto-pauses the domain and raises it in the UI. Never retry through a block. |
-| Selector silently breaks after a redesign | Per-field validation on every observation | Page routed to `unknown_pages`; domain marked `broken` once failures exceed 20% of a run |
-| Infinite URL space (faceted nav, calendars) | Run-level URL cap, depth cap | Run halts for that domain, reports the pattern that exploded; you add a `deny_pattern` and re-approve |
-| Worker crashes mid-page | `locked_until` expiry on the queue row | Row returns to `pending` after 120 s; `attempts` increments; 3 attempts moves it to `failed` |
-| Postgres unavailable | Health check, connection errors | Workers exit cleanly; run resumes from the queue on restart. No state lives only in memory |
-| llama-server down | Connection refused on proposal | Onboarding blocks with a clear message; **crawling is unaffected**, since the model is not in the crawl path |
-| Disk fills (assets or HTML) | Pre-run free-space check | Run refuses to start below a threshold; HTML purge sweep runs first |
-| Duplicate crawls on restart | `UNIQUE (run_id, url_hash)` plus transactional dequeue | Structurally prevented, not retried away |
-| Browser memory growth | Recycling in the render sidecar | Browser restarted on a page threshold; contexts capped at 3. A crash there cannot take the worker down (ADR-0016) |
-| Bad LLM proposal | Deterministic verification against the real DOM | Discarded before review; never reaches stored data |
+| Failure                                     | Detection                                              | Response                                                                                                             |
+| ------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Blocked by a site (403/429)                 | HTTP status, per-domain failure counter                | Exponential backoff; 3 consecutive 403s auto-pauses the domain and raises it in the UI. Never retry through a block. |
+| Selector silently breaks after a redesign   | Per-field validation on every observation              | Page routed to `unknown_pages`; domain marked `broken` once failures exceed 20% of a run                             |
+| Infinite URL space (faceted nav, calendars) | Run-level URL cap, depth cap                           | Run halts for that domain, reports the pattern that exploded; you add a `deny_pattern` and re-approve                |
+| Worker crashes mid-page                     | `locked_until` expiry on the queue row                 | Row returns to `pending` after 120 s; `attempts` increments; 3 attempts moves it to `failed`                         |
+| Postgres unavailable                        | Health check, connection errors                        | Workers exit cleanly; run resumes from the queue on restart. No state lives only in memory                           |
+| llama-server down                           | Connection refused on proposal                         | Onboarding blocks with a clear message; **crawling is unaffected**, since the model is not in the crawl path         |
+| Disk fills (assets or HTML)                 | Pre-run free-space check                               | Run refuses to start below a threshold; HTML purge sweep runs first                                                  |
+| Duplicate crawls on restart                 | `UNIQUE (run_id, url_hash)` plus transactional dequeue | Structurally prevented, not retried away                                                                             |
+| Browser memory growth                       | Recycling in the render sidecar                        | Browser restarted on a page threshold; contexts capped at 3. A crash there cannot take the worker down (ADR-0016)    |
+| Bad LLM proposal                            | Deterministic verification against the real DOM        | Discarded before review; never reaches stored data                                                                   |
 
 ### The two that actually matter
 
 **Getting blocked** is handled by the politeness gate plus aggressive auto-pausing. The design choice worth restating: on a 403, the system stops rather than retries. A retry loop against a site that has decided to block you is how a temporary block becomes a permanent one.
 
 **Silent extraction failure** is handled by validation rules and the review inbox. This is the failure that produces no error and corrupts the dataset quietly — the reason validation is mandatory per field rather than optional.
-

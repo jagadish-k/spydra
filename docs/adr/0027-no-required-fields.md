@@ -49,7 +49,7 @@ the failure this entire project exists to catch.
   "validation never raises — it records" is unchanged, and
   `page_observations.validation` is unchanged. A failing selector is still
   visible per field, per observation. What changes is that a failure no
-  longer *routes* or *halts*; it is evidence for a human, not a control flow.
+  longer _routes_ or _halts_; it is evidence for a human, not a control flow.
 
 ### The two mechanisms that had to be re-based
 
@@ -66,8 +66,18 @@ moves to `broken` and crawling stops for it mid-run, exactly as before.
 That second one is load-bearing. Left attached to per-field validation it
 would simply never fire, and a site redesign would quietly fill the dataset
 with empty observations — "the system's most important failure mode: it
-produces no error and no crash, just wrong data" (spec 003 §3). The detector
-is not weakened by this ADR; it is pointed at the signal that survives.
+produces no error and no crash, just wrong data" (spec 003 §3). So it is
+pointed at the signal that survives having nothing required.
+
+**It is not, however, as sharp as what it replaced, and an earlier draft of
+this ADR claimed otherwise in this paragraph while admitting the opposite
+under Consequences.** The honest statement: the detector still catches a
+redesign that empties pages, which is the common shape, and it no longer
+catches one that breaks most fields but not all. See Consequences for the
+size of that hole, and note that the old clause read "**failures** exceeding
+20%" rather than "required-field failures" — so the case for re-basing rests
+on reading the old text as required-only, which is the reading the rest of
+§3 supports but is a reading nonetheless.
 
 **3. `auto` render mode, which was also defined on required fields.** Spec
 001 §3 and spec 012 §4 both said `auto` retries through the browser when "the
@@ -85,9 +95,29 @@ empty_extraction(fields) ⇔ http_status == 200 and no field resolved to a
 ```
 
 It decides the `auto` fallback, the `unknown_pages` reason, and the `broken`
-threshold. One function in `extraction/validation.py`, three call sites. They
-cannot disagree about what "nothing came back" means, which they could while
-each owned its own notion of failure.
+threshold. One function in `extraction/validation.py`, three call sites.
+
+**Where it is evaluated matters as much as what it says, and the three call
+sites are not at the same point in the pipeline.** Pinned here, because
+leaving it open is how `auto` breaks a healthy domain:
+
+1. **The `auto` fallback** evaluates it on the **static attempt**. That is
+   the whole purpose: nothing resolved cheaply, so try the browser.
+2. **The `unknown_pages` reason and the `broken` threshold** evaluate it on
+   the **final** observation — after any `auto` fallback has run. A page the
+   browser rendered successfully is not an empty extraction, whatever the
+   static attempt returned.
+3. **Pages with no matching template are excluded from the threshold's
+   numerator entirely.** Their reason is `no_template`, which is a
+   configuration gap rather than a redesign, and they are counted neither as
+   empty nor as crawled-successfully.
+
+Without (2), Active Motif — `render_mode = auto`, whose product grid is not
+in the server HTML — would score `empty_extraction` on essentially every
+page, cross 20% immediately and move itself to `broken` on its first run
+while the render path was working perfectly. Without (3), a healthy domain
+whose crawl includes more than 20% non-product pages would do the same.
+Both were found in review, before 1.9 or 1.10 were written.
 
 ## Consequences
 
@@ -109,9 +139,11 @@ each owned its own notion of failure.
   shape — and the `validation` JSONB plus the phase-5 reports are where it
   belongs. Accepted deliberately: a false halt costs a domain, a missed
   single-field failure costs one column until the next report.
-- **Cost: the 20% threshold is now coarser.** A redesign that breaks most but
-  not all fields on every page yields no `empty_extraction` at all and will
-  not trip `broken`. That is a real hole. It is left open rather than patched
+- **Cost: the 20% threshold is now coarser, and this is the ADR's weakest
+  point.** A redesign that breaks most but not all fields on every page
+  yields no `empty_extraction` at all and will not trip `broken`. That is a
+  real hole, it is strictly worse than a threshold on any validation failure,
+  and nothing in this decision closes it. It is left open rather than patched
   with a second threshold nobody can tune, and the honest mitigation is the
   per-field diff in the phase-5 reports (ADR-0007's `price_history` view is
   the same shape of answer).

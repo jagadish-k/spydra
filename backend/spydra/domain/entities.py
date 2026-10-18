@@ -73,6 +73,10 @@ class FieldRule:
     selector: str
     attr: str = "text"  # 'text' | an attribute name
     many: bool = False
+    # INERT (ADR-0027). Kept so prior template versions (ADR-0006) and the
+    # templates.extraction JSONB keep their shape; nothing reads it, the YAML
+    # loader rejects `required: true` rather than ignoring it (BUILD_PLAN
+    # 1.12), and tests/domain/test_required_is_inert.py holds that line.
     required: bool = False
     transform: tuple[Transform, ...] = ()
     validation: tuple[Rule, ...] = ()
@@ -145,11 +149,6 @@ class Template:
     proposed_by: ProposedBy
     approved_at: datetime | None = None
 
-    @property
-    def required_fields(self) -> frozenset[str]:
-        """The fields whose failure routes a page to the review inbox."""
-        return frozenset(n for n, r in self.extraction.items() if r.required)
-
 
 @dataclass(frozen=True, slots=True)
 class Observation:
@@ -175,9 +174,9 @@ class Observation:
     def failed_validation(self) -> frozenset[str]:
         """Fields whose validation did not pass.
 
-        Which of them were *required* is the Template's knowledge, not this
-        one's, so the routing decision in spec 003 §3 is
-        `failed_validation & template.required_fields` and lives with the
-        caller that holds both. Named for what it can actually tell you.
+        **Evidence, not control flow** (ADR-0027). No field is required, so a
+        failure here never routes the page to `unknown_pages` and never halts
+        the domain — it is recorded for the operator to read. The routing
+        signal is emptiness: a 200 from which nothing resolved at all.
         """
         return frozenset(n for n, v in self.validation.items() if not v.ok)

@@ -81,46 +81,37 @@ def test_entities_are_frozen(entity: object) -> None:
         setattr(entity, field, "mutated")
 
 
-def test_required_fields_are_the_ones_marked_required() -> None:
-    t = a_template(
-        price=FieldRule(selector=".price", required=True),
-        sku=FieldRule(selector=".sku", required=True),
-        blurb=FieldRule(selector=".blurb"),
-    )
-    assert t.required_fields == frozenset({"price", "sku"})
+def test_a_failing_field_is_recorded_and_routes_nothing() -> None:
+    """ADR-0027: validation is evidence, never control flow.
 
-
-def test_a_template_with_no_required_fields_has_none() -> None:
-    assert a_template(blurb=FieldRule(selector=".blurb")).required_fields == frozenset()
-
-
-def test_failed_validation_reports_failures_only() -> None:
+    This replaces three tests that asserted the opposite — one of them named
+    `test_routing_is_the_intersection_with_the_templates_required_fields`.
+    They were written against the implementation rather than the spec, and
+    TESTING.md §2 now says what this says.
+    """
     o = an_observation(
         price=ValidationResult(RuleName.CURRENCY, ok=False, saw="POA"),
         title=ValidationResult(RuleName.NON_EMPTY, ok=True),
     )
+
+    # Recorded, per field, with what it saw — that is the whole contract.
     assert o.failed_validation == frozenset({"price"})
+    assert o.validation["price"].saw == "POA"
+
+    # And the observation is still written with whatever resolved: spec 003
+    # §3 says partial data is never discarded.
+    assert o.fields["price"] == Decimal("12.3400")
 
 
-def test_routing_is_the_intersection_with_the_templates_required_fields() -> None:
-    """Spec 003 §3: a *required* field failing routes the page to
-    `unknown_pages`; an optional one does not.
+def test_nothing_in_the_entities_computes_a_required_field_set() -> None:
+    """The reader ADR-0027 deleted must not come back.
 
-    The intersection lives with the caller because an Observation does not
-    know which fields were required — that is the Template's knowledge, and
-    the template that produced an observation can be a prior version.
+    `Template.required_fields` existed and was the only consumer of the flag.
+    ADR-0027 says `required` "becomes inert ... nothing reads it", and the
+    threshold it fed is now the `empty_extraction` rate. A re-added property
+    would pre-wire exactly the re-attachment the ADR warns against.
     """
-    t = a_template(
-        price=FieldRule(selector=".price", required=True),
-        blurb=FieldRule(selector=".blurb"),
-    )
-    only_optional_failed = an_observation(
-        blurb=ValidationResult(RuleName.NON_EMPTY, ok=False, saw="")
-    )
-    required_failed = an_observation(price=ValidationResult(RuleName.CURRENCY, ok=False, saw="POA"))
-
-    assert not (only_optional_failed.failed_validation & t.required_fields)
-    assert required_failed.failed_validation & t.required_fields == frozenset({"price"})
+    assert not hasattr(a_template(title=FieldRule(selector="h1")), "required_fields")
 
 
 def test_a_transform_can_carry_arguments() -> None:
