@@ -24,6 +24,38 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Refuse to run at all if pytest-asyncio is not active.
+
+    Without it, every async fixture here is unhandled and the integration
+    tests fail as ten `requested an async fixture ... with no plugin or hook
+    that handled it` / `pytest_fixture_post_finalizer` errors, with the only
+    real clue — `PytestConfigWarning: Unknown config option: asyncio_mode` —
+    printed in the warnings summary at the very bottom.
+
+    That has now happened twice. The usual cause is not a missing line in
+    `pyproject.toml` but a **stale `venv` named volume**: compose seeds
+    `venv:/app/.venv` from the image the first time the volume is created and
+    never re-seeds it, so a rebuilt image with a new dependency does not
+    reach a volume that already exists. `make up --build` is not enough;
+    `make reset-deps` is what drops it.
+
+    One legible failure beats ten misleading ones.
+    """
+    if not config.pluginmanager.hasplugin("asyncio"):
+        raise pytest.UsageError(
+            "pytest-asyncio is not active, so every async fixture in this suite "
+            "is unrunnable.\n"
+            "  - Installed but disabled? Drop any `-p no:asyncio`.\n"
+            "  - Not installed? The venv volume is almost certainly stale — the\n"
+            "    image seeds it only on first creation:\n"
+            "        make reset-deps && make up && make test-api\n"
+            "  - Not in the lock? `grep pytest-asyncio backend/uv.lock`, then\n"
+            "    `make lock` if it is missing."
+        )
+
+
 # The guard. A database whose name does not end here is not a test database,
 # whatever the variable it arrived in was called.
 _TEST_DB_SUFFIX = "_test"
