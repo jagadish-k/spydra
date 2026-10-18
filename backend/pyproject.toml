@@ -27,11 +27,10 @@ dev = [
     # maintains, classifies for 3.10–3.15, and is a drop-in here (verified:
     # the TestClient suite passes with httpx removed entirely).
     #
-    # This is the TEST CLIENT's HTTP library and nothing else. The Fetcher
-    # port's client (BUILD_PLAN 1.7, AGENTS.md § Stack, TESTING.md §1's
-    # `respx`) is a SEPARATE and still-open decision — respx 0.23.1 supports
-    # httpx only and classifies to 3.14, so it cannot simply follow. See the
-    # task file's open questions; that one wants an ADR before lane B starts.
+    # Settled by ADR-0028: httpx2 is the Fetcher's client too (BUILD_PLAN
+    # 1.7/1.8), and HTTP is mocked with httpx2.MockTransport rather than
+    # respx — which supports neither httpx2 nor 3.15. One client, one
+    # dependency, and the mocking seam ships inside it.
     "httpx2",
     # Test-only, pure Python, so the ADR-0017 readiness gate is not in play
     # (no compiled core, no wheel to wait for). Needed because every

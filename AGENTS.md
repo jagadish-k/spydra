@@ -97,8 +97,10 @@ its four mandatory states. Where the two disagree, `UI_STATES.md` wins.
 12. **Templates are versioned, never edited in place.** Every observation
     records the template version that produced it.
 13. **Observations are append-only.** Never `UPDATE` a `page_observations` row.
-14. **No network calls in unit tests.** Use fixtures. `respx` for httpx,
-    recorded HTML for parsers, a fake render service for the browser path.
+14. **No network calls in unit tests.** Use fixtures.
+    `httpx2.MockTransport` for HTTP (ADR-0028 — a handler function, not a
+    mocking library), recorded HTML for parsers, a fake render service for
+    the browser path.
 15. **Do not change a public API shape without updating its spec and
     regenerating the frontend types** (`make types`). Two schemas are
     generated — the crawler's and the BFF's.
@@ -145,8 +147,14 @@ Six, plus `llama-server` on the host. Full detail in spec 010.
 live in the lockfiles; these are the majors.
 
 **Backend** — Python 3.15 · FastAPI · Pydantic v2 · SQLAlchemy 2.0 Core
-(async, asyncpg) · Alembic · httpx · selectolax · extruct · Pillow ·
+(async, asyncpg) · Alembic · **httpx2** · selectolax · extruct · Pillow ·
 structlog. **No Playwright** — rendering is a sidecar (ADR-0016).
+
+httpx2, not httpx (ADR-0028): httpx is winding down, Starlette's TestClient
+asks for httpx2 by name, and respx — which `TESTING.md` §1 used to name for
+mocking — supports neither httpx2 nor Python 3.15. HTTP is mocked with
+`httpx2.MockTransport`, which ships in the client and so cannot fall behind
+it.
 
 **BFF** — Node 26 · Fastify 5 · TypeScript strict · TypeBox · **Drizzle ORM**
 (`ui` schema only; `crawl` is read-only and introspected — ADR-0021)

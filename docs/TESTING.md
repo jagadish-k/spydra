@@ -8,12 +8,12 @@ percentage is not a goal; those two are.
 
 ## 1. Layers
 
-| Layer | Tool | Runs against | Speed |
-| --- | --- | --- | --- |
-| Unit | pytest / vitest / node:test | Nothing external | ms |
-| Integration | pytest, BFF suite | **Real Postgres** | seconds |
-| Contract | pytest + openapi | Both running APIs | seconds |
-| End-to-end | Playwright | The whole stack through the edge | a minute |
+| Layer       | Tool                        | Runs against                     | Speed    |
+| ----------- | --------------------------- | -------------------------------- | -------- |
+| Unit        | pytest / vitest / node:test | Nothing external                 | ms       |
+| Integration | pytest, BFF suite           | **Real Postgres**                | seconds  |
+| Contract    | pytest + openapi            | Both running APIs                | seconds  |
+| End-to-end  | Playwright                  | The whole stack through the edge | a minute |
 
 End-to-end tests go through **the edge on :8080**, not directly to a service.
 Testing against `api:8000` skips the routing that is the most likely thing to
@@ -34,7 +34,11 @@ which need real committed rows and clean up after themselves.
 
 Unit and integration tests make no outbound requests.
 
-- HTTP: `respx` to mock `httpx`.
+- HTTP: **`httpx2.MockTransport`** — a handler function returning
+  `httpx2.Response`, passed as the client's transport. No mocking library
+  (ADR-0028: respx supports neither httpx2 nor Python 3.15, and
+  `MockTransport` ships in the client so it cannot fall behind it). The rule
+  this serves is unchanged: no network in a unit test.
 - Pages: real HTML fixtures in `tests/fixtures/pages/`, captured once from
   real sites and **committed**. Scrub them of anything identifying beyond the
   public page content.
