@@ -16,8 +16,15 @@ export default function App() {
           Single-operator crawler control room.
         </p>
         <p className="text-sm text-ink-muted">
-          Scaffold standing — domains, templates and runs arrive with the
-          phase&nbsp;1 schema.
+          Scaffold standing. The screens arrive in phase&nbsp;3 — components
+          first (<code>3.9</code>), then Domains, Review and the run monitor.
+          Phase&nbsp;1 is deliberately headless: &ldquo;no UI, no model&rdquo;.
+        </p>
+        <p className="mt-4 text-sm text-ink-muted">
+          Serve this through the edge at <code>http://127.0.0.1:8080</code>, not
+          the Vite port. The edge is the one origin (ADR&#8209;0015);{" "}
+          <code>VITE_API_BASE</code> is empty because every call is
+          same&#8209;origin through it.
         </p>
       </main>
     </div>
