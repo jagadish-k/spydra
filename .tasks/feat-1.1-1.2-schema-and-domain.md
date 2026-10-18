@@ -352,6 +352,44 @@ the phase can be written and, because of F1–F3, so that it can be *tested*.
   Verified: ruff clean, mypy --strict clean over 26 files, **80 passed, 1
   skipped** against real Postgres.
 
+- ops (deprecation sweep, on request) — **one deprecation in the Python
+  stack, two in npm, and only the first is ours to fix.**
+
+  **Python — fixed.** Starlette 1.8's TestClient warns on `httpx` and names
+  `httpx2`. Dev dep swapped. Evidence rather than assumption, since httpx2 is
+  newer than anything in training data: httpx2 2.13.1 (23 Sep 2026) is the
+  continuation Pydantic maintains, classifies for 3.10–3.15, and is a drop-in
+  here — the TestClient suite passes with `httpx` **uninstalled entirely**.
+  All four packages it pulls (`httpx2`, `httpcore2`, `httpx2-jsfetch`,
+  `truststore`) ship `py3-none-any` wheels, so ADR-0017's readiness gate is
+  satisfied; checked on PyPI rather than discovered in a failing build.
+
+  **npm — upstream, not actionable.** All 475 locked packages across both
+  lockfiles inspected for a `deprecated` field. Two hits, both transitive:
+  `@esbuild-kit/esm-loader` and its `@esbuild-kit/core-utils`, "Merged into
+  tsx". Both arrive via `drizzle-kit@0.31.11`, which **is** the latest
+  release and still declares `@esbuild-kit/esm-loader` as a dependency. No
+  bump clears it, it is a dev-only tool dependency, and `drizzle-orm` (the
+  runtime one) is unaffected. Recorded, nothing to do.
+
+  **Gated from here: `filterwarnings = ["error"]`.** The httpx2 warning sat
+  in the summary at the bottom of a green run for four runs because nothing
+  made it matter. Measured before switching it on — with httpx2 in place the
+  suite emits **zero** warnings — so it starts clean rather than with a wall
+  of ignores, and a new deprecation now fails the run and names itself.
+  Verified both ways: 83 passed 1 skipped clean, and a planted
+  `DeprecationWarning` fails.
+
+  **Still open and deliberately not decided here: the Fetcher port's HTTP
+  client.** This swap is the test client only. `AGENTS.md` § Stack names
+  httpx and `TESTING.md` §1 names `respx` to mock it, and **respx 0.23.1
+  (Apr 2026) supports httpx only and classifies to 3.14** — so it cannot
+  follow httpx2, and 1.7 cannot have both the stack line and the mocking
+  strategy as written. Both clients ship a `MockTransport`, so respx is a
+  convenience rather than a requirement, which is the way out — but it is a
+  stack decision touching the anchor file, and it wants an ADR **before lane
+  B opens 1.7**. Not mine to take.
+
 - integrator (first pass) — **the gate had NOT been run. This environment has no Docker.**
   It is a Linux VM with the repository mounted, the same limitation
   `chore/phase-0-audit` recorded under Deviations, and its Python is 3.10

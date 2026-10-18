@@ -22,7 +22,17 @@ dev = [
     # readiness gate fails. The domain→adapters contract is enforced instead
     # by a stdlib-AST pytest (task 0.8), which blocks CI where a lint only
     # warns. Re-evaluate import-linter if grimp ships the wheel.
-    "httpx",
+    # httpx2, not httpx. Starlette 1.8's TestClient warns on httpx and asks
+    # for httpx2 by name; httpx2 2.13.1 is the continuation Pydantic
+    # maintains, classifies for 3.10–3.15, and is a drop-in here (verified:
+    # the TestClient suite passes with httpx removed entirely).
+    #
+    # This is the TEST CLIENT's HTTP library and nothing else. The Fetcher
+    # port's client (BUILD_PLAN 1.7, AGENTS.md § Stack, TESTING.md §1's
+    # `respx`) is a SEPARATE and still-open decision — respx 0.23.1 supports
+    # httpx only and classifies to 3.14, so it cannot simply follow. See the
+    # task file's open questions; that one wants an ADR before lane B starts.
+    "httpx2",
     # Test-only, pure Python, so the ADR-0017 readiness gate is not in play
     # (no compiled core, no wheel to wait for). Needed because every
     # integration test in TESTING.md §2 is async against a real asyncpg
@@ -77,6 +87,16 @@ testpaths = ["tests"]
 markers = [
     "integration: needs a real Postgres (TESTING.md §1)",
 ]
+# Every warning is an error. A deprecation printed in the summary at the
+# bottom of a green run is a deprecation nobody reads — the httpx2 one sat
+# there for four runs. Measured before turning this on: with httpx2 in place
+# the suite emits ZERO warnings, so this starts clean rather than starting
+# with a wall of ignores.
+#
+# When a new one appears the run fails and names it. That is the point. Add
+# an `ignore::` line here only with the reason and the condition for removing
+# it — never to quiet something unread.
+filterwarnings = ["error"]
 
 [tool.mypy]
 strict = true
