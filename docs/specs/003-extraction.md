@@ -56,14 +56,14 @@ for lxml only if XPath is genuinely needed.
 
 **Transforms** are small pure functions, composed in order:
 
-| Transform | Behaviour |
-| --- | --- |
-| `trim` | collapse whitespace, strip |
+| Transform        | Behaviour                                                     |
+| ---------------- | ------------------------------------------------------------- |
+| `trim`           | collapse whitespace, strip                                    |
 | `strip_currency` | remove symbol and thousands separators, keep sign and decimal |
-| `parse_decimal` | to `Decimal`; fails loudly on ambiguity |
-| `absolute_url` | resolve against the page URL |
-| `first` / `all` | cardinality |
-| `pairs(th, td)` | a spec table to a key/value mapping for JSONB |
+| `parse_decimal`  | to `Decimal`; fails loudly on ambiguity                       |
+| `absolute_url`   | resolve against the page URL                                  |
+| `first` / `all`  | cardinality                                                   |
+| `pairs(th, td)`  | a spec table to a key/value mapping for JSONB                 |
 
 Currency detection: symbol first, then the page's declared currency, then the
 domain default. A price without a determinable currency is a **validation
@@ -74,14 +74,14 @@ failure**, not a guess.
 Every extracted field is checked at crawl time. Validation never raises — it
 records.
 
-| Rule | Passes when |
-| --- | --- |
-| `non_empty` | after trim, length > 0 |
-| `currency` | parses to a Decimal and has a 3-letter currency |
-| `url` | absolute, http(s) |
-| `integer`, `date` | parses |
-| `min_count(n)` | a `many` field yielded at least n |
-| `matches(re)` | matches the pattern |
+| Rule              | Passes when                                     |
+| ----------------- | ----------------------------------------------- |
+| `non_empty`       | after trim, length > 0                          |
+| `currency`        | parses to a Decimal and has a 3-letter currency |
+| `url`             | absolute, http(s)                               |
+| `integer`, `date` | parses                                          |
+| `min_count(n)`    | a `many` field yielded at least n               |
+| `matches(re)`     | matches the pattern                             |
 
 Results land in `page_observations.validation` as
 `{field: {"rule": "currency", "ok": false, "saw": "POA"}}`.
@@ -138,7 +138,7 @@ If the hash matches the previous observation, write a lightweight row
       `page_observations.validation`, writes the observation, and does
       **not** route to `unknown_pages` or halt the domain (ADR-0027).
 - [ ] A template declaring `required: true` is **rejected** by the loader
-      rather than ignored (ADR-0027, BUILD_PLAN 1.12).
+      rather than ignored (ADR-0027, BUILD_PLAN 1.14).
 - [ ] 21% of a domain's pages yielding `empty_extraction` moves it to
       `broken` and halts it; 19% does not.
 - [ ] Re-extracting an unchanged page produces an identical `content_hash`.

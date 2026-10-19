@@ -1,7 +1,14 @@
 # Target domains
 
-**BUILD_PLAN 1.3.** The first real sites this crawler points at, confirmed by
-the operator on 2026-10-18. Phases 1 and 2 both exit against these.
+**BUILD_PLAN 1.3.** Example sites for the operator to point the crawler at by
+hand once the UI exists (phase 3), recorded 2026-10-18.
+
+**Nothing in the build depends on this file.** Phases 1 and 2 are proven
+against the local fixture site (`1.4`) and never touch the public internet —
+the crawler is generic, so a phase gate that needs a third party's uptime,
+markup and tolerance fails for reasons unrelated to the code. One of the three
+below started returning 403 within a day of being recorded, which is the
+argument made for us.
 
 This file is a **record of a decision**, not an enforcement mechanism. The
 crawler fetches and honours `robots.txt` at run time, once per domain per run
@@ -9,12 +16,10 @@ crawler fetches and honours `robots.txt` at run time, once per domain per run
 this file says. Everything below was read by hand on **2026-10-18** and will
 drift; the live file wins.
 
-> **These three are development examples, not production targets.**
-> Confirmed by the operator on 2026-10-18: they exist so phases 1 and 2 have
-> real markup and real `robots.txt` files to work against. Two of the three
+> **These three are examples, not production targets.** Two of the three
 > terms-of-use documents could not be retrieved at all and the third only
 > through a third-party tracker (below); the operator reviewed that and chose
-> to proceed on that basis.
+> to proceed on that basis, for manual trials only.
 >
 > **Nothing here is legal advice, and this note does not survive promotion.**
 > Anything that becomes a production target — crawled on a schedule, its data
@@ -60,14 +65,14 @@ not one today.
 
 Seed: `https://www.thermofisher.com/search/browse/category/in/en/80013650`
 
-| | |
-| --- | --- |
-| **Render mode** | `rendered` — **measured** |
-| **robots.txt** | permits the seed path |
-| **Terms** | **retrieved only via a third-party tracker; see below** |
+|                 |                                                         |
+| --------------- | ------------------------------------------------------- |
+| **Render mode** | `rendered` — **measured**                               |
+| **robots.txt**  | permits the seed path                                   |
+| **Terms**       | **retrieved only via a third-party tracker; see below** |
 
-- **Rendering.** The server returns an application shell: *"You need to
-  enable JavaScript to run this app."* Zero product tiles in the response.
+- **Rendering.** The server returns an application shell: _"You need to
+  enable JavaScript to run this app."_ Zero product tiles in the response.
   Confirmed on the seed URL.
 - **robots.txt.** No `Crawl-delay`. `/search/browse/` is **not** disallowed.
   Disallowed and relevant to crawling: `/search/global/miniPDPAction*`,
@@ -100,13 +105,13 @@ Seed: `https://www.thermofisher.com/search/browse/category/in/en/80013650`
 
 Seed: `https://www.rapidonline.com/cables-wires`
 
-| | |
-| --- | --- |
-| **Render mode** | `rendered` — **measured** |
-| **robots.txt** | permits the catalogue |
-| **Terms** | **not read — could not be retrieved** |
+|                 |                                       |
+| --------------- | ------------------------------------- |
+| **Render mode** | `rendered` — **measured**             |
+| **robots.txt**  | permits the catalogue                 |
+| **Terms**       | **not read — could not be retrieved** |
 
-- **Rendering.** The seed returns *"Javascript is currently disabled"* and
+- **Rendering.** The seed returns _"Javascript is currently disabled"_ and
   unrendered template placeholders (`{{SessionBasket.ItemCount}}`). Nine
   **category** tiles are present server-side; **no product tiles**. An
   earlier note in this project had this domain down as static — that was
@@ -124,11 +129,11 @@ Seed: `https://www.rapidonline.com/cables-wires`
 
 Seed: `https://www.activemotif.com/`
 
-| | |
-| --- | --- |
-| **Render mode** | `auto` — see below |
-| **robots.txt** | **`Crawl-delay: 60`** |
-| **Terms** | **not read — could not be retrieved** |
+|                 |                                       |
+| --------------- | ------------------------------------- |
+| **Render mode** | `auto` — see below                    |
+| **robots.txt**  | **`Crawl-delay: 60`**                 |
+| **Terms**       | **not read — could not be retrieved** |
 
 - **Rendering.** The closest of the three to server-rendered: category names
   and facet counts are present in the response and there is no
@@ -157,31 +162,30 @@ Seed: `https://www.activemotif.com/`
 
 ---
 
-## Deviations from BUILD_PLAN 1.3, on the record
+## What reading these three changed
 
-**1.3 asks for "two static, one JS-rendered". These are three
-JS-rendered.** Measured, not assumed: none of the three returns product
-tiles in its server HTML. The operator confirmed them anyway. Two
-consequences follow, and neither is cosmetic:
+Recorded because the findings outlived the dependency, not as live blockers:
+nothing below gates a task any more.
 
-1. **The `selector` rung has no cheap target.** Spec 003 §1's rung 2 was
-   meant to be exercised against static markup. Here every page reaches it
-   only after a render, so the static path (`HttpxFetcher`, 1.7) is proven by
-   the `auto` fallback on Active Motif and by fixtures, not by a domain that
-   is genuinely static end to end.
-2. **1.4's fixture corpus now depends on 1.8.** Recorded HTML cannot be
-   captured from a JavaScript-rendered page without the render sidecar, so
-   the fixture task that was supposed to gate lane C now waits on lane B.
-   **This inverts the plan in the phase-1 brief** and needs sequencing before
-   lane C starts. The alternatives are to capture fixtures by hand from a
-   browser for now, or to add one genuinely static domain.
+**All three are JavaScript-rendered**, measured rather than assumed — none
+returns product tiles in its server HTML, where `1.3` had asked for two
+static and one rendered. That mattered while the fixture corpus was meant to
+be _captured_ from them: HTML cannot be recorded from a JS-rendered page
+without the render sidecar, so the fixture task would have had to wait on the
+fetcher that was supposed to consume it. The fixtures are hand-written now
+(`1.4`, `TESTING.md` §4) and the circularity is gone.
 
-   `ooznest.co.uk` was verified during target research as server-rendered
-   with product titles **and** prices in the response, and its robots.txt
-   permits the catalogue. It is not a target; it is the one candidate that
-   would close this gap if the operator wants it.
+**None emits `schema.org/Product`**, so the `structured` rung (spec 003 §1)
+has no example here. An earlier note in this file argued that a hand-written
+JSON-LD fixture would make rung 1 "an untested rung dressed as a tested one".
+That was the right worry about the wrong thing, and it is worth being
+explicit about the reversal: a written fixture fully tests **the parser**,
+which is what the build can test. What it cannot tell you is how many real
+pages carry JSON-LD — and that is an operator-time observation on whatever
+sites they choose, not something any fixture could have settled. Rung 1 is
+cheap and tried first precisely because its coverage is unknowable in
+advance.
 
-**No structured data.** None of the three emits `schema.org/Product`, so
-spec 003 §1's `structured` rung and the first acceptance criterion in §5 have
-no real fixture from these domains. A synthetic JSON-LD fixture would make
-rung 1 an untested rung dressed as a tested one; flagged rather than faked.
+**`activemotif.com` publishes `Crawl-delay: 60`.** Spec 002 §5 treats that as
+a floor, so one page per minute. Harmless now that no phase exits against it,
+but worth knowing before anyone points a real run at it.

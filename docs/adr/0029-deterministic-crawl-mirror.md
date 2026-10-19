@@ -15,7 +15,7 @@ on a diff**, which catches both a stale mirror and a hand edit.
 
 That contract has one unstated premise — **the generator must be a function
 of its inputs.** `drizzle-kit introspect` is not. It is a function of the
-_database_, and in two ways that both reached CI (phase-1 finding F16):
+_database_, and in two ways that both reached CI:
 
 1. **Declaration order follows the catalog, i.e. OID order**, which is an
    artifact of each database's history rather than of the schema. `domains`

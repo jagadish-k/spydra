@@ -16,7 +16,8 @@ into ports that already exist.
 ## How to use this
 
 - Work one phase at a time, top to bottom. Tasks within a phase may be
-  reordered where there is no dependency.
+  reordered where there is genuinely no dependency — but check, and say so in
+  the task file. Phase 1 is strictly linear and says why.
 - Tick boxes as you go. The box is ticked when the **definition of done** in
   `AGENTS.md` holds — not when the code is written.
 - A phase is complete when its **exit criteria** pass. Demonstrate them; do
@@ -114,49 +115,165 @@ through the full agent handoff.
 
 ---
 
-## Phase 1 — Crawl one domain, both fetch paths
+## Phase 1 — Crawl a site end to end, both fetch paths
 
 _No UI, no model. The scheduler and the data model are the two things most
 expensive to get wrong, so they come first and are proven in isolation._
 
-- [ ] `1.1` Full schema migration per [spec 001 §1](specs/001-domain-model.md).
+**This phase is strictly linear.** Every task depends on the one above it, and
+the order is dependency order rather than preference — `1.9`'s politeness gate
+fetches `robots.txt`, so it cannot precede the fetcher in `1.6`. An earlier
+plan ran `1.5`–`1.11` as three parallel lanes; that is abandoned. ADR-0022
+still permits parallel slices across disjoint file sets, but nothing in this
+phase has a disjoint file set from the task before it.
+
+**Nothing in this phase crawls the public internet.** Every test and the exit
+criterion run against the local fixture site built in `1.4`. `docs/TARGETS.md`
+records example sites for the operator to try by hand once the UI exists
+(phase 3); they are not inputs to any task here, and no task is blocked on
+choosing or reaching one.
+
+- [x] `1.1` Full schema migration per [spec 001 §1](specs/001-domain-model.md).
       One migration, one unit — there is no production data to preserve.
-- [ ] `1.2` Domain entities and the lifecycle transition function (spec 001
-      §2–3). Pure, no I/O.
-- [ ] `1.3` **Pick the first target domains and record them.** Two static,
-      one JS-rendered, in `docs/TARGETS.md` with a note on each one's
-      `robots.txt` and terms. Phases 1 and 2 both exit against real sites;
-      choosing them now also forces the legal question early rather than at
-      domain 300.
-- [ ] `1.4` **Test fixture corpus**: recorded HTML from those domains under
-      `backend/tests/fixtures/`, with the script that refreshes it. Every
-      later parser test depends on this, and `AGENTS.md` rule 14 is
+      **Done:** 12 tables, `page_current`, two enums, the partial unique
+      indexes, `CHECK (in_flight >= 0)` (ADR-0026); up/down/up proven.
+- [x] `1.2` Domain entities and the lifecycle transition function (spec 001
+      §2–3). Pure, no I/O. **Done**, with the `Frontier`, `Fetcher` and
+      `Clock` ports (ADR-0008) defined here rather than beside their first
+      adapter, so no adapter authors its own contract.
+- [x] `1.3` Example target sites recorded in `docs/TARGETS.md` with each
+      one's `robots.txt` and terms status. **Done, and deliberately not a
+      dependency:** these exist for the operator's own manual iteration in
+      phase 3. Nothing below reads them.
+
+- [ ] `1.4` **The local fixture site.** Hand-written HTML under
+      `backend/tests/fixtures/` served over loopback inside the test network,
+      plus the tiny static server that serves it. One page per shape the
+      extraction chain must handle, and the shapes are the point:
+      `schema.org/Product` JSON-LD present; the same page with the JSON-LD
+      removed so it falls through to selectors; a redesigned variant at the
+      same URL whose selectors no longer match; a page whose content arrives
+      only after JavaScript; a soft-404 that returns 200 with no product; and
+      `robots.txt` variants (permissive, `Crawl-delay`, disallow-all).
+      Everything after this depends on it, and `AGENTS.md` rule 14 is
       unachievable without it.
-- [ ] `1.5` `Frontier` port + `PostgresFrontier`: the claim query, lease
-      expiry sweep, completion (spec 002 §1–3).
-- [ ] `1.6` Politeness gate: jitter, backoff, 403 handling, robots.txt with
-      `Crawl-delay` as a floor (spec 002 §4–5).
-- [ ] `1.7` `Fetcher` port + `HttpxFetcher`.
-- [ ] `1.8` `RenderServiceFetcher` behind the same port — HTTP to the
-      sidecar, with the 503-as-backpressure handling (spec 002 §6, spec 012).
-- [ ] `1.9` Extraction chain with the `structured` and `selector` rungs,
-      transforms and validation (spec 003).
-- [ ] `1.10` Observation writes with `content_hash` over normalised fields.
-- [ ] `1.11` Worker process running the static and rendered pools.
-- [ ] `1.12` A YAML template loader so a domain can be configured without a
+      **Done when:** `make test-api` and the sidecar suite both reach it with
+      no outbound network, and every shape above has a page.
+
+- [ ] `1.5` **Render sidecar acceptance suite** — the six criteria in
+      [spec 012 §6](specs/012-render-sidecar.md) that a real browser can
+      prove against `1.4`'s fixtures: JS-dependent content present after
+      render and absent from the raw response; a fourth concurrent request
+      queueing then 503ing rather than opening a fourth context;
+      `block_resources` measurably reducing render time; `alert()` not
+      hanging the request; the browser recycling past its page threshold
+      without dropping an in-flight render; an oversized response truncated
+      and flagged. The service itself shipped in phase 0 and its helpers are
+      unit-tested; its HTTP contract is not, and `1.7` depends on it.
+      **Done when:** `make test-render` exercises all six through
+      `POST /render`, and the four remaining §6 criteria are listed in the
+      task file with the phase that will cover them.
+
+- [ ] `1.6` **`HttpxFetcher`** behind the `Fetcher` port from `1.2`. An HTTP
+      error status is a successful fetch — deciding what a 403 or 429 means
+      belongs to `1.9` (ADR-0004). Tested with `httpx2.MockTransport`
+      (ADR-0028), no mocking library and no network.
+      **Done when:** the status table, timeout, redirect and `FetchFailed`
+      paths are covered, and the user-agent from `.env.example` is asserted
+      on the outgoing request (ADR-0004).
+
+- [ ] `1.7` **`RenderServiceFetcher`** behind the same port — HTTP to the
+      sidecar, 503 as `Backpressure` rather than a fetch failure, 504
+      retried once (spec 002 §6, spec 012 §1). Adds `static_fallback` to
+      `page_observations.strategy` for `render_mode = auto`, which spec 001
+      §1 does not yet list and TESTING.md §2 requires.
+      **Done when:** `1.6`'s tests are unchanged — if they need changing the
+      port is wrong, not the test — and the sidecar being down leaves
+      `static` domains unaffected, stalls `rendered` ones honestly and makes
+      `auto` fall back and record it.
+
+- [ ] `1.8` **`PostgresFrontier`**: the claim query exactly as
+      [ADR-0026](adr/0026-claim-locks-the-domain-row.md) specifies it, the
+      lease-expiry sweep, completion, `release()` and `abandon_domain()`
+      (spec 002 §1–3). The sweep is load-bearing, not hygiene: `in_flight`
+      gates claiming, so a counter left high by a dead worker stalls its
+      domain until the sweep reconciles it.
+      **Done when:** two real workers on two real connections against one
+      active domain never claim concurrently, and four domains reach four
+      concurrent claims — real rows, real elapsed time, no mocked clock
+      (TESTING.md §2).
+
+- [ ] `1.9` **Politeness gate**: `robots.txt` once per domain per run with
+      `Crawl-delay` as a floor and 5xx failing closed, jitter in [0.7, 1.3],
+      the ×2 backoff capped at 15 min, the 10% decay on success, and three
+      consecutive 403s pausing the domain and abandoning its queue rows
+      (spec 002 §4–5, ADR-0004).
+      **Done when:** `TESTING.md` §2's politeness list passes against
+      `1.4`'s robots fixtures, inter-request gaps show jitter rather than a
+      constant, and no test retries through a 403.
+
+- [ ] `1.10` **Extraction chain** with the `structured` and `selector` rungs,
+      the transform table and validation (spec 003 §1–3). Validation records
+      and never routes: no field is required (ADR-0027). This is where
+      `empty_extraction` is implemented — one predicate in
+      `extraction/validation.py` with three callers, which is why it lands
+      before the observation writes and the worker.
+      **Done when:** spec 003 §5 passes against `1.4`'s fixtures, including
+      the JSON-LD page extracting without a template, the same page without
+      it falling through to selectors, and "POA" failing currency validation
+      rather than becoming `0.00`.
+
+- [ ] `1.11` **Observation writes** with `content_hash` over the **normalised
+      extracted fields**, never the raw markup (spec 003 §4, ADR-0007).
+      Routes `empty_extraction` to `unknown_pages` and moves a domain to
+      `broken` past 20% (ADR-0027's predicate, evaluated on the final
+      observation after any `auto` fallback).
+      **Done when:** re-extracting an unchanged page yields an identical
+      hash, the redesigned fixture produces `empty_extraction`, and 21% trips
+      `broken` while 19% does not.
+
+- [ ] `1.12` **Asset queue and the asset gate**: page workers enqueue image
+      URLs and never block on one, the in-process per-host gate (spec 002 §6)
+      and the 10,000-row backpressure that slows page claiming (spec 002 §7,
+      ADR-0003). Specified since phase 0 and previously missing from this
+      plan.
+      **Done when:** a queue above the threshold measurably slows page
+      claiming, and the asset pool keeps draining after page crawling for a
+      domain finishes.
+
+- [ ] `1.13` **Worker process** — the three `asyncio.TaskGroup` pools over one
+      connection pool (ADR-0003), the sweep at the start of every claim-loop
+      iteration, and the run-event emission the monitor will read later
+      (ADR-0012). Replaces the placeholder `command` in `compose.yaml`.
+      **Done when:** `make up` runs a worker that crawls `1.4`'s fixture site
+      to completion and stops cleanly on SIGTERM mid-run.
+
+- [ ] `1.14` A YAML template loader so a domain can be configured without a
       UI. **This is scaffolding with a known end date** — it is deleted in
       `3.2` once templates come from the API. Do not build a format anyone
-      could grow attached to. It **rejects** `required: true` rather than
-      ignoring it (ADR-0027).
+      could grow attached to: no schema, no validator, no inheritance. It
+      **rejects** `required: true` rather than ignoring it (ADR-0027).
+      **Done when:** the exit criterion below runs from a YAML file, and a
+      template declaring `required: true` is refused with a message naming
+      ADR-0027.
 
-**Exit:** one static domain **and** one JS-rendered domain crawled politely
-end to end, data in Postgres, from a YAML template. Both fetchers exercised
-by the same scheduler. The politeness tests in `TESTING.md §2` pass. Stopping
-the `render` service leaves static crawling unaffected.
+**Exit:** the local fixture site crawled politely end to end from a YAML
+template — a static page **and** a JavaScript-dependent page, both fetchers
+exercised by the same scheduler, data in Postgres, assets queued and drained.
+The politeness tests in `TESTING.md §2` pass. Stopping the `render` service
+leaves static crawling unaffected and makes `auto` record `static_fallback`.
 
 > Both adapters ship here deliberately. A port with one implementation is an
 > untested abstraction, and rendering is a supported capability rather than a
 > contingency.
+
+> **Why the exit is a fixture site and not a real supplier.** A phase gate
+> that depends on a third party's uptime, markup and tolerance is a gate that
+> fails for reasons unrelated to the code — and one of the example sites in
+> `1.3` started returning 403 within a day of being recorded. The crawler is
+> generic by design; proving it against markup shaped like the real thing
+> proves the crawler, and the operator points it at real sites from the UI in
+> phase 3, which is also the first point at which they can watch it behave.
 
 ---
 
@@ -180,9 +297,11 @@ on facets._
 - [ ] `2.8` CSV seed parsing with per-row validation (no HTTP yet).
 - [ ] `2.9` Dry-run discovery as a library function (spec 004 §4).
 
-**Exit:** a category seed yields the full product set for one of the target
-domains without leaving it and without a facet explosion; the dry-run reports
-what would be enqueued, grouped by matching rule.
+**Exit:** a category seed yields the full product set for the fixture site's
+catalogue without leaving the host and without a facet explosion; the dry-run
+reports what would be enqueued, grouped by matching rule. The fixture site
+grows the pagination, facet and subcategory shapes this phase needs — the
+same reason phase 1 does not crawl a real supplier.
 
 ---
 

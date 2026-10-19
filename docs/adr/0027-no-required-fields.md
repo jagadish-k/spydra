@@ -69,15 +69,12 @@ with empty observations — "the system's most important failure mode: it
 produces no error and no crash, just wrong data" (spec 003 §3). So it is
 pointed at the signal that survives having nothing required.
 
-**It is not, however, as sharp as what it replaced, and an earlier draft of
-this ADR claimed otherwise in this paragraph while admitting the opposite
-under Consequences.** The honest statement: the detector still catches a
-redesign that empties pages, which is the common shape, and it no longer
-catches one that breaks most fields but not all. See Consequences for the
-size of that hole, and note that the old clause read "**failures** exceeding
-20%" rather than "required-field failures" — so the case for re-basing rests
-on reading the old text as required-only, which is the reading the rest of
-§3 supports but is a reading nonetheless.
+**It is not as sharp as what it replaced.** The detector still catches a
+redesign that empties pages, which is the common shape; it no longer catches
+one that breaks most fields but not all. Consequences gives the size of that
+hole. Note also that the old clause read "**failures** exceeding 20%" rather
+than "required-field failures", so re-basing rests on reading the old text as
+required-only — the reading the rest of §3 supports, but a reading.
 
 **3. `auto` render mode, which was also defined on required fields.** Spec
 001 §3 and spec 012 §4 both said `auto` retries through the browser when "the

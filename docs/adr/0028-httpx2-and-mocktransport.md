@@ -10,7 +10,7 @@
 ## Context
 
 `AGENTS.md` § Stack names **httpx** as the backend HTTP client and
-`TESTING.md` §1 names **respx** to mock it. `BUILD_PLAN` 1.7 builds
+`TESTING.md` §1 names **respx** to mock it. `BUILD_PLAN` 1.6 builds
 `HttpxFetcher` against both.
 
 Two things made that untenable before 1.7 was written:
@@ -76,7 +76,7 @@ tests.** Only the mechanism changes.
   never installed, which is its own small lesson about documents that
   describe intentions rather than state.
 - **1.7's tests are plain pytest** with a handler function per scenario, and
-  `RenderServiceFetcher` (1.8) is tested the same way against the sidecar's
+  `RenderServiceFetcher` (1.7) is tested the same way against the sidecar's
   HTTP contract. One pattern for both adapters, which is what ADR-0008 wanted
   from the port in the first place.
 - **Cost: handler functions are more verbose than respx's route matchers.** A
