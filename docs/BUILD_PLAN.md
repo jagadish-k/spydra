@@ -222,6 +222,13 @@ choosing or reaching one.
       the JSON-LD page extracting without a template, the same page without
       it falling through to selectors, and "POA" failing currency validation
       rather than becoming `0.00`.
+      **Decide first:** `1.4` ships a soft-404 fixture — HTTP 200, no
+      product — and **spec 003 §3 has no answer for it.** It is
+      indistinguishable from a redesign by the `empty_extraction` predicate,
+      so a catalogue with dead links would move a healthy domain to `broken`.
+      Whether that is a fourth `unknown_pages` reason, a signal excluded from
+      the threshold, or accepted as-is is a decision no ADR covers: write it
+      before writing the chain (rule 1).
 
 - [ ] `1.11` **Observation writes** with `content_hash` over the **normalised
       extracted fields**, never the raw markup (spec 003 §4, ADR-0007).
@@ -232,19 +239,22 @@ choosing or reaching one.
       hash, the redesigned fixture produces `empty_extraction`, and 21% trips
       `broken` while 19% does not.
 
-- [ ] `1.12` **Asset queue and the asset gate**: page workers enqueue image
-      URLs and never block on one, the in-process per-host gate (spec 002 §6)
-      and the 10,000-row backpressure that slows page claiming (spec 002 §7,
-      ADR-0003). Specified since phase 0 and previously missing from this
-      plan.
-      **Done when:** a queue above the threshold measurably slows page
-      claiming, and the asset pool keeps draining after page crawling for a
-      domain finishes.
+- [ ] `1.12` **Asset enqueue and backpressure** — the scheduler half only
+      (spec 002 §7, ADR-0003): a page worker resolves image URLs, inserts
+      `asset_queue` rows and moves on without ever blocking on an image, and
+      page claiming slows once the pending queue passes 10,000. **Nothing
+      drains the queue until `5.2`**, which is where spec 008 and the
+      `AssetGate` live — building the gate here would be building it for no
+      consumer.
+      **Done when:** a page yielding six images leaves six `asset_queue`
+      rows and the page worker's own timing is unchanged, and a queue seeded
+      past the threshold measurably slows page claiming (TESTING.md §2).
 
 - [ ] `1.13` **Worker process** — the three `asyncio.TaskGroup` pools over one
       connection pool (ADR-0003), the sweep at the start of every claim-loop
-      iteration, and the run-event emission the monitor will read later
-      (ADR-0012). Replaces the placeholder `command` in `compose.yaml`.
+      iteration. Replaces the placeholder `command` in `compose.yaml`. It
+      emits no `run_events` yet — that is `2.8`, which adds emission to the
+      worker it inherits, and there is no consumer before phase 3.
       **Done when:** `make up` runs a worker that crawls `1.4`'s fixture site
       to completion and stops cleanly on SIGTERM mid-run.
 
@@ -259,7 +269,8 @@ choosing or reaching one.
 
 **Exit:** the local fixture site crawled politely end to end from a YAML
 template — a static page **and** a JavaScript-dependent page, both fetchers
-exercised by the same scheduler, data in Postgres, assets queued and drained.
+exercised by the same scheduler, data in Postgres, and asset rows enqueued
+(drained in `5.2`).
 The politeness tests in `TESTING.md §2` pass. Stopping the `render` service
 leaves static crawling unaffected and makes `auto` record `static_fallback`.
 
@@ -282,20 +293,79 @@ leaves static crawling unaffected and makes `auto` record `static_fallback`.
 _Turn a seed into a full product set without wandering off-site or exploding
 on facets._
 
-- [ ] `2.1` URL canonicalisation and `url_hash` (spec 004 §2).
-- [ ] `2.2` Link extraction from discovery rules; allow/deny patterns; depth.
-- [ ] `2.3` Dedupe within a run; enqueue with breadth-first ordering.
-- [ ] `2.4` Trap defences: per-run URL cap, depth cap, repeating-path
-      detection, scheme and length rejects (spec 004 §3).
-- [ ] `2.5` Mega-menu containment: a `subcategory_links` rule is scoped to
-      its container, and the dry-run reports when a rule discovers the whole
-      tree at depth 0 (spec 004 §3a). This is the discovery bug that looks
-      like a working rule.
-- [ ] `2.6` Run lifecycle — create, pause, stop, complete; `runs.stats`.
-- [ ] `2.7` `run_events` writer (needed by phase 3's SSE, built here because
-      the worker emits them).
-- [ ] `2.8` CSV seed parsing with per-row validation (no HTTP yet).
-- [ ] `2.9` Dry-run discovery as a library function (spec 004 §4).
+**Linear, like phase 1**, and for the same reason: `2.4` dedupes what `2.3`
+extracts from what `2.2` canonicalised. Nothing here has a disjoint file set
+from the task above it.
+
+- [ ] `2.1` **Grow the fixture site** (`1.4`) with the shapes this phase
+      needs: paginated listings, a faceted listing whose filter combinations
+      would explode, a mega-menu that links the whole tree from depth 0, a
+      subcategory nest, and a crawler trap — a repeating path that generates
+      URLs for ever. Every task below is tested against these.
+      **Done when:** each shape has a page, and the trap is genuinely
+      unbounded so that `2.5`'s caps are the only thing that stops it.
+
+- [ ] `2.2` **URL canonicalisation and `url_hash`** (spec 004 §2): query
+      parameters sorted, tracking parameters stripped, meaningful ones kept,
+      `rel="canonical"` honoured within the host.
+      **Done when:** `?b=2&a=1` and `?a=1&b=2` hash identically, `utm_source`
+      is stripped while `?page=2` survives, and a `rel="canonical"` pointing
+      elsewhere on the same host collapses two URLs into one page row
+      (spec 004 §5).
+
+- [ ] `2.3` **Link extraction from discovery rules** (spec 004 §1) —
+      `product_links`, `next_page`, `subcategory_links`, the per-domain
+      allow/deny patterns and `max_depth`. Discovery never leaves the
+      registrable domain.
+      **Done when:** depth-6 links are not enqueued at `max_depth = 5`, an
+      off-host link is dropped, and a faceted listing is capped by
+      `deny_patterns`.
+
+- [ ] `2.4` **Dedupe within a run and breadth-first enqueue** — `UNIQUE
+    (run_id, url_hash)` (spec 001 §1) with listings drained before
+      products, which is what keeps the frontier full (spec 002 §1).
+      **Done when:** the same URL discovered twice in one run enqueues once
+      and in a _later_ run enqueues again, because that is a re-crawl.
+
+- [ ] `2.5` **Trap defences** (spec 004 §3): per-run and per-domain URL caps,
+      the depth cap, repeating-path detection, scheme and length rejects.
+      **Done when:** `2.1`'s unbounded trap terminates, and a run breaching
+      the per-domain cap halts that domain and names the cap as the reason
+      rather than reporting a clean finish.
+
+- [ ] `2.6` **Mega-menu containment** (spec 004 §3a): a `subcategory_links`
+      rule is scoped to its container, and the dry-run reports when a rule
+      discovers the whole tree at depth 0. **This is the discovery bug that
+      looks like a working rule** — it finds everything, so it reads as
+      success until the queue is the entire site.
+      **Done when:** a `nav a` rule on `2.1`'s mega-menu fixture is caught by
+      the dry-run, and a fixture whose subcategory links are `display:none`
+      is still discovered (spec 004 §5).
+
+- [ ] `2.7` **Run lifecycle** — create, pause, stop, complete, and
+      `runs.stats` rolled up at completion (spec 001 §1). Abandoned rows are
+      reported, never deleted (ADR-0004).
+      **Done when:** a stopped run reports the work it did not do, and
+      `stop_reason` is set for every non-`completed` terminal state.
+
+- [ ] `2.8` **`run_events` writer** — monotonic `seq` per run, the bounded
+      log that lets a reconnecting SSE client be backfilled rather than shown
+      a gap (spec 001 §1, ADR-0012). Built here because the worker emits
+      them; `1.13`'s worker deliberately emits none.
+      **Done when:** `UNIQUE (run_id, seq)` holds under two workers emitting
+      concurrently, and the log is bounded rather than growing with the run.
+
+- [ ] `2.9` **CSV seed parsing** with per-row validation and no HTTP
+      (spec 004 §4). Rejects report the row and the reason.
+      **Done when:** a file with one bad row imports the rest and names the
+      failure, and nothing in the parser can make a network call.
+
+- [ ] `2.10` **Dry-run discovery as a library function** (spec 004 §4) —
+      what _would_ be enqueued, grouped by matching rule, with no writes.
+      The seeds screen (`3.13`) and the review screen (`3.14`) both call it,
+      which is why it is a function and not an endpoint.
+      **Done when:** it reports counts per rule against `2.1`'s fixtures and
+      provably writes nothing — asserted, not assumed.
 
 **Exit:** a category seed yields the full product set for the fixture site's
 catalogue without leaving the host and without a facet explosion; the dry-run
@@ -320,7 +390,7 @@ Selectors are still hand-written; the model comes next._
       rewriting it in phase 4.
 - [ ] `3.2` `TemplateDraft` + `FieldCandidate` domain objects, provenance and
       verification sub-objects included from the start (spec 013 §2). Delete
-      the YAML loader from `1.12`.
+      the YAML loader from `1.14`.
 - [ ] `3.3` The shared verify → merge-per-field → rank pipeline (spec 013
       §4). **One implementation, used by every authoring mode.** If a second
       appears, ADR-0019 has been broken.
@@ -442,22 +512,36 @@ page and says why. With `llama-server` stopped, crawling is unaffected.
 
 _Everything that is additive and benefits from real data to tune against._
 
-- [ ] `5.1` `make seed-dev` — two offline fixture domains, so a fresh clone
-      has something to look at without crawling anything. Small, and the
-      first-run instructions in `DEVELOPMENT.md` already promise it.
-- [ ] `5.2` Asset queue, pool and `AssetGate` (spec 008).
+- [ ] `5.1` `make seed-dev` — seed the **database** with two domains' worth
+      of crawled rows so a fresh clone has something to look at without
+      running a crawl. Distinct from `1.4`, which serves HTML to the crawler;
+      this writes observations straight to Postgres. The first-run
+      instructions in `DEVELOPMENT.md` already promise it.
+- [ ] `5.2` Asset pool, the per-host `AssetGate` and the `AssetStore` port +
+      `LocalAssetStore` (spec 008, spec 002 §6, ADR-0008). The enqueue half
+      and the backpressure landed in `1.12`; this is the half that drains.
+      **`AssetStore` is the fourth port in ADR-0008 and had no task until
+      now** — it is named here so storage location stays config rather than
+      code.
 - [ ] `5.3` Hash-before-decode, resize, WebP, sharded content-addressed paths.
 - [ ] `5.4` Asset safety limits — size, type sniffing, decompression bombs.
-- [ ] `5.5` Backpressure from asset queue depth onto page workers.
-- [ ] `5.6` Broken-template detector — the 20% threshold halting a domain.
+- [ ] `5.5` Re-tune the asset backpressure against real volume — the
+      mechanism shipped in `1.12`; this is the threshold, measured rather
+      than guessed, once something actually drains the queue.
+- [ ] `5.6` Surface the broken-template detector: the halt itself ships in
+      `1.11` (it is the only thing standing between a redesign and silent
+      data corruption, so phase 1 cannot ship without it). Here it gets the
+      report, the per-field diff against the last working observation, and
+      the review path back to `awaiting_approval`.
 - [ ] `5.7` Reports: extraction health, broken templates, price changes,
       new/missing, politeness, coverage. CSV + JSON export.
 - [ ] `5.8` Reports screen.
 - [ ] `5.9` HTML purge sweep on the 7-day TTL behind `make purge-html`;
       pre-run disk check.
 - [ ] `5.10` Render-path hardening — sidecar replica count, recycle
-      thresholds, per-domain `render_mode` overrides, `auto` fallback
-      recording `strategy = static_fallback`.
+      thresholds and per-domain `render_mode` overrides, tuned against real
+      volume. The `auto` fallback and `strategy = static_fallback` ship in
+      `1.7`; this is sizing, not behaviour.
 - [ ] `5.11` Observability pass against spec 009.
 
 **Exit:** a full run over several domains produces images, reports and a
