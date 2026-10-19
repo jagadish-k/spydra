@@ -63,7 +63,8 @@ back to the spec.
 
 ## The rules
 
-- **No network calls in unit tests.** `respx` for httpx, recorded HTML for
+- **No network calls in unit tests.** `httpx2.MockTransport` for HTTP
+  (ADR-0028 — a handler function, not a mocking library), recorded HTML for
   parsers, a fake render service for the browser path, the `LLMClient` fake
   for anything involving a model.
 - **Never assert a tuned constant.** `N=5`, `temperature 0.7` and the score-60
