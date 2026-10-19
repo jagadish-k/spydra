@@ -7,7 +7,7 @@ schema, owned by `api` and `worker`. The BFF has `SELECT` and no write access
 (spec 010 §3); the `ui` schema is the BFF's and is specified in
 [spec 011](011-bff.md).
 
-`ARCHITECTURE.md` explains *why* these shapes were chosen. This spec is what
+`ARCHITECTURE.md` explains _why_ these shapes were chosen. This spec is what
 the migration implements.
 
 ---
@@ -35,7 +35,11 @@ CREATE TABLE domains (
   next_eligible_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   consecutive_failures INT NOT NULL DEFAULT 0,
   notes           TEXT,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- ADR-0026: the counter gates claiming, so a negative one is impolite
+  -- rather than merely wrong. Completion and the lease sweep both
+  -- decrement; this is the backstop against them racing.
+  CONSTRAINT in_flight_non_negative CHECK (in_flight >= 0)
 );
 CREATE INDEX ON domains (next_eligible_at) WHERE state = 'active';
 
@@ -172,7 +176,8 @@ CREATE TABLE unknown_pages (
   id           BIGSERIAL PRIMARY KEY,
   domain_id    BIGINT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
   url          TEXT NOT NULL,
-  reason       TEXT NOT NULL,   -- 'no_template' | 'validation_failed' | ...
+  reason       TEXT NOT NULL,   -- 'no_template' | 'empty_extraction' | ...
+                                 -- 'validation_failed' no longer fires: ADR-0027
   llm_proposal JSONB,           -- selectors the model suggested
   sample_html_path TEXT,
   resolved_at  TIMESTAMPTZ,
@@ -232,7 +237,7 @@ claim transaction, decremented on completion, and reconciled by the
 lease-expiry sweep. Never trust it without reconciliation — a worker killed
 mid-fetch leaves it high until the sweep runs.
 
-Asset *host* backoff state (next-eligible time per CDN host) is deliberately
+Asset _host_ backoff state (next-eligible time per CDN host) is deliberately
 **not** a table. It lives in process, per ADR-0003: a loose limit is a
 throughput knob, not a correctness property. It resets on restart, which is
 acceptable.
@@ -263,14 +268,14 @@ discovered ──propose──> awaiting_approval ──approve──> active
   any ──archive──> archived   (terminal; data retained)
 ```
 
-| State | Crawls? | Entered by | Left by |
-| --- | --- | --- | --- |
-| `discovered` | no | seeding a new host | requesting a proposal |
-| `awaiting_approval` | no | a verified proposal exists | operator approve/reject |
-| `active` | **yes** | approval | pause, break, archive |
-| `broken` | no | >20% of a run's pages fail validation | re-review |
-| `paused` | no | 3 consecutive 403s, or operator | operator resume |
-| `archived` | no | operator | terminal |
+| State               | Crawls? | Entered by                            | Left by                 |
+| ------------------- | ------- | ------------------------------------- | ----------------------- |
+| `discovered`        | no      | seeding a new host                    | requesting a proposal   |
+| `awaiting_approval` | no      | a verified proposal exists            | operator approve/reject |
+| `active`            | **yes** | approval                              | pause, break, archive   |
+| `broken`            | no      | >20% of a run's pages fail validation | re-review               |
+| `paused`            | no      | 3 consecutive 403s, or operator       | operator resume         |
+| `archived`          | no      | operator                              | terminal                |
 
 Transitions are a pure function in `domain/lifecycle.py`. Invalid transitions
 raise; they are not silently ignored.
@@ -332,11 +337,24 @@ class Observation:
 ```
 
 `render_mode` has three values. `AUTO` fetches statically and, if the
-template's required fields fail to resolve on a 200 response, retries once
-through the browser and records which path succeeded. After a few runs the
-flag can be pinned from observed behaviour rather than guessed at onboarding
-— so the cost of a wrong guess is one wasted cheap fetch, not a silently
-empty extraction.
+extraction yields **nothing usable** on a 200 response, retries once through
+the browser and records which path succeeded. After a few runs the flag can
+be pinned from observed behaviour rather than guessed at onboarding — so the
+cost of a wrong guess is one wasted cheap fetch, not a silently empty
+extraction.
+
+> **The fallback condition was "the template's required fields fail to
+> resolve" and is amended by [ADR-0027](../adr/0027-no-required-fields.md).**
+> No field is required any more, so that condition could never be true and
+> `AUTO` would have silently become `STATIC` — on a target list where every
+> domain needs rendering. It is now the same `empty_extraction` predicate
+> that spec 003 §3 uses, so the fallback and the redesign detector cannot
+> disagree.
+
+`FieldRule.required` below is **inert** for the same reason: it stays in the
+type and in the `templates.extraction` JSONB so prior template versions
+(ADR-0006) keep their shape, the loader rejects any attempt to set it, and
+nothing reads it.
 
 ---
 
@@ -346,10 +364,10 @@ Two tables support template authoring. **[Spec 013](013-template-authoring.md)
 is authoritative for their contents**; they are listed here so this spec
 remains the complete picture of the `crawl` schema.
 
-| Table | Purpose | Lifetime |
-| --- | --- | --- |
-| `crawl.template_drafts` | working state for a template being authored by form, chat or playground | until approved or discarded |
-| `crawl.field_vocabulary` | canonical field names, aliases, types and targets | permanent, seeded |
+| Table                    | Purpose                                                                 | Lifetime                    |
+| ------------------------ | ----------------------------------------------------------------------- | --------------------------- |
+| `crawl.template_drafts`  | working state for a template being authored by form, chat or playground | until approved or discarded |
+| `crawl.field_vocabulary` | canonical field names, aliases, types and targets                       | permanent, seeded           |
 
 Two constraints belong here rather than in 013:
 

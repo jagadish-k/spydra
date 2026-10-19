@@ -13,6 +13,22 @@
 
 COMPOSE := docker compose
 
+# Every committed build artifact, in one place: `generated-check` both tests
+# these for drift and prints the diff when it finds any (ADR-0013, ADR-0021,
+# ADR-0022, AGENTS.md rule 16).
+GENERATED_PATHS := frontend/src/api/schema.crawler.d.ts \
+                   frontend/src/api/schema.ui.d.ts \
+                   bff/src/db/schema/crawl.generated.ts \
+                   .claude/agents .cursor/rules .opencode/agents .agents/rules
+
+# Integration tests run against their own database, never the dev one
+# (TESTING.md §1: SKIP LOCKED, DISTINCT ON and partial unique indexes rule
+# SQLite out, so the suite needs real Postgres — and a suite that shares the
+# dev database destroys the data you were looking at). Kept here as well as
+# in compose's x-py-env so `make test-api` reads it without the api service
+# having to be the thing that defines it.
+TEST_DATABASE_URL := postgresql+asyncpg://spydra_api:spydra@db:5432/spydra_test
+
 # First line of a recipe, joined to the command with && so the whole target
 # stops when the guard trips:
 #   $(call skip_if_missing,compose.yaml) && $(COMPOSE) up -d
@@ -31,9 +47,9 @@ flat = $(subst $(NL), ,$(1))
 .PHONY: help hooks agents agents-check \
         up down reset reset-deps logs ps \
         shell-api shell-bff shell-web psql verify-grants \
-        migrate migrate-api migrate-ui migrate-down migrate-down-api \
+        lock migrate migrate-api migrate-ui migrate-down migrate-down-api \
         migrate-down-ui revision revision-ui drizzle-pull drizzle-studio \
-        test test-api test-bff test-web e2e seed-dev \
+        test test-api test-bff test-web test-render e2e seed-dev \
         lint lint-api lint-bff lint-web fmt \
         fmt-staged fmt-staged-js typecheck-changed typecheck-changed-py \
         types types-crawler types-ui generated generated-check check
@@ -65,9 +81,20 @@ down: ## stop the stack, keep volumes
 reset: ## stop and DROP every volume, database included
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) down -v
 
+# `down`, not `stop`. A STOPPED container still holds a reference to its
+# volumes, so `docker volume rm` fails with "volume is in use" — and the
+# old `|| true` swallowed that, so this target printed nothing, exited 0
+# and did nothing. It is how a stale venv survived a lockfile change, an
+# image rebuild and three runs of this target (phase-1 finding F14).
+#
+# No `|| true`: `volume rm -f` is already a no-op for a volume that does
+# not exist, so the only thing the guard could hide is a real failure.
+# `down` keeps named volumes (that needs -v), which is the point — this
+# target drops three of them by name and must not touch pgdata.
 reset-deps: ## drop the venv/node_modules volumes only (corrupt-install fix, DEVELOPMENT.md)
-	$(call skip_if_missing,compose.yaml) && $(COMPOSE) stop && \
-	docker volume rm -f spydra_venv spydra_bff_modules spydra_web_modules || true
+	$(call skip_if_missing,compose.yaml) && $(COMPOSE) down && \
+	docker volume rm -f spydra_venv spydra_bff_modules spydra_web_modules
+	@echo "·  venv + node_modules volumes dropped. Next 'make up' reseeds them from the images."
 
 logs: ## follow all service logs
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) logs -f --tail=50
@@ -89,32 +116,60 @@ shell-web: ## sh inside the web container
 psql: ## psql into the dev database (both schemas)
 	$(call skip_if_missing,compose.yaml) && $(COMPOSE) exec db psql -U spydra
 
+# Rewritten in phase 1 (finding F15). The previous version could not fail,
+# and after BUILD_PLAN 1.1 it was pointed at a real table:
+#
+#   - It used `crawl.runs` as its throwaway table. Before 1.1 that was free;
+#     after 1.1 `crawl.runs` is the run history, and the target's last act is
+#     to DROP it. Today the FKs from page_observations, crawl_queue and
+#     asset_queue refuse the drop — so the data survives by luck, not design.
+#   - **No psql call carried `-v ON_ERROR_STOP=1`**, and psql exits 0 on a
+#     failed statement by default. Every assertion here was therefore unable
+#     to fail, including the CREATE that silently did nothing.
+#   - The rejection check was `grep -q "permission denied" && echo ✓`,
+#     followed by `;`. An INSERT that failed for any OTHER reason — wrong
+#     table, no connection — passed.
+#   - The recipe's exit status was the final DROP's, not the assertions'.
+#
+# So it printed "✓ grants hold" while proving nothing. It now uses a probe
+# table that cannot collide, stops on the first SQL error, demands the
+# specific error it is looking for, and cleans up on any exit path.
 verify-grants: ## PROVE the BFF role cannot write crawl (spec 010 §3, BUILD_PLAN 0.7)
 	$(call skip_if_missing,compose.yaml) && \
-	echo "·  as spydra_api (schema owner): create a throwaway crawl.runs" && \
-	$(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
-	  -c "CREATE TABLE crawl.runs (id integer)" >/dev/null && \
-	echo "·  as spydra_bff: INSERT must be REJECTED" && \
-	if $(COMPOSE) exec -T db psql postgres://spydra_bff:spydra@localhost:5432/spydra \
-	    -c "INSERT INTO crawl.runs VALUES (1)" >/dev/null 2>/tmp/spydra-grant.err; then \
-	  $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
-	    -c "DROP TABLE crawl.runs" >/dev/null; \
-	  echo "✗ INSERT INTO crawl.runs SUCCEEDED from spydra_bff — the data-ownership boundary is broken"; exit 1; \
-	else \
-	  grep -q "permission denied" /tmp/spydra-grant.err && echo "  ✓ rejected: $$(grep -m1 'permission denied' /tmp/spydra-grant.err | sed 's/ERROR: //')"; \
+	set -e; \
+	PROBE=crawl.__grant_probe; \
+	as_api() { $(COMPOSE) exec -T db psql -v ON_ERROR_STOP=1 -q \
+	    postgres://spydra_api:spydra@localhost:5432/spydra "$$@"; }; \
+	as_bff() { $(COMPOSE) exec -T db psql -v ON_ERROR_STOP=1 -q \
+	    postgres://spydra_bff:spydra@localhost:5432/spydra "$$@"; }; \
+	cleanup() { as_api -c "DROP TABLE IF EXISTS $$PROBE" >/dev/null 2>&1 || true; }; \
+	trap cleanup EXIT; \
+	err=$$(mktemp); \
+	echo "·  probe table $$PROBE — never a real table (see the note above)"; \
+	as_api -c "DROP TABLE IF EXISTS $$PROBE" >/dev/null; \
+	as_api -c "CREATE TABLE $$PROBE (id integer)" >/dev/null; \
+	echo "·  as spydra_bff: INSERT must be REJECTED"; \
+	if as_bff -c "INSERT INTO $$PROBE VALUES (1)" >/dev/null 2>"$$err"; then \
+	  echo "✗ INSERT INTO $$PROBE SUCCEEDED from spydra_bff — the data-ownership boundary is broken"; \
+	  exit 1; \
 	fi; \
-	echo "·  as spydra_bff: SELECT must be ALLOWED (aggregation path)" && \
-	$(COMPOSE) exec -T db psql postgres://spydra_bff:spydra@localhost:5432/spydra \
-	  -c "SELECT count(*) FROM crawl.runs" >/dev/null && echo "  ✓ select granted"; \
-	echo "·  as spydra_api: the ui schema must be INVISIBLE" && \
-	if $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
-	    -c "CREATE TABLE ui.probe (id integer)" >/dev/null 2>&1; then \
-	  echo "✗ spydra_api wrote to ui — no route in should exist"; $(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra -c "DROP TABLE crawl.runs" >/dev/null; exit 1; \
-	else \
-	  echo "  ✓ rejected (no route into ui)"; \
+	grep -q "permission denied" "$$err" || { \
+	  echo "✗ the INSERT failed, but NOT with 'permission denied', so this proves nothing:"; \
+	  sed 's/^/      /' "$$err"; \
+	  exit 1; \
+	}; \
+	echo "   ✓ rejected: permission denied"; \
+	echo "·  as spydra_bff: SELECT must be ALLOWED (the aggregation path)"; \
+	as_bff -c "SELECT count(*) FROM $$PROBE" >/dev/null; \
+	echo "   ✓ select granted"; \
+	echo "·  as spydra_api: the ui schema must be INVISIBLE"; \
+	if as_api -c "CREATE TABLE ui.__grant_probe (id integer)" >/dev/null 2>&1; then \
+	  as_api -c "DROP TABLE ui.__grant_probe" >/dev/null 2>&1 || true; \
+	  echo "✗ spydra_api wrote into ui — no route in should exist"; \
+	  exit 1; \
 	fi; \
-	$(COMPOSE) exec -T db psql postgres://spydra_api:spydra@localhost:5432/spydra \
-	  -c "DROP TABLE crawl.runs" >/dev/null && echo "✓ grants hold: bff reads crawl, writes nothing; api never sees ui"
+	echo "   ✓ rejected (no route into ui)"; \
+	echo "✓ grants hold: bff reads crawl and writes nothing; api never sees ui"
 
 # --- migrations: two chains, two owners (spec 010 §3) ------------------------
 
@@ -133,6 +188,17 @@ migrate-down-api:
 
 migrate-down-ui:
 	$(call skip_if_missing,bff/drizzle) && $(COMPOSE) run --rm bff npm run migrate:down
+
+# `uv sync --frozen` in docker/api.Dockerfile FAILS on a lock that does
+# not match pyproject.toml — deliberately, so a dependency cannot reach
+# an image without a lock entry. The consequence is that adding a dep is
+# two steps, and this is the second one. Runs in the image that already
+# has the pinned uv, so the lock is never resolved by whatever uv happens
+# to be on someone's host (the lock records which uv wrote it).
+lock: ## re-resolve backend/uv.lock after editing pyproject.toml deps
+	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm --no-deps \
+		--entrypoint sh api -c "cd /repo/backend && uv lock"
+	@echo "·  uv.lock re-resolved. Now: make reset-deps && make up"
 
 revision: ## autogenerate a crawl migration — make revision m="add asset_queue"
 	$(call skip_if_missing,backend/alembic.ini) && $(COMPOSE) run --rm api alembic revision --autogenerate -m "$(m)"
@@ -155,16 +221,28 @@ drizzle-studio: ## browse the ui schema
 
 # --- tests --------------------------------------------------------------------
 
-test: test-api test-bff test-web ## everything
+test: test-api test-bff test-web test-render ## everything
 
+# NOT --no-deps: the suite needs the database up (phase-1 finding F1 — it
+# was --no-deps, which made every integration test in TESTING.md §2
+# unrunnable, starting with the two the politeness guarantee rests on).
+# compose starts `db` and waits for its healthcheck via api's depends_on.
 test-api:
-	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm --no-deps api pytest -q
+	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm \
+		-e DATABASE_URL=$(TEST_DATABASE_URL) api pytest -q
 
 test-bff:
 	$(call skip_if_missing,bff/package.json) && $(COMPOSE) run --rm --no-deps bff npm test
 
 test-web:
 	$(call skip_if_missing,frontend/package.json) && $(COMPOSE) run --rm --no-deps web npm test
+
+# The sidecar's own suite, which is the half of spec 012 that drives a real
+# browser (TESTING.md §1). It had no target at all and so was never gated
+# (phase-1 finding F3) — `make check` is the contract in ADR-0022 §3 and an
+# ungated service is not covered by it.
+test-render:
+	$(call skip_if_missing,render/package.json) && $(COMPOSE) run --rm --no-deps render npm test
 
 e2e: ## Playwright against the running stack
 	$(call skip_if_missing,frontend/playwright.config.ts) && $(COMPOSE) run --rm --no-deps web npx playwright test
@@ -193,7 +271,10 @@ lint-web:
 
 fmt: ## ruff format + prettier --write
 	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm --no-deps api ruff format .
-	$(call skip_if_missing,bff/package.json) && $(COMPOSE) run --rm --no-deps bff npx prettier --write src ../docs ../compose.yaml
+	# `.` and not `src`: lint-bff runs `prettier --check .`, so a narrower fmt
+	# means `make fmt` cannot fix what `make lint` rejects — which is how a
+	# formatting-only failure in scripts/ or tests/ reaches CI.
+	$(call skip_if_missing,bff/package.json) && $(COMPOSE) run --rm --no-deps bff npx prettier --write . ../docs ../compose.yaml
 	$(call skip_if_missing,frontend/package.json) && $(COMPOSE) run --rm --no-deps web npx prettier --write src
 
 # --- called by .githooks/pre-commit ---------------------------------------------
@@ -211,7 +292,8 @@ fmt-staged:
 	    *)         inrepo="$$inrepo /repo/$$f" ;; \
 	  esac; \
 	done; \
-	[ -n "$$inapi$$inrepo" ] && $(COMPOSE) run --rm --no-deps -T api sh -c \
+	if [ -z "$$inapi$$inrepo" ]; then echo "·  $@ — nothing to format"; exit 0; fi; \
+	$(COMPOSE) run --rm --no-deps -T api sh -c \
 	  "ruff format $$inapi $$inrepo && ruff check --fix $$inapi $$inrepo"
 
 # Split staged files by the package whose container can see them. Root-level
@@ -232,8 +314,14 @@ fmt-staged-js:
 	  $(COMPOSE) run --rm --no-deps -T bff sh -c "cd /repo && npx prettier --write $$root" || exit 1; \
 	fi
 
+# `set -e`, because the recipe's last command is an `if` whose condition is
+# false whenever no frontend file is staged — so a `tsc` failure inside the
+# FIRST `if` was masked and the hook printed "✓ pre-commit" over a file that
+# does not compile. Observed live on bff/src/db/schema/crawl.generated.ts.
+# Same class as findings F14 and F15: a gate that cannot fail.
 typecheck-changed:
-	@if [ ! -f bff/package.json ] && [ ! -f frontend/package.json ]; then echo "·  skip $@ — no TS packages yet"; exit 0; fi; \
+	@set -e; \
+	if [ ! -f bff/package.json ] && [ ! -f frontend/package.json ]; then echo "·  skip $@ — no TS packages yet"; exit 0; fi; \
 	files=$$(printf '%s\n' '$(call flat,$(FILES))' | tr ' ' '\n'); \
 	if printf '%s\n' "$$files" | grep -q '^bff/' && [ -f bff/package.json ]; then \
 	  $(COMPOSE) run --rm --no-deps -T bff tsc --noEmit; \
@@ -252,6 +340,7 @@ typecheck-changed-py:
 	    *)         mapped="$$mapped /repo/$$f" ;; \
 	  esac; \
 	done; \
+	if [ -z "$$mapped" ]; then echo "·  $@ — nothing to typecheck"; exit 0; fi; \
 	$(COMPOSE) run --rm --no-deps -T api mypy $$mapped
 
 # --- generated artifacts (ADR-0013, ADR-0021, ADR-0022) -------------------------
@@ -299,12 +388,17 @@ check: lint test generated-check ## the gate — CI runs exactly this
 
 generated-check: ## fail if any generated artifact is stale or hand-edited
 	@$(MAKE) -s generated
-	@out=$$(git status --porcelain -- \
-	    frontend/src/api/schema.crawler.d.ts frontend/src/api/schema.ui.d.ts \
-	    bff/src/db/schema/crawl.generated.ts \
-	    .claude/agents .cursor/rules .opencode/agents .agents/rules); \
+	@out=$$(git status --porcelain -- $(GENERATED_PATHS)); \
 	if [ -n "$$out" ]; then \
 	  echo "✗ generated artifacts are stale or hand-edited — run 'make generated' and commit:"; \
-	  echo "$$out" | sed 's/^/    /'; exit 1; \
+	  echo "$$out" | sed 's/^/    /'; \
+	  echo ""; \
+	  echo "  what changed (first 80 lines):"; \
+	  git --no-pager diff -- $(GENERATED_PATHS) | head -80 | sed 's/^/    /'; \
+	  echo ""; \
+	  echo "  A diff here on a machine that changed nothing means the GENERATOR is"; \
+	  echo "  not a function of its inputs. That has happened twice (F16): read"; \
+	  echo "  docs/adr/0029-deterministic-crawl-mirror.md before chasing the file."; \
+	  exit 1; \
 	fi
 	@echo "·  generated artifacts current"

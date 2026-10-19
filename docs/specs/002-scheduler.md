@@ -1,6 +1,6 @@
 # 002 — Scheduler, politeness and the three pools
 
-**Phase 1** · depends on 001 · ADR-0002, ADR-0003, ADR-0004, ADR-0016
+**Phase 1** · depends on 001 · ADR-0002, ADR-0003, ADR-0004, ADR-0016, ADR-0026
 
 This is the component most expensive to get wrong. Being blocked is the
 operator's stated worst outcome, and the politeness guarantee is enforced
@@ -15,32 +15,55 @@ One worker, one URL, one domain at a time. The guarantee lives in SQL:
 ```sql
 WITH eligible AS (
     SELECT d.id
-    FROM domains d
+    FROM crawl.domains d
     WHERE d.state = 'active'
       AND d.next_eligible_at <= now()
       AND d.in_flight < d.max_concurrency
     ORDER BY d.next_eligible_at
+    FOR UPDATE SKIP LOCKED          -- on domains: the politeness gate
     LIMIT 1
+),
+claimed AS (
+    UPDATE crawl.crawl_queue q
+    SET state = 'in_flight',
+        locked_until = now() + interval '120 seconds',
+        attempts = attempts + 1
+    WHERE q.id = (
+        SELECT q2.id
+        FROM crawl.crawl_queue q2
+        WHERE q2.domain_id = (SELECT id FROM eligible)
+          AND q2.state = 'pending'
+        ORDER BY q2.depth, q2.id     -- breadth-first: listings before products
+        FOR UPDATE SKIP LOCKED       -- on crawl_queue: the dequeue
+        LIMIT 1
+    )
+    RETURNING q.*
 )
-UPDATE crawl_queue q
-SET state = 'in_flight',
-    locked_until = now() + interval '120 seconds',
-    attempts = attempts + 1
-WHERE q.id = (
-    SELECT q2.id
-    FROM crawl_queue q2
-    JOIN eligible e ON e.id = q2.domain_id
-    WHERE q2.state = 'pending'
-    ORDER BY q2.depth, q2.id          -- breadth-first: listings before products
-    FOR UPDATE SKIP LOCKED
-    LIMIT 1
-)
-RETURNING q.*;
+UPDATE crawl.domains d
+SET in_flight = d.in_flight + 1
+WHERE d.id = (SELECT domain_id FROM claimed)
+RETURNING (SELECT row_to_json(c) FROM claimed c);
 ```
 
-`domains.in_flight INT NOT NULL DEFAULT 0` is incremented in the same
-transaction and decremented on completion. `SKIP LOCKED` means workers never
-block each other; they take the next eligible row.
+**There are two row locks and they are not interchangeable** (ADR-0026).
+The one on `domains` serialises the _eligibility decision_; the one on
+`crawl_queue` is the dequeue. An earlier version of this spec had only the
+second, and it did not hold the guarantee §9's first test asserts: two
+workers both read the same eligible domain, neither had committed its
+`in_flight` increment, so `SKIP LOCKED` handed them two different queue rows
+**of the same domain** — two concurrent connections to one host. Measured on
+real Postgres, that happened in **twenty rounds out of twenty**, with no
+error raised. Read ADR-0026 before simplifying this back.
+
+`domains.in_flight INT NOT NULL DEFAULT 0` is incremented in the **same
+statement** and decremented on completion. `SKIP LOCKED` on both means
+workers never block each other: they skip a domain someone else is deciding
+about and take the next eligible one.
+
+The domain lock lives for the claim transaction only — microseconds — and is
+**not** held across the fetch. The fetch is gated by `in_flight` and
+`next_eligible_at`, which are committed state; a lock held through a two
+second polite delay would idle a connection for the whole crawl.
 
 **Order by `depth` first.** Listing pages fan out into product URLs, so
 draining them early keeps the frontier full and stops workers starving at the
@@ -70,14 +93,20 @@ is why that counter must be reconciled rather than trusted.
 Run the sweep at the start of every claim loop iteration — a separate janitor
 process is one more thing to supervise.
 
+**Since ADR-0026 the sweep is load-bearing rather than hygiene.** `in_flight`
+now gates claiming, so a counter left high by a killed worker stops that
+domain being fetched at all until the sweep reconciles it. The failure is a
+stall rather than a rudeness, which is the right direction, but it is a real
+failure mode and the sweep is the only thing that clears it.
+
 ## 4. Backoff and blocking (ADR-0004)
 
-| Response | Action |
-| --- | --- |
-| 429, 503 | `crawl_delay_ms ×= 2`, capped at 15 min. `consecutive_failures += 1`. Domain stays active. |
-| 403 | `consecutive_failures += 1`. **Three consecutive → domain to `paused`**, remaining queue rows for that domain abandoned, event emitted. |
-| 5xx (other) | Retry up to 3 attempts, then `failed`. No domain-level penalty. |
-| 2xx | `consecutive_failures = 0`. Decay `crawl_delay_ms` toward its configured value by 10% per success, never below it. |
+| Response    | Action                                                                                                                                  |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 429, 503    | `crawl_delay_ms ×= 2`, capped at 15 min. `consecutive_failures += 1`. Domain stays active.                                              |
+| 403         | `consecutive_failures += 1`. **Three consecutive → domain to `paused`**, remaining queue rows for that domain abandoned, event emitted. |
+| 5xx (other) | Retry up to 3 attempts, then `failed`. No domain-level penalty.                                                                         |
+| 2xx         | `consecutive_failures = 0`. Decay `crawl_delay_ms` toward its configured value by 10% per success, never below it.                      |
 
 Never retry through a 403. The abandoned rows stay in the queue marked
 `abandoned` so the run report can show the work that was not done, rather than
@@ -101,11 +130,11 @@ Fetched once per domain per run, cached for the run's duration.
 
 One worker process, three `asyncio.TaskGroup` loops over one connection pool.
 
-| Pool | Default size | Per-host | Gate |
-| --- | --- | --- | --- |
-| Static pages | 12 | 1 concurrent, 2 s gap | Postgres (§1) |
-| Rendered pages | 3 in flight | 1 concurrent, same gate | Postgres (§1) |
-| Assets | 24 | `asset_concurrency` (default 5), 200 ms gap | in-process semaphore |
+| Pool           | Default size | Per-host                                    | Gate                 |
+| -------------- | ------------ | ------------------------------------------- | -------------------- |
+| Static pages   | 12           | 1 concurrent, 2 s gap                       | Postgres (§1)        |
+| Rendered pages | 3 in flight  | 1 concurrent, same gate                     | Postgres (§1)        |
+| Assets         | 24           | `asset_concurrency` (default 5), 200 ms gap | in-process semaphore |
 
 A rendered fetch claims the **same** per-domain lock as a static one. Only
 pool sizing differs; the scheduler neither knows nor cares which adapter ran.
@@ -119,6 +148,13 @@ browsers — keep it at or just below `RENDER_CONTEXTS`.
 A 503 from the sidecar means its queue is full: treat it as backpressure,
 return the row to `pending`, and try another domain. It is not a fetch
 failure and must not increment `consecutive_failures`.
+
+**It must still decrement `in_flight`.** Since ADR-0026 that counter gates
+claiming, so a row released without decrementing leaves the domain
+unclaimable until the lease sweep — a stall caused by our own sidecar being
+busy, which is precisely what "try another domain" is meant to avoid. "No
+penalty" means no `consecutive_failures`, no backoff and no attempt charged;
+it does not mean leaving the gate held.
 
 ```python
 class AssetGate:
@@ -170,7 +206,11 @@ product page can yield six.
 ## 9. Acceptance
 
 - [ ] Two workers against one active domain never fetch concurrently
-      (integration test, real Postgres, asserts on observed fetch timestamps).
+      (integration test, real Postgres, **two separate connections**, asserts
+      on observed fetch timestamps). This is the test ADR-0026 exists for: it
+      fails against a claim query that locks only the queue row, so a green
+      result here with one connection, a mocked clock or a rolled-back
+      transaction means the test was weakened rather than the query fixed.
 - [ ] Two workers against four active domains reach four concurrent fetches.
 - [ ] A killed worker's leased row returns to `pending` after `locked_until`
       and `in_flight` is reconciled.

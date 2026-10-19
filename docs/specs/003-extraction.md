@@ -38,7 +38,8 @@ Use `extruct` for rung 1; do not hand-roll JSON-LD parsing.
 
 ## 2. Selector extraction
 
-Per `FieldRule` (see spec 001):
+Per `FieldRule` (see spec 001). Note that `required` is **inert** — see §3
+and [ADR-0027](../adr/0027-no-required-fields.md):
 
 ```
 resolve(selector) → nodes
@@ -85,17 +86,32 @@ records.
 Results land in `page_observations.validation` as
 `{field: {"rule": "currency", "ok": false, "saw": "POA"}}`.
 
-**Routing:**
+**Routing** (amended by [ADR-0027](../adr/0027-no-required-fields.md)):
 
-- Any **required** field failing → the page goes to `unknown_pages` with
-  reason `validation_failed`, and the observation is still written with
-  whatever did resolve. Do not discard partial data.
-- All fields resolving to nothing on a 200 → reason `empty_extraction`. This
-  is the redesign signature and the diff against the last working observation
-  is what the operator needs.
-- Failures exceeding **20% of a domain's pages in a run** → the domain moves
-  to `broken` and **crawling stops for it mid-run**. Carrying on and recording
-  thousands of empty extractions is how a redesign quietly corrupts a dataset.
+- **No field is ever `required`**, so a per-field validation failure does not
+  route and does not halt. It is recorded in
+  `page_observations.validation` and is evidence for the operator, not
+  control flow. The observation is written with whatever resolved; partial
+  data is never discarded.
+- **`empty_extraction` is the only reason a page reaches `unknown_pages`
+  from this path**: a 200 response from which no field resolved to a
+  non-empty value. This is the redesign signature, and the diff against the
+  last working observation is what the operator needs.
+- **`empty_extraction` exceeding 20% of a domain's pages in a run** → the
+  domain moves to `broken` and **crawling stops for it mid-run**. Carrying on
+  and recording thousands of empty extractions is how a redesign quietly
+  corrupts a dataset.
+
+  Read ADR-0027 before re-attaching this threshold to per-field validation.
+  Counted that way it never fires, because nothing is required — and a
+  redesign then fills the dataset silently, which is the one failure this
+  section exists to catch.
+
+**One predicate, three consumers.** `empty_extraction` decides the
+`unknown_pages` reason, the `broken` threshold above, and the `auto`
+render-mode fallback (spec 012 §4). It is one function in
+`extraction/validation.py` and three call sites, so they cannot disagree
+about what "nothing came back" means.
 
 This is the system's most important failure mode: it produces no error and no
 crash, just wrong data. Validation is mandatory per field, not optional.
@@ -118,10 +134,13 @@ If the hash matches the previous observation, write a lightweight row
 - [ ] A page with valid JSON-LD extracts via `structured` without consulting a
       template.
 - [ ] The same page with JSON-LD removed falls through to `selector`.
-- [ ] A required field failing validation routes to `unknown_pages` **and**
-      writes the observation.
-- [ ] 21% of a domain's pages failing moves it to `broken` and halts it;
-      19% does not.
+- [ ] A field failing validation is **recorded** in
+      `page_observations.validation`, writes the observation, and does
+      **not** route to `unknown_pages` or halt the domain (ADR-0027).
+- [ ] A template declaring `required: true` is **rejected** by the loader
+      rather than ignored (ADR-0027, BUILD_PLAN 1.12).
+- [ ] 21% of a domain's pages yielding `empty_extraction` moves it to
+      `broken` and halts it; 19% does not.
 - [ ] Re-extracting an unchanged page produces an identical `content_hash`.
 - [ ] A price of "POA" is a validation failure, not `0.00`.
 - [ ] Transform chains are unit-tested against a table of fixtures, including

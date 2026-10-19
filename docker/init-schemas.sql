@@ -23,19 +23,13 @@
 -- rights inside existing schemas owned by others. spydra_bff still cannot
 -- write a single row of crawl.
 
-CREATE SCHEMA crawl;   -- owned by api/worker, migrated by Alembic
+-- Roles are cluster-wide, so they are created here, once, before either
+-- database is bootstrapped. Everything that is per-database — the crawl
+-- schema and every grant — lives in docker/crawl-bootstrap.sql and is
+-- included below and again by 20-test-db.sql. One description of the
+-- boundary, applied to both databases (phase-1 finding F2).
 
 CREATE ROLE spydra_api LOGIN PASSWORD 'spydra';
 CREATE ROLE spydra_bff LOGIN PASSWORD 'spydra';
 
-GRANT USAGE, CREATE ON SCHEMA crawl TO spydra_api;
-GRANT CREATE ON DATABASE spydra TO spydra_bff;   -- creates ui + drizzle ledger itself
-
--- The BFF may READ crawl data for aggregation, never write it. It starts a
--- crawl by calling POST /api/crawler/runs, never by inserting a runs row.
-GRANT USAGE ON SCHEMA crawl TO spydra_bff;
-ALTER DEFAULT PRIVILEGES FOR ROLE spydra_api IN SCHEMA crawl
-  GRANT SELECT ON TABLES TO spydra_bff;
-
--- The API gets no access to ui at all: no grant, no route in, nothing.
--- Deliberately the last line — the absence below is the assertion.
+\i /bootstrap/crawl-bootstrap.sql

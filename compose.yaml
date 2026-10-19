@@ -8,6 +8,13 @@ name: spydra
 
 x-py-env: &py-env
   DATABASE_URL: postgresql+asyncpg://spydra_api:spydra@db:5432/spydra
+  # Integration tests run against their own database, never the dev one
+  # (TESTING.md §1). `make test-api` overrides DATABASE_URL with this.
+  TEST_DATABASE_URL: postgresql+asyncpg://spydra_api:spydra@db:5432/spydra_test
+  # ADR-0004: the crawler identifies itself honestly and does not impersonate
+  # a browser. The contact address is the point — a site that wants the
+  # crawling to stop has somewhere to write instead of a WAF rule to add.
+  USER_AGENT: "${USER_AGENT:-MySampleScraper/1.0 (+https://jagadishk.work; k.jagdish@gmail.com)}"
   RENDER_BASE_URL: http://host.docker.internal:3001 # via host loopback — ADR-0023
   LLM_BASE_URL: http://host.docker.internal:8080
   ASSET_ROOT: /data/assets
@@ -40,6 +47,13 @@ services:
       # DEVELOPMENT.md § Compose topology.
       - pgdata:/var/lib/postgresql
       - ./docker/init-schemas.sql:/docker-entrypoint-initdb.d/10-schemas.sql:ro
+      # The integration-test database (TESTING.md §1). 20- runs after 10-,
+      # which creates the cluster-wide roles both of them grant to.
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/20-test-db.sql:ro
+      # NOT in initdb.d on purpose: the entrypoint runs everything it finds
+      # there exactly once, and this file must run once per database. Both
+      # init scripts pull it in with \i (docker/crawl-bootstrap.sql).
+      - ./docker/crawl-bootstrap.sql:/bootstrap/crawl-bootstrap.sql:ro
     ports: ["127.0.0.1:5432:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U spydra"]
