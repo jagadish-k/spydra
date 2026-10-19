@@ -5,8 +5,14 @@
 // Deterministic when crawl has no tables (the case until BUILD_PLAN 1.1):
 // whatever introspect did or did not produce, the artifact is the banner
 // plus an honest "no tables yet" note — never a stale copy, never missing.
+//
+// Deterministic the rest of the time too, which took work: see normalize().
+// drizzle-kit's introspection output is NOT stable across databases, and a
+// committed artifact that `make check` regenerates and diffs (ADR-0013,
+// ADR-0021, AGENTS.md rule 16) is worthless unless the generator is a
+// function of the schema alone.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -20,7 +26,6 @@ const BANNER = [
   "",
 ].join("\n");
 
-const introspected = existsSync(SRC) ? readFileSync(SRC, "utf8") : "";
 // Match DECLARATIONS, not the import line. The previous test was
 // /pgTable|pgEnum|pgView/, which matches `import { pgTable } from …` — so a
 // zero-table introspection scored as a successful one and was copied through
@@ -29,7 +34,6 @@ const introspected = existsSync(SRC) ? readFileSync(SRC, "utf8") : "";
 // committed artifact then failed tsc with "Cannot find name 'pgSchema'".
 // Verified against a migrated database: real output declares `crawl.table(`
 // and `crawl.enum(` and imports pgSchema correctly.
-const hasTables = /\bcrawl\.(table|enum|view)\(/.test(introspected);
 
 // drizzle-kit has no `bytea` in pg-core, so introspect emits `unknown(...)`
 // as a placeholder for every BYTEA column — and `unknown` is a TYPE, not a
@@ -42,7 +46,7 @@ const hasTables = /\bcrawl\.(table|enum|view)\(/.test(introspected);
 // (ADR-0021 §2), so mapping the placeholder onto a declared custom type is
 // its job rather than a hand edit to the artifact — which the pre-commit
 // hook rejects, correctly.
-function withBytea(source: string): string {
+export function withBytea(source: string): string {
   if (!/\bunknown\(/.test(source)) return source;
 
   const declaration = [
@@ -75,21 +79,137 @@ function withBytea(source: string): string {
   return lines.join("\n");
 }
 
-const body = hasTables
-  ? withBytea(introspected)
-  : [
-      "// crawl has no tables in the database this was introspected from.",
-      "//",
-      "// If BUILD_PLAN 1.1 has landed, that means the DEV database is not at",
-      "// alembic head — run `make migrate` and `make generated` again. The",
-      "// mirror is only ever as current as the schema it was pulled from.",
-      "",
-    ].join("\n");
+// ---------------------------------------------------------------------------
+// Normalisation — the reason this artifact can be diffed at all.
+//
+// drizzle-kit's introspection is a function of the DATABASE, not of the
+// schema, in two ways that both broke CI (phase-1 finding F16):
+//
+//  1. **Declaration order follows the catalog, i.e. OID order**, which is an
+//     artifact of each database's history. `domains` came out second on a
+//     dev database that had been migrated up and down a few times and LAST
+//     on a freshly created one — same schema, same migration, different
+//     file. So `make check` failed on a machine whose only sin was a clean
+//     volume, and would have failed in CI for ever.
+//
+//  2. **Index operator classes are mis-assigned across multi-column
+//     indexes.** Reproduced on drizzle-kit 0.31.11: the opclasses of an
+//     index's columns get zipped on in the wrong order, so
+//     `ix_crawl_queue_domain_pending` claimed `state` (TEXT) was `int8_ops`
+//     in one run while `one_active_per_pattern` claimed `domain_id`
+//     (BIGINT) was `text_ops` in another. Both outputs are wrong, and which
+//     way they are wrong is unstable.
+//
+// So the committed mirror is normalised rather than verbatim, and `.op()` is
+// dropped entirely. That costs nothing here: this file exists so the BFF can
+// SELECT from crawl with typed queries, crawl's DDL belongs to Alembic
+// (ADR-0021), and an operator class is a DDL concern. Dropping a wrong,
+// unstable annotation that nothing reads is strictly better than committing
+// it. Documented in ADR-0029.
 
-writeFileSync(DST, `${BANNER}${body}`);
-const declared = (introspected.match(/\bcrawl\.table\(/g) ?? []).length;
-console.log(
-  hasTables
-    ? `·  crawl.generated.ts written from ${declared} introspected crawl table(s)`
-    : `·  crawl.generated.ts written EMPTY — crawl had no tables. If 1.1 has landed, the dev database is not at head: run 'make migrate'.`,
-);
+type Kind = "enum" | "other" | "table" | "view";
+
+/** enums before tables, because a table body CALLS its enum eagerly. Tables
+ *  may reference each other in any order — their foreign keys live in a lazy
+ *  `(table) => [...]` callback, verified with tsc against a build where the
+ *  referenced table was declared last. */
+const KIND_ORDER: readonly Kind[] = ["enum", "other", "table", "view"];
+
+function classify(block: string): Kind {
+  if (/crawl\.enum\(/.test(block)) return "enum";
+  if (/crawl\.table\(/.test(block)) return "table";
+  if (/crawl\.view\(/.test(block)) return "view";
+  return "other";
+}
+
+/** Code-unit comparison, not localeCompare: a sort that depends on the
+ *  machine's locale is the bug this function exists to remove. */
+function byName(a: { name: string }, b: { name: string }): number {
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
+
+export function normalize(source: string): string {
+  // (2) above. Index/uniqueIndex only; nothing else emits .op().
+  let out = source.replace(/\.op\("[^"]*"\)/g, "");
+
+  // Rebuild the pg-core import with its names sorted and spaced properly.
+  // Also tidies the `char , customType}` that withBytea's append leaves.
+  out = out.replace(
+    /^import \{([^}]*)\} from "drizzle-orm\/pg-core"/m,
+    (_match, names: string) => {
+      const sorted = names
+        .split(",")
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      return `import { ${sorted.join(", ")} } from "drizzle-orm/pg-core"`;
+    },
+  );
+
+  // (1) above. The preamble — imports, the bytea customType, and
+  // `export const crawl = pgSchema(...)` which everything else references —
+  // stays put; every declaration after it is sorted.
+  const lines = out.split("\n");
+  const starts: number[] = [];
+  for (const [i, line] of lines.entries()) {
+    if (line.startsWith("export const ")) starts.push(i);
+  }
+  // Nothing to sort: an empty schema, or only the pgSchema line.
+  if (starts.length < 3) return out;
+
+  const firstSortable = starts[1];
+  const preamble = lines.slice(0, firstSortable).join("\n");
+
+  const blocks = starts.slice(1).map((start, i) => {
+    const end = i + 2 < starts.length ? starts[i + 2] : lines.length;
+    const name = /^export const (\w+)/.exec(lines[start] ?? "")?.[1] ?? "";
+    return { name, text: lines.slice(start, end).join("\n") };
+  });
+
+  const ordered = KIND_ORDER.flatMap((kind) =>
+    blocks
+      .filter((b) => classify(b.text) === kind)
+      .sort(byName)
+      .map((b) => b.text.replace(/\s+$/, "")),
+  );
+
+  return `${preamble.replace(/\s+$/, "")}\n\n${ordered.join("\n\n")}\n`;
+}
+
+function render(introspected: string): string {
+  const hasTables = /\bcrawl\.(table|enum|view)\(/.test(introspected);
+  const body = hasTables
+    ? normalize(withBytea(introspected))
+    : [
+        "// crawl has no tables in the database this was introspected from.",
+        "//",
+        "// If BUILD_PLAN 1.1 has landed, that means the DEV database is not at",
+        "// alembic head — run `make migrate` and `make generated` again. The",
+        "// mirror is only ever as current as the schema it was pulled from.",
+        "",
+      ].join("\n");
+  return `${BANNER}${body}`;
+}
+
+function main(): void {
+  const introspected = existsSync(SRC) ? readFileSync(SRC, "utf8") : "";
+  writeFileSync(DST, render(introspected));
+
+  const declared = (introspected.match(/\bcrawl\.table\(/g) ?? []).length;
+  console.log(
+    declared > 0
+      ? `·  crawl.generated.ts written from ${declared} introspected crawl table(s)`
+      : `·  crawl.generated.ts written EMPTY — crawl had no tables. If 1.1 has landed, the dev database is not at head: run 'make migrate'.`,
+  );
+}
+
+// Only when run as a script. The transforms above are imported by
+// tests/crawl-generated.test.ts, and a module that writes a committed
+// artifact on import is a module no test can touch safely — importing it
+// once already overwrote the mirror as a side effect.
+if (
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main();
+}

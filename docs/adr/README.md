@@ -42,3 +42,4 @@ shape everything else sits inside.
 | [0026](0026-claim-locks-the-domain-row.md) | The claim query locks the domain row, not just the queue row                | Accepted                                   |
 | [0027](0027-no-required-fields.md)         | No field is ever required; emptiness is the only failure signal             | Accepted                                   |
 | [0028](0028-httpx2-and-mocktransport.md)   | httpx2 for the Fetcher; its own MockTransport instead of respx              | Accepted                                   |
+| [0029](0029-deterministic-crawl-mirror.md) | The committed crawl mirror is normalised, not verbatim                      | Accepted                                   |

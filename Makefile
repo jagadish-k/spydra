@@ -13,6 +13,14 @@
 
 COMPOSE := docker compose
 
+# Every committed build artifact, in one place: `generated-check` both tests
+# these for drift and prints the diff when it finds any (ADR-0013, ADR-0021,
+# ADR-0022, AGENTS.md rule 16).
+GENERATED_PATHS := frontend/src/api/schema.crawler.d.ts \
+                   frontend/src/api/schema.ui.d.ts \
+                   bff/src/db/schema/crawl.generated.ts \
+                   .claude/agents .cursor/rules .opencode/agents .agents/rules
+
 # Integration tests run against their own database, never the dev one
 # (TESTING.md §1: SKIP LOCKED, DISTINCT ON and partial unique indexes rule
 # SQLite out, so the suite needs real Postgres — and a suite that shares the
@@ -263,7 +271,10 @@ lint-web:
 
 fmt: ## ruff format + prettier --write
 	$(call skip_if_missing,backend/pyproject.toml) && $(COMPOSE) run --rm --no-deps api ruff format .
-	$(call skip_if_missing,bff/package.json) && $(COMPOSE) run --rm --no-deps bff npx prettier --write src ../docs ../compose.yaml
+	# `.` and not `src`: lint-bff runs `prettier --check .`, so a narrower fmt
+	# means `make fmt` cannot fix what `make lint` rejects — which is how a
+	# formatting-only failure in scripts/ or tests/ reaches CI.
+	$(call skip_if_missing,bff/package.json) && $(COMPOSE) run --rm --no-deps bff npx prettier --write . ../docs ../compose.yaml
 	$(call skip_if_missing,frontend/package.json) && $(COMPOSE) run --rm --no-deps web npx prettier --write src
 
 # --- called by .githooks/pre-commit ---------------------------------------------
@@ -377,12 +388,17 @@ check: lint test generated-check ## the gate — CI runs exactly this
 
 generated-check: ## fail if any generated artifact is stale or hand-edited
 	@$(MAKE) -s generated
-	@out=$$(git status --porcelain -- \
-	    frontend/src/api/schema.crawler.d.ts frontend/src/api/schema.ui.d.ts \
-	    bff/src/db/schema/crawl.generated.ts \
-	    .claude/agents .cursor/rules .opencode/agents .agents/rules); \
+	@out=$$(git status --porcelain -- $(GENERATED_PATHS)); \
 	if [ -n "$$out" ]; then \
 	  echo "✗ generated artifacts are stale or hand-edited — run 'make generated' and commit:"; \
-	  echo "$$out" | sed 's/^/    /'; exit 1; \
+	  echo "$$out" | sed 's/^/    /'; \
+	  echo ""; \
+	  echo "  what changed (first 80 lines):"; \
+	  git --no-pager diff -- $(GENERATED_PATHS) | head -80 | sed 's/^/    /'; \
+	  echo ""; \
+	  echo "  A diff here on a machine that changed nothing means the GENERATOR is"; \
+	  echo "  not a function of its inputs. That has happened twice (F16): read"; \
+	  echo "  docs/adr/0029-deterministic-crawl-mirror.md before chasing the file."; \
+	  exit 1; \
 	fi
 	@echo "·  generated artifacts current"
