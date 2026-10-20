@@ -1,19 +1,117 @@
 # Spydra — screens
 
-Ten screens plus a foundations page. Each is specified below and mocked up in
-[`design/mockups/`](../design/mockups/).
+**This file is the screen registry. It is the single source of truth for
+which screens exist, how many there are, and where each one is drawn**
+(ADR-0031). No other document enumerates screens; everything else references
+this table. If a screen is not in it, it does not exist — and a screen that
+is built without a row here is the defect, not the row.
 
-**The mockups show each screen populated.** Every state a screen also has —
-loading, empty, filtered-empty, error, partial — is in
-[`UI_STATES.md`](UI_STATES.md), which is authoritative for states and binding
-on the phase 3 components (ADR-0025). Read the two together: this file says
-what a screen is for, the mockups say what it looks like, `UI_STATES.md` says
-how many ways it has to look.
+## The registry
 
-Screen 4 carries the visual playground as a _mode_, not as a separate screen —
-see the note there for why.
+**Eleven screens. Twelve top-level layouts. Sixty-two frames.** All eleven
+are designed; screen 11 (Schedules) was drawn on 2026-10-20 and is the first
+screen drawn Figma-first, with no mockup (ADR-0031 made the mockups a
+reference rather than an authority, so a new screen no longer needs one).
+The counts differ for one reason and it is not a discrepancy: screen 4 has
+three modes (§4), and its Select mode is a different enough layout that
+Figma and the mockups each give it its own top-level artifact. Counting
+drawn artifacts gives twelve; counting screens gives eleven. Both are
+correct about different things, and every audit that reported a "missing
+eleventh screen" had found this and not the real gap, which was Schedules —
+now closed.
 
-The screens are ordered by how often you will see them, not by navigation order.
+Figma file [`GeJPFXY4CicHBdzLMyXG2E`](https://www.figma.com/design/GeJPFXY4CicHBdzLMyXG2E/Spydra),
+page `🖥 Screens` (`3:139`).
+
+| #   | Screen          | Figma base | Mockup                                                           | Spec     | Built by | Frames |
+| --- | --------------- | ---------- | ---------------------------------------------------------------- | -------- | -------- | -----: |
+| 1   | Domains         | `7:2`      | [`domains.html`](../design/mockups/domains.html)                 | 006      | `3.10`   |      7 |
+| 2   | Domain detail   | `19:1082`  | [`domain-detail.html`](../design/mockups/domain-detail.html)     | 006, 013 | `3.12`   |      4 |
+| 3   | Seeds           | `18:1312`  | [`seeds.html`](../design/mockups/seeds.html)                     | 004      | `3.13`   |      4 |
+| 4   | Template review | `13:190`   | [`template-review.html`](../design/mockups/template-review.html) | 013      | `3.14`   |      5 |
+| 4·S | ↳ Select mode   | `27:1548`  | [`playground.html`](../design/mockups/playground.html)           | 014      | `6.10`   |      4 |
+| 4·K | ↳ Skeleton mode | **none**   | **none**                                                         | 014 §6   | `6.10`   |  **0** |
+| 5   | Unknown pages   | `16:830`   | [`unknown-pages.html`](../design/mockups/unknown-pages.html)     | 004      | `4.8`    |      5 |
+| 6   | Run monitor     | `16:509`   | [`run-monitor.html`](../design/mockups/run-monitor.html)         | 002, 009 | `3.16`   |      6 |
+| 7   | Runs history    | `19:1344`  | [`runs-history.html`](../design/mockups/runs-history.html)       | 009      | `3.17`   |      6 |
+| 8   | Products        | `18:753`   | [`products.html`](../design/mockups/products.html)               | 001, 003 | `3.18`   |      5 |
+| 9   | Reports         | `18:1032`  | [`reports.html`](../design/mockups/reports.html)                 | 009      | `5.8`    |      5 |
+| 10  | Authoring chat  | `24:1349`  | [`authoring-chat.html`](../design/mockups/authoring-chat.html)   | 007, 013 | `4.12`   |      5 |
+| 0   | Foundations     | `8:2` ᶠ    | [`foundations.html`](../design/mockups/foundations.html)         | —        | `0.x`    |      1 |
+| 11  | Schedules       | `81:6826`  | none ᵐ                                                           | 011      | `3.11`   |      6 |
+
+ᶠ on page `🎨 Foundations` (`3:137`), not `🖥 Screens`.
+ᵐ Figma-first; no mockup, and none is owed. `design/mockups/` is a reference,
+not an authority (ADR-0031), so it is allowed to lag a screen entirely.
+
+**One row is an open defect, deliberately left visible.**
+
+- **Screen 4's Skeleton mode is drawn nowhere.** `UI_STATES.md` §4 gives
+  screen 4 three modes and spec 014 §6 makes Skeleton the escape hatch for
+  content behind a click. It is `6.10` work, so being unbuilt is correct;
+  being **undrawn** means `6.10` has no reference and will invent one.
+  **Screen 11 Schedules — closed 2026-10-20.** It had a complete backend spec
+  (011 §1, §3, §4) and no design anywhere, which made `3.11` unbuildable. It is
+  now drawn in six frames and specified in §11 below, with a row in
+  `UI_STATES.md` §4. It is also the worked example for ADR-0032: **it contains
+  no hand-drawn component.** Everything in it — the shell, metric tiles, inputs,
+  selects, header cells, schedule rows, fire rows, pagination, and its empty,
+  error and skeleton states — is an instance of a component on the
+  `🧩 Components` page.
+
+## State coverage
+
+Which states each screen is drawn in. The rule is `UI_STATES.md` §1: all four
+mandatory states everywhere, both empty sub-cases on screens 1 · 5 · 7 · 8 ·
+11, partial on 1 · 6 · 7 · 9 · 11, dark on one screen per visual pattern
+(1 · 4 · 6 · 10). **Figma matches that rule exactly — no gaps, no extras.**
+
+Screen 11 takes both empty sub-cases and partial because §1 states them as
+properties, not as a closed list: it filters, so filtered-empty applies, and
+its counter strip aggregates, so partial applies. It takes no dark frame
+because its visual pattern — a table — is already covered by screen 1.
+
+| #   | pop. | loading | empty (first) | empty (filtered) | error | partial | dark |
+| --- | :--: | :-----: | :-----------: | :--------------: | :---: | :-----: | :--: |
+| 1   |  ✓   |    ✓    |       ✓       |        ✓         |   ✓   |    ✓    |  ✓   |
+| 2   |  ✓   |    ✓    |       ✓       |        —         |   ✓   |    —    |  —   |
+| 3   |  ✓   |    ✓    |       ✓       |        —         |   ✓   |    —    |  —   |
+| 4   |  ✓   |    ✓    |       ✓       |        —         |   ✓   |    —    |  ✓   |
+| 4·S |  ✓   |    ✓    |       ✓       |        —         |   ✓   |    —    |  —   |
+| 5   |  ✓   |    ✓    |       ✓       |        ✓         |   ✓   |    —    |  —   |
+| 6   |  ✓   |    ✓    |       ✓       |        —         |   ✓   |    ✓    |  ✓   |
+| 7   |  ✓   |    ✓    |       ✓       |        ✓         |   ✓   |    ✓    |  —   |
+| 8   |  ✓   |    ✓    |       ✓       |        ✓         |   ✓   |    —    |  —   |
+| 9   |  ✓   |    ✓    |       ✓       |        —         |   ✓   |    ✓    |  —   |
+| 10  |  ✓   |    ✓    |       ✓       |        —         |   ✓   |    —    |  ✓   |
+| 11  |  ✓   |    ✓    |       ✓       |        ✓         |   ✓   |    ✓    |  —   |
+
+A dash is "not required by §1", not "missing". The per-screen states beyond
+these four — SSE reconnecting, snapshot expired, field multi-match and the
+rest — are in `UI_STATES.md` §4 and are **not** separate frames.
+
+## Reading order, and who wins
+
+Three documents, three axes, no overlap (ADR-0031):
+
+| Artifact                | Authoritative for                                           |
+| ----------------------- | ----------------------------------------------------------- |
+| **this file**           | which screens exist · their count · where each is drawn     |
+| **Figma `🖥 Screens`**   | what every state looks like — layout, spacing, type, colour |
+| **`docs/UI_STATES.md`** | which states must exist and what each must not do           |
+
+`design/mockups/` is a **runnable reference, not an authority.** It renders in
+a browser with the real tokens and no Figma account, which is why it stays;
+it shows only the populated state, which is why it no longer decides
+anything. Where it and Figma disagree, Figma wins.
+
+**Reading Figma: never trust a bare `get_metadata` for an inventory.** It
+reports only the pages currently loaded in the editor, so it answered "two
+pages" and "four pages" to the same file on the same day. Enumerate with the
+Plugin API instead — `figma.root.children` — and see ADR-0031 §Consequences.
+
+Below, each screen's purpose and behaviour. The order is how often you will
+see a screen, not navigation order.
 
 ---
 
@@ -108,11 +206,17 @@ cross-origin framing gives no DOM access anyway — which was the whole point.
 Spec 014 §1 covers the trade-off; the cost is that hover states and
 click-to-open content need the `expand` option or Skeleton mode.
 
-**Why the playground is a mode and not a tenth screen.** Clicking a price is
+**Why the playground is a mode and not an eleventh screen.** Clicking a price is
 one way to fill the same field list the centre pane already shows, verified
 against the same sample strip. Splitting it out would mean two screens
 competing to own one draft, two copies of the field list, and a hand-off
 between them in the middle of the only task that matters here.
+
+It is nonetheless drawn as its own top-level artifact — Figma `27:1548`
+(`Playground — Select mode`) and `design/mockups/playground.html` — because
+the three-pane Select layout is too different to be a variant of the Preview
+frame. Registry rows `4`, `4·S` and `4·K` carry the mapping. **Skeleton mode
+is drawn nowhere**; `6.10` builds it and currently has no reference.
 
 _Centre (35%) — field list._ One `<SelectorField>` per field: name · editable
 selector · **resolved value on this page** · match count · model confidence.
@@ -297,6 +401,47 @@ in the system.
 **"Open in review"** hands the draft to screen 4 with every field, example and
 transcript entry intact. The two screens are two front doors to one draft
 (ADR-0019), so there is nothing to migrate.
+
+---
+
+## 11 · Schedules
+
+**The crawler decides _how_ to crawl; this screen decides _when_.** That
+sentence is the whole scope, and it is the reason the screen is thin: every
+politeness decision — delay, jitter, concurrency, backoff — belongs to the
+scheduler in spec 002 and is deliberately not here. A schedule names a set of
+domains and a cron expression, and nothing else.
+
+Backed by `ui.schedules` and `ui.schedule_fires` (spec 011 §1), the once-only
+fire loop (§3) and six endpoints (§4).
+
+_Counter strip._ Enabled · Paused · Next fire · Fires today · Skipped (7 d).
+The last two are the ones worth reading: a schedule that silently never fires
+looks identical to one that has nothing to do, and the skip counter is what
+tells them apart.
+
+_Table._ Schedule (name + timezone) · State · Cron · Domains · Next fire ·
+Last fire. Cron is set in a monospace face, like every other machine-readable
+value in the app — `0 2 * * *` is read character by character or not at all.
+Sorted by next fire ascending: the next thing to happen is the top row.
+
+_Recent fires._ A reverse-chronological strip under the table, with an
+outcome per entry. **A skip is a first-class outcome, not an absence.** Spec
+011 §3 skips a schedule whose previous run is still active and records why;
+if the UI showed that as "nothing happened", the operator would conclude the
+scheduler was broken and start the run by hand — which is exactly the
+double-run the skip existed to prevent.
+
+**Why Schedules is not a tab of Domains.** It is domain-set-shaped, not
+domain-shaped: one schedule names many domains and one domain appears in many
+schedules. Putting it on screen 2 would mean editing a shared object from
+inside one of its members, and the fire history would have no home at all.
+
+**Open:** a schedule can name a domain that was later deleted. Spec 011 §2
+handles it at fire time — the fire loop drops missing domains and records it,
+which is the `Failed` fire row. The screen does not yet show that a schedule
+is carrying a dead reference _before_ it fires. Worth a state once `3.11` is
+real; not drawn.
 
 ---
 

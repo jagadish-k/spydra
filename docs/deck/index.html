@@ -781,6 +781,95 @@
         position: relative;
         z-index: 1;
       }
+
+      /* ---- phase workflow (slide "What gets built, phase by phase") ---- */
+      .phases {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        width: 100%;
+      }
+      .phases .ph {
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px 9px;
+        background: var(--bg-surface);
+        min-width: 0;
+        transition:
+          border-color 0.12s,
+          opacity 0.12s;
+      }
+      .phases .ph .hd {
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+        margin: 0 0 4px;
+      }
+      .phases .ph .n {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+      .phases .ph h4 {
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0;
+        line-height: 1.25;
+      }
+      .phases .ph ul {
+        margin: 0;
+        padding-left: 14px;
+      }
+      .phases .ph li {
+        font-size: 11px;
+        line-height: 1.33;
+        margin: 0 0 1px;
+        color: var(--text-secondary);
+      }
+      .phases .ph li strong {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      .phases .ph .gate {
+        margin: 5px 0 0;
+        padding-top: 4px;
+        border-top: 1px dashed var(--border);
+        font-size: 10px;
+        line-height: 1.32;
+        color: var(--text-secondary);
+      }
+      .phases .ph .gate b {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+      /* workflow mode: one phase in focus, the rest receded */
+      .phases.focusing .ph {
+        opacity: 0.34;
+      }
+      .phases.focusing .ph.focus {
+        opacity: 1;
+        border-color: var(--brand-500);
+        border-left-color: var(--brand-500);
+      }
+      .phases .ph.ui {
+        border-left-color: var(--brand-500);
+      }
+      .phases .ph.gap-row {
+        border-left-color: var(--warn, #b45309);
+      }
+      .phases .ph:focus-visible {
+        outline: 2px solid var(--brand-500);
+        outline-offset: 2px;
+      }
+      @media print {
+        .phases.focusing .ph {
+          opacity: 1 !important;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1899,7 +1988,7 @@ score(selector, field) =
               <div>
                 <a
                   class="shot"
-                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/SpiderUI?node-id=24-1349"
+                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/Spydra?node-id=24-1349"
                   target="_blank"
                   rel="noopener"
                 >
@@ -1967,7 +2056,7 @@ elements
               <div>
                 <a
                   class="shot"
-                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/SpiderUI?node-id=27-1548"
+                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/Spydra?node-id=27-1548"
                   target="_blank"
                   rel="noopener"
                 >
@@ -2094,7 +2183,7 @@ elements
         <!-- =================================================== 13 · the screens == -->
         <section class="slide" data-title="The screens">
           <p class="kicker">
-            Ten screens, all mocked up before any React was written
+            Eleven screens drawn in every state before any React was written
           </p>
           <h2>Every screen, in every state it can be in</h2>
           <div class="body">
@@ -2102,7 +2191,7 @@ elements
               <div>
                 <a
                   class="shot crop"
-                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/SpiderUI?node-id=7-2"
+                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/Spydra?node-id=7-2"
                   target="_blank"
                   rel="noopener"
                   ><img src="assets/domains.webp" alt="Domains screen"
@@ -2116,7 +2205,7 @@ elements
               <div>
                 <a
                   class="shot crop"
-                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/SpiderUI?node-id=13-190"
+                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/Spydra?node-id=13-190"
                   target="_blank"
                   rel="noopener"
                   ><img src="assets/review.webp" alt="Template review screen"
@@ -2129,7 +2218,7 @@ elements
               <div>
                 <a
                   class="shot crop"
-                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/SpiderUI?node-id=16-509"
+                  href="https://www.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/Spydra?node-id=16-509"
                   target="_blank"
                   rel="noopener"
                   ><img src="assets/run-monitor.webp" alt="Run monitor screen"
@@ -2141,17 +2230,26 @@ elements
               </div>
             </div>
             <p class="small muted" style="margin-top: 4px">
-              Thirty-four frames in Figma, each screen in its loading, empty,
-              error and populated state, with the four that carry real risk also
-              drawn partial. The state matrix is written down in
-              <span class="mono">docs/UI_STATES.md</span> and the React
-              components are built against it rather than against a populated
-              screenshot.
+              <strong>Sixty-two frames in Figma</strong> — every screen in its
+              loading, empty, error and populated state, both empty sub-cases on
+              the four screens that filter, partial on the four that aggregate,
+              and dark on one screen per visual pattern. The matrix is written
+              down in <span class="mono">docs/UI_STATES.md</span>, the frames
+              match it exactly, and the React components are built against it
+              rather than against a populated screenshot. Every frame is a
+              composition of named components — a hand-drawn element that
+              duplicates one is a review finding (ADR-0032).
+            </p>
+            <p class="small muted" style="margin-top: 2px">
+              <span class="mono">docs/SCREENS.md</span> is the registry — each
+              screen's Figma node id, mockup, spec and build task in one table.
+              It is the only place screens are enumerated, which is the fix for
+              four audit passes that each counted them differently (ADR-0031).
             </p>
           </div>
           <div class="slide-foot">
             <span>Screens</span><span class="spacer"></span
-            ><span class="ref">SCREENS.md · UI_STATES.md</span>
+            ><span class="ref">SCREENS.md · UI_STATES.md · COMPONENTS.md</span>
           </div>
           <aside class="notes">
             Click any screenshot to open that screen in the Figma prototype, if
@@ -2269,7 +2367,7 @@ elements
           <p class="kicker">Try it</p>
           <h2>The interface, clickable</h2>
           <p class="lede">
-            Thirty-four frames and a wired prototype. Use the sidebar to move
+            Sixty-two frames and a wired prototype. Use the sidebar to move
             between screens; the loading frames advance on their own.
           </p>
           <div class="body embed-wrap">
@@ -2281,7 +2379,7 @@ elements
               </div>
               <iframe
                 title="Spydra prototype"
-                src="https://embed.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/SpiderUI?node-id=7-2&amp;starting-point-node-id=7%3A2&amp;scaling=contain&amp;content-scaling=fixed&amp;embed-host=spydra-deck"
+                src="https://embed.figma.com/proto/GeJPFXY4CicHBdzLMyXG2E/Spydra?node-id=7-2&amp;starting-point-node-id=7%3A2&amp;scaling=contain&amp;content-scaling=fixed&amp;embed-host=spydra-deck"
                 allowfullscreen
                 loading="lazy"
               ></iframe>
@@ -2289,7 +2387,7 @@ elements
           </div>
           <div class="slide-foot">
             <span>Prototype</span><span class="spacer"></span>
-            <span class="ref">Figma · SpiderUI</span>
+            <span class="ref">Figma · Spydra</span>
           </div>
           <div class="notes">
             <b>If the frame is blank</b> the file is still private. Share &rarr;
@@ -2613,6 +2711,244 @@ elements
           </aside>
         </section>
 
+        <!-- ================================================ 15b · phase workflow === -->
+        <section class="slide" data-title="What gets built, phase by phase">
+          <p class="kicker">
+            The build, as a workflow · press <span class="mono">w</span> to step
+            through it
+          </p>
+          <h2>What exists at the end of each phase</h2>
+          <div class="body">
+            <div class="phases" id="phases">
+              <div class="ph" data-ph="0" tabindex="0">
+                <div class="hd">
+                  <span class="n">PHASE 0</span>
+                  <h4>Scaffold</h4>
+                </div>
+                <ul class="tight">
+                  <li>
+                    Six services + the <strong>edge on :8080</strong>, one
+                    origin
+                  </li>
+                  <li>
+                    Both migration toolchains: Alembic for
+                    <span class="mono">crawl</span>, Drizzle for
+                    <span class="mono">ui</span>
+                  </li>
+                  <li>Generated artifacts regenerated and diffed</li>
+                  <li><strong>No screens, no crawling</strong></li>
+                </ul>
+                <p class="gate">
+                  <b>Gate:</b> <span class="mono">make check</span> green on an
+                  empty project; SSE unbuffered through the edge; the BFF cannot
+                  write <span class="mono">crawl</span>.
+                </p>
+              </div>
+
+              <div class="ph" data-ph="1" tabindex="0">
+                <div class="hd">
+                  <span class="n">PHASE 1</span>
+                  <h4>Crawl a site end to end</h4>
+                </div>
+                <ul class="tight">
+                  <li>
+                    The <span class="mono">crawl</span> schema and the domain
+                    model
+                  </li>
+                  <li>
+                    Four ports:
+                    <strong>Frontier · Fetcher · LLMClient · AssetStore</strong>
+                  </li>
+                  <li>
+                    Local fixture site, then the <strong>render sidecar</strong>
+                  </li>
+                  <li>
+                    Politeness gate · extraction chain · append-only
+                    observations
+                  </li>
+                  <li>
+                    <strong>Still no screens</strong> — templates are YAML
+                  </li>
+                </ul>
+                <p class="gate">
+                  <b>Gate:</b> a static and a JS-rendered site crawled politely.
+                  Stopping <span class="mono">render</span> leaves static
+                  crawling unaffected.
+                </p>
+              </div>
+
+              <div class="ph" data-ph="2" tabindex="0">
+                <div class="hd">
+                  <span class="n">PHASE 2</span>
+                  <h4>Discovery and the queue</h4>
+                </div>
+                <ul class="tight">
+                  <li>
+                    URL canonicalisation and the <strong>facet guards</strong>
+                  </li>
+                  <li>Discovery rules; pagination and category walking</li>
+                  <li>Unknown pages recorded with a reason</li>
+                  <li>Asset enqueue with backpressure</li>
+                </ul>
+                <p class="gate">
+                  <b>Gate:</b> a category seed yields the full product set
+                  without leaving the site or exploding on facets.
+                </p>
+              </div>
+
+              <div class="ph ui" data-ph="3" tabindex="0">
+                <div class="hd">
+                  <span class="n">PHASE 3</span>
+                  <h4>API, UI and review</h4>
+                </div>
+                <ul class="tight">
+                  <li>
+                    Crawler API · BFF ·
+                    <strong
+                      >SSE with
+                      <span class="mono">Last-Event-ID</span> backfill</strong
+                    >
+                  </li>
+                  <li>
+                    <strong>3.9 — the component set, before any screen</strong>
+                  </li>
+                  <li>
+                    Screens
+                    <strong
+                      >1 Domains · 2 Domain detail · 3 Seeds · 4 Template review
+                      · 6 Run monitor · 7 Runs history · 8 Products</strong
+                    >
+                  </li>
+                  <li>
+                    Screen 4 ships <strong>Preview mode only</strong>; Select
+                    and Skeleton are disabled segments
+                  </li>
+                  <li>
+                    Screen <strong>11 Schedules</strong> — spec 011's fire loop
+                    made visible
+                  </li>
+                </ul>
+                <p class="gate">
+                  <b>Gate:</b> seed → crawled data entirely through the UI.
+                  Close the laptop mid-run and reopen: no gap.
+                </p>
+              </div>
+
+              <div class="ph ui" data-ph="4" tabindex="0">
+                <div class="hd">
+                  <span class="n">PHASE 4</span>
+                  <h4>Model proposals and chat authoring</h4>
+                </div>
+                <ul class="tight">
+                  <li>
+                    <span class="mono">llama-server</span> on the host;
+                    <strong>best-of-N ranked by verification</strong>
+                  </li>
+                  <li>
+                    Screens <strong>5 Unknown pages · 10 Authoring chat</strong>
+                  </li>
+                  <li>DOM-skeleton mode in the review screen's left pane</li>
+                </ul>
+                <p class="gate">
+                  <b>Gate:</b> a new domain reaches an approved template with no
+                  selector written by hand.
+                </p>
+              </div>
+
+              <div class="ph ui" data-ph="5" tabindex="0">
+                <div class="hd">
+                  <span class="n">PHASE 5</span>
+                  <h4>Assets, reports, hardening</h4>
+                </div>
+                <ul class="tight">
+                  <li>Asset pipeline with dedup</li>
+                  <li>Screen <strong>9 Reports</strong></li>
+                  <li>Coverage numbers and the hardening pass</li>
+                </ul>
+                <p class="gate">
+                  <b>Gate:</b> a full run produces images, reports and a
+                  coverage number.
+                </p>
+              </div>
+
+              <div class="ph ui" data-ph="6" tabindex="0">
+                <div class="hd">
+                  <span class="n">PHASE 6</span>
+                  <h4>Visual playground</h4>
+                </div>
+                <ul class="tight">
+                  <li>
+                    <span class="mono">POST /inspect</span> on the sidecar —
+                    screenshot plus geometry
+                  </li>
+                  <li>
+                    Screen 4's <strong>Select mode</strong> (registry
+                    <span class="mono">4·S</span>) and
+                    <strong>Skeleton mode</strong> (<span class="mono">4·K</span
+                    >)
+                  </li>
+                  <li>
+                    Ancestor walk on <span class="mono">[</span> /
+                    <span class="mono">]</span>; every match highlighted
+                  </li>
+                  <li>
+                    <span class="mono">reveal</span> steps, with every bound
+                    enforced
+                  </li>
+                </ul>
+                <p class="gate">
+                  <b>Gate:</b> a template authored entirely by clicking,
+                  indistinguishable from a hand-written one.
+                </p>
+              </div>
+
+              <div class="ph gap-row" data-ph="7" tabindex="0">
+                <div class="hd">
+                  <span class="n">READING IT</span>
+                  <h4>Where each screen is drawn</h4>
+                </div>
+                <ul class="tight">
+                  <li>
+                    <span class="mono">SCREENS.md</span> —
+                    <strong>the registry.</strong> Node id, mockup, spec and
+                    task per screen. The only place screens are counted
+                  </li>
+                  <li>
+                    <span class="mono">UI_STATES.md</span> — which states must
+                    exist
+                  </li>
+                  <li>
+                    <span class="mono">COMPONENTS.md</span> — 42 components,
+                    1,542 instances, and the
+                    <strong>ten the frames still hand-draw</strong>
+                  </li>
+                  <li>Figma decides what a state looks like (ADR-0031)</li>
+                </ul>
+                <p class="gate">
+                  <b>Cardinal rule (ADR-0032):</b> anything above a primitive is
+                  a component, and a screen frame is a composition of instances.
+                  Ten hand-drawn leftovers remain in screens 1–10.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="slide-foot">
+            <span>The build</span><span class="spacer"></span
+            ><span class="ref">BUILD_PLAN.md · SCREENS.md</span>
+          </div>
+          <aside class="notes">
+            Workflow mode: press <span class="mono">w</span> to walk the phases
+            one at a time, which is the version to use when presenting. The
+            printed deck shows all eight panels at once. Two points worth making
+            aloud: the UI does not start until phase 3 — everything before it is
+            a crawler you drive from YAML and a test suite — and two thirds of
+            the plan needs no model at all, because phases 0–3 run on a fake
+            <span class="mono">LLMClient</span>. Screen 4 is built three times:
+            Preview in phase 3, skeleton groundwork in 4, Select and Skeleton in
+            6.
+          </aside>
+        </section>
+
         <!-- ========================================================= 16 · close === -->
         <section class="slide" data-title="Where to start">
           <p class="kicker">If you want to work on this</p>
@@ -2666,7 +3002,7 @@ elements
                     matrix
                   </li>
                   <li>
-                    21 ADRs, each with its stated cost. Disagree in a new one
+                    32 ADRs, each with its stated cost. Disagree in a new one
                     rather than quietly working around it
                   </li>
                 </ul>
@@ -2699,6 +3035,7 @@ elements
 
     <div id="hud">
       <button id="btn-grid" title="Overview (o)">Overview</button>
+      <button id="btn-flow" title="Walk the build phases (w)">Phases</button>
       <button id="btn-notes" title="Presenter notes (p)">Notes</button>
       <button id="btn-theme" title="Toggle theme (t)">Theme</button>
       <span
@@ -2751,6 +3088,7 @@ elements
               history.replaceState(null, "", "?s=" + (i + 1));
             } catch (e) {}
           }
+          if (typeof phReset === "function" && i !== phSlideIndex) phReset();
           fit();
         }
 
@@ -2793,6 +3131,62 @@ elements
           } catch (e) {}
         };
 
+        /* ---- workflow mode on the phase slide ----
+           `w` walks the phases one at a time; the printed deck shows them all,
+           so this is presentation sugar and never the only way to read it. */
+        var phases = document.getElementById("phases");
+        var phCards = phases
+          ? [].slice.call(phases.querySelectorAll(".ph"))
+          : [];
+        var phSlideIndex = phases
+          ? slides.indexOf(phases.closest(".slide"))
+          : -1;
+        var phFocus = -1;
+
+        function phRender() {
+          if (!phases) return;
+          phases.classList.toggle("focusing", phFocus >= 0);
+          phCards.forEach(function (c, j) {
+            c.classList.toggle("focus", j === phFocus);
+          });
+        }
+
+        function phReset() {
+          if (phFocus !== -1) {
+            phFocus = -1;
+            phRender();
+          }
+        }
+
+        function phStep() {
+          if (!phases) return;
+          if (i !== phSlideIndex) {
+            show(phSlideIndex);
+            phFocus = 0;
+          } else {
+            phFocus = phFocus + 1;
+            if (phFocus >= phCards.length) phFocus = -1;
+          }
+          phRender();
+        }
+
+        phCards.forEach(function (c, j) {
+          function pick() {
+            phFocus = phFocus === j ? -1 : j;
+            phRender();
+          }
+          c.onclick = pick;
+          c.onkeydown = function (e) {
+            if (e.key === "Enter") {
+              pick();
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          };
+        });
+
+        document.getElementById("btn-flow").onclick = phStep;
+
         addEventListener("keydown", function (e) {
           if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
             show(i + 1);
@@ -2802,11 +3196,18 @@ elements
             e.preventDefault();
           } else if (e.key === "Home") show(0);
           else if (e.key === "End") show(slides.length - 1);
-          else if (e.key === "o" || e.key === "O") grid.classList.toggle("on");
+          else if (e.key === "w" || e.key === "W") {
+            phStep();
+            e.preventDefault();
+          } else if (e.key === "o" || e.key === "O")
+            grid.classList.toggle("on");
           else if (e.key === "p" || e.key === "P") toggleNotes();
           else if (e.key === "t" || e.key === "T")
             document.getElementById("btn-theme").click();
-          else if (e.key === "Escape") grid.classList.remove("on");
+          else if (e.key === "Escape") {
+            grid.classList.remove("on");
+            phReset();
+          }
         });
 
         /* Click to advance, but never swallow a click on a link. */

@@ -138,7 +138,7 @@ on them.
 | `spydra-planner`    | reading the spec, writing `.tasks/<branch>.md`, declaring file ownership | implementer  |
 | `spydra-backend`    | Python — domain, ports, adapters, scheduler, API                         | test-writer  |
 | `spydra-bff`        | Fastify, Drizzle, the `ui` schema                                        | test-writer  |
-| `spydra-frontend`   | React, components, screens, matching the mockups                         | test-writer  |
+| `spydra-frontend`   | React, components, screens, matching the Figma frames                    | test-writer  |
 | `spydra-test`       | tests that fail without the change; fixtures; no production code         | reviewer     |
 | `spydra-reviewer`   | the diff against the spec and the ADRs. **Read-only**                    | integrator   |
 | `spydra-integrator` | `make check`, the PR, conflict resolution                                | the human    |

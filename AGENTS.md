@@ -27,24 +27,62 @@ scaling. Do not add them.
 
 ## Read before writing code
 
-| Doc                                         | When                                                                     |
-| ------------------------------------------- | ------------------------------------------------------------------------ |
-| `docs/specs/010-service-topology.md`        | **First.** Six services, routing, who owns which data.                   |
-| `docs/ARCHITECTURE.md`                      | Always. Why the system is shaped this way.                               |
-| `docs/BUILD_PLAN.md`                        | Always. Tells you which phase you are in and what "done" means.          |
-| `docs/adr/`                                 | Before changing any structural decision.                                 |
-| `docs/specs/`                               | Before implementing a component. One spec per component.                 |
-| `docs/DEVELOPMENT.md`                       | Before running anything.                                                 |
-| `docs/DESIGN_SYSTEM.md` + `design/mockups/` | Before writing any UI.                                                   |
-| `docs/UI_STATES.md`                         | Before writing any UI. Which states exist, per component and per screen. |
+| Doc                                  | When                                                                         |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
+| `docs/specs/010-service-topology.md` | **First.** Six services, routing, who owns which data.                       |
+| `docs/ARCHITECTURE.md`               | Always. Why the system is shaped this way.                                   |
+| `docs/BUILD_PLAN.md`                 | Always. Tells you which phase you are in and what "done" means.              |
+| `docs/adr/`                          | Before changing any structural decision.                                     |
+| `docs/specs/`                        | Before implementing a component. One spec per component.                     |
+| `docs/DEVELOPMENT.md`                | Before running anything.                                                     |
+| `docs/SCREENS.md`                    | Before any UI work. The screen registry — what exists and where it is drawn. |
+| `docs/UI_STATES.md`                  | Before writing any UI. Which states exist, per component and per screen.     |
+| `docs/COMPONENTS.md`                 | Before building a component. What exists in Figma and what it is used by.    |
+| `docs/DESIGN_SYSTEM.md`              | Before writing any UI. Tokens, and the one rule.                             |
 
-**The UI specification is two files, and they do not overlap** (ADR-0025).
-`design/mockups/` is authoritative for layout, spacing, typography and colour
-— static HTML, opens from disk, accurate; build the React components to match
-it, not your own idea of the layout. `docs/UI_STATES.md` is authoritative for
-**which states exist** and what each must not do. Every mockup is drawn
-populated, so a component built from one alone is complete in exactly one of
-its four mandatory states. Where the two disagree, `UI_STATES.md` wins.
+**The UI specification is three artifacts, one axis each** (ADR-0031,
+extending ADR-0025). They do not overlap.
+
+1. **`docs/SCREENS.md` is the screen registry** — the single source of truth
+   for which screens exist, how many, and where each is drawn. Nothing else
+   enumerates screens. **Eleven screens · twelve top-level layouts · 62
+   frames.** If you are counting screens, you are reading the wrong file; read
+   the table.
+2. **The Figma file is authoritative for what every state looks like** —
+   layout, spacing, typography and colour, in all states. File
+   `GeJPFXY4CicHBdzLMyXG2E`, page `🖥 Screens` (`3:139`). Node ids per screen
+   are in the registry.
+3. **`docs/UI_STATES.md` is authoritative for which states must exist** and
+   what each must not do.
+
+`design/mockups/` is a **runnable reference, not an authority**: real tokens in
+a real browser with no Figma account, but one state of eleven. **Where it and
+Figma disagree, Figma wins.** Where Figma and `UI_STATES.md` disagree about
+whether a state should exist at all, `UI_STATES.md` wins.
+
+**Never inventory the Figma file with a bare `get_metadata`.** It reports only
+the pages loaded in the operator's editor and has answered "two pages" and
+"four pages" to the same file minutes apart. Enumerate with
+`figma.root.children` through `use_figma`, then query per page. ADR-0031 §7.
+
+**Cardinal rule — anything above a primitive is a component** (ADR-0032). In
+Figma, a screen frame is a **composition of instances**: if an element has
+state, variants, repetition, or an identity you would name, it is a component
+on the `🧩 Components` page and the frame holds an instance. Primitives are
+layout containers, text nodes and page scaffolding — that list is closed.
+Every component carries the properties its content needs; one with only
+`VARIANT` properties and no `TEXT` property is incomplete, because it forces
+the hand-drawing this rule prohibits. **No component hard-codes which of its
+children is active** — that is a property, which is why the sidebar has
+`Active=` and the topbar has `Breadcrumb`.
+
+**A hand-drawn element that duplicates a component is a review finding.** Ten
+remain in screens 1–10 (`docs/COMPONENTS.md` §2); screen 11 Schedules is the
+worked example and contains none. **Build from the component.**
+
+**Adding a text property to a component can silently reset existing instance
+overrides** — it reset 5 of 300. Capture a baseline of the affected instances
+before the change and compare after. Procedure, not advice.
 
 ---
 
@@ -260,14 +298,15 @@ frontend/
      api/           # generated types + typed client. Do not hand-edit types.
                     #   schema.crawler.d.ts · schema.ui.d.ts
      components/    # design-system components; one per DESIGN_SYSTEM.md entry
-     views/         # one per screen in docs/SCREENS.md
+     views/         # one per screen in docs/SCREENS.md (the registry)
      hooks/
      lib/
      styles/        # theme.css → imports tokens + tailwind-theme
   tests/
 docs/
   agents/          # agent roles — CANONICAL. Edit here, then `make agents`
-design/            # tokens, logo, mockups. Treat as read-only reference.
+design/            # tokens, logo, mockups. Read-only reference; the mockups
+                    #   are NOT authoritative for layout (ADR-0031).
 docker/            # Dockerfiles + Caddyfile
 scripts/
   gen-agents.py    # docs/agents/ → the four tool formats. Stdlib only
@@ -334,7 +373,9 @@ A task is done when all of these hold:
 - [ ] `make generated` produces no diff, and no generated file was hand-edited.
 - [ ] It is on a branch, reviewed by an agent that did not write it, and the
       task file's handoff log is current (`docs/WORKFLOW.md`).
-- [ ] If it touched the UI, it matches the mockup and works in both themes.
+- [ ] If it touched the UI, it matches its Figma frame (node id in
+      `docs/SCREENS.md`), covers every state `docs/UI_STATES.md` requires of
+      it, and works in both themes.
 - [ ] If it changed a structural decision, there is an ADR.
 - [ ] `docs/BUILD_PLAN.md` has the task ticked.
 

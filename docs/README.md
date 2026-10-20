@@ -22,19 +22,26 @@ Start with [`../AGENTS.md`](../AGENTS.md) — the operating rules — then
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Why the system is shaped this way. Intent; the specs hold the exact shapes. |
 
 | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Tokens, typography, components, anti-patterns. |
-| [`SCREENS.md`](SCREENS.md) | What each of the ten screens is for. |
+| [`SCREENS.md`](SCREENS.md) | **The screen registry** — which screens exist, how many, and where each is drawn. The single source of truth for screen identity (ADR-0031). Then what each is for. |
 | [`UI_STATES.md`](UI_STATES.md) | The state matrix — which states every component and screen has. Binding on phase 3 (ADR-0025). |
+| [`COMPONENTS.md`](COMPONENTS.md) | The component catalog, read from Figma: what exists, what uses it, and what §3 still asks for. |
 | [`BRAND.md`](BRAND.md) | Logo construction, variants, usage. |
 | [`deck/index.html`](deck/index.html) | **Developer briefing deck.** Sixteen slides: the problem, the five decisions worth arguing about, the screens, and where to start. Open it from disk; arrow keys, `o` for an overview, `p` for presenter notes, Cmd-P prints to PDF. |
 
-The UI specification is two files (ADR-0025): `design/mockups/` for layout,
-spacing, typography and colour — static HTML, opens from disk, accurate —
-and `UI_STATES.md` for which states exist. The mockups are populated-state
-only; build to match both.
+The UI specification is three artifacts, one axis each (ADR-0031):
+**`SCREENS.md`** for which screens exist and where each is drawn, **the Figma
+file** (`GeJPFXY4CicHBdzLMyXG2E`, page `🖥 Screens`) for what every state
+looks like, and **`UI_STATES.md`** for which states must exist. `design/mockups/`
+is a runnable reference, not an authority — populated-state only, and Figma
+wins where they disagree.
+
+**Do not inventory the Figma file with a bare `get_metadata`**: it reports only
+the pages loaded in the operator's editor, which is what caused four audit
+passes to reach four different screen counts (ADR-0031 §Context).
 
 ## Decisions
 
-[`adr/`](adr/README.md) — twenty-four records. Read the relevant one before
+[`adr/`](adr/README.md) — thirty-two records. Read the relevant one before
 changing anything structural. Each states its cost.
 
 The four most likely to be questioned, and most likely to be wrong to change:

@@ -6,8 +6,19 @@ get invented during implementation. This file enumerates them once so the
 Figma frames, the React components and the phase 3 acceptance criteria all
 read the same list.
 
-Read with [`SCREENS.md`](SCREENS.md) (what each screen is for) and
-[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) (tokens and the one rule).
+Read with [`SCREENS.md`](SCREENS.md) — **the screen registry**, which is the
+single source of truth for which screens exist and where each is drawn
+(ADR-0031) — [`COMPONENTS.md`](COMPONENTS.md) for what the Figma library
+actually contains, and [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) for tokens.
+
+**This file says which states must exist; the Figma file says what they look
+like.** All 56 frames on page `🖥 Screens` are drawn and they match §1
+exactly. §4's additional per-screen states are _not_ separate frames.
+
+**Counting note.** §4's table has ten rows because there are ten screens.
+Figma and `design/mockups/` each carry eleven top-level layouts, because
+screen 4's Select mode gets its own artifact in both. That is not an eleventh
+screen and not a missing row — see the registry.
 
 ---
 
@@ -27,11 +38,16 @@ empty_ ("you have not added a domain yet") offers the primary action and
 explains the concept. _Filtered empty_ ("no domains match `broken` +
 `never crawled`") offers to clear the filter and must never offer to create
 anything, because the data exists and the filter is hiding it. Screens 1, 5,
-7 and 8 need both; the rest need only one.
+7, 8 and 11 need both; the rest need only one.
+
+**These are properties, not a closed list.** A screen that filters needs both
+sub-cases whether or not its number appears above — screen 11 was added to
+the list by applying the rule, not by amending it.
 
 **Partial is a fifth state on anything that aggregates.** A six-counter strip
 where one counter's query timed out shows five numbers and one dash with a
-tooltip, not a whole-screen error. Screens 1, 6, 7 and 9.
+tooltip, not a whole-screen error. Screens 1, 6, 7, 9 and 11 — anything with
+a counter strip, by the same reading as above.
 
 ## 2. Tokens this requires
 
@@ -72,23 +88,28 @@ shows it should read as "look at this", not as a neutral highlight.
 
 ## 3. Component variant matrix
 
-### 3a. The twenty that exist, and what they are missing
+### 3a. The seventeen rows that exist, and what they are missing
 
-| Component                                               | Has                   | Must add                                                                                               |
-| ------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------ |
-| Button                                                  | 4 styles × 2 sizes    | `State=` default · hover · active · focus · disabled · **loading** (spinner, label held, width frozen) |
-| Input                                                   | one state             | focus · error · disabled · readonly · with-prefix · with-clear                                         |
-| Card                                                    | one state             | hover · selected · **as-skeleton**                                                                     |
-| Tag                                                     | one state             | removable · disabled                                                                                   |
-| Progress bar                                            | one state             | determinate · **stacked** (run monitor) · indeterminate · complete · failed                            |
-| Tab                                                     | selected, default     | hover · disabled · with-count-badge                                                                    |
-| State pill                                              | 6 lifecycle           | — (complete; do not add a seventh without a schema change)                                             |
-| Metric tile                                             | 3 tones               | `State=` loaded · loading · **unavailable** (the partial case)                                         |
-| Banner                                                  | 3 tones               | dismissible · with-action                                                                              |
-| Selector field                                          | default/warning/error | resolving · disabled · **no-match** (distinct from error: the selector is valid and matched nothing)   |
-| Confidence · Validation badge · Sample cell · Sparkline | complete              | `State=pending` on Sample cell and Sparkline, for before the sample resolves                           |
-| Sidebar · Topbar                                        | one state             | Sidebar: expanded · collapsed. Topbar: default · with-breadcrumb                                       |
-| Logo set                                                | 4                     | —                                                                                                      |
+These seventeen rows are twenty Figma components — the row "Logo set" is four
+and "Sidebar · Topbar" is two. Both counts appear in this file and both are
+right; `COMPONENTS.md` §3 reconciles them, and **four of the seventeen are
+now complete**.
+
+| Component                                               | Has                                         | Must add                                                                                                                                                      |
+| ------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Button                                                  | 4 styles × 2 sizes                          | `State=` default · hover · active · focus · disabled · **loading** (spinner, label held, width frozen)                                                        |
+| Input                                                   | one state                                   | focus · error · disabled · readonly · with-prefix · with-clear                                                                                                |
+| Card                                                    | one state                                   | hover · selected · **as-skeleton**                                                                                                                            |
+| Tag                                                     | one state                                   | removable · disabled                                                                                                                                          |
+| Progress bar                                            | one state                                   | determinate · **stacked** (run monitor) · indeterminate · complete · failed                                                                                   |
+| Tab                                                     | selected, default                           | hover · disabled · with-count-badge                                                                                                                           |
+| State pill                                              | 6 lifecycle                                 | — (complete; do not add a seventh without a schema change)                                                                                                    |
+| Metric tile                                             | 3 tones                                     | `State=` loaded · loading · **unavailable** (the partial case)                                                                                                |
+| Banner                                                  | 3 tones                                     | dismissible · with-action                                                                                                                                     |
+| Selector field                                          | default/warning/error                       | resolving · disabled · **no-match** (distinct from error: the selector is valid and matched nothing)                                                          |
+| Confidence · Validation badge · Sample cell · Sparkline | complete                                    | `State=pending` on Sample cell and Sparkline, for before the sample resolves                                                                                  |
+| Sidebar · Topbar                                        | Sidebar `Active=` ×10 · Topbar `Breadcrumb` | Sidebar: expanded · collapsed. Topbar: with-search-focus. **The active row and the breadcrumb are now properties** — hard-coding either is an ADR-0032 defect |
+| Logo set                                                | 4                                           | —                                                                                                                                                             |
 
 **`Button/State=loading` freezes its own width.** A button that shrinks to
 fit a spinner moves everything beside it, and the one place this matters most
@@ -187,6 +208,7 @@ does. These are the ones that get missed.
 | **8 Products**        | table view · card view · no images · product detail with one observation (no history to chart) · price history with a template-version change marked                                                                                                                                                                                                                                                                                                         |
 | **9 Reports**         | each report loading · report with no rows in range · export generating · export failed                                                                                                                                                                                                                                                                                                                                                                       |
 | **10 Authoring chat** | idle (no URLs yet) · fetching · streaming reply · **refusal** (over the 5-page limit, another domain, asking for a run) · draft partially verified · draft complete · open-in-review handoff                                                                                                                                                                                                                                                                 |
+| **11 Schedules**      | filtered-empty · partial-counters (the skip counter is the one that fails) · schedule with a dead domain reference · cron invalid on edit · fire history empty · run-now submitting                                                                                                                                                                                                                                                                          |
 
 **Screen 6's reconnecting state is the one to get right.** The browser will
 sleep, SSE will drop, and the difference between "reconnecting, backfilling
