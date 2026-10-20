@@ -1,6 +1,13 @@
 # 008 — Asset pipeline
 
-**Phase 5** · depends on 002, 003 · ADR-0003
+**Phase 5**, except step 1 · depends on 002, 003 · ADR-0003
+
+**Step 1 of §1 ships in phase 1** (`1.12`), because enqueueing without
+blocking is scheduler behaviour and spec 002 §7's backpressure is meaningless
+without rows to count. Everything that _drains_ the queue — the pool, the
+`AssetGate`, the fetch, the resize, the `AssetStore` — is phase 5 (`5.2`).
+Nothing drains `asset_queue` before then, which is expected rather than a
+bug.
 
 Resize on download, discard originals, deduplicate by content hash.
 
@@ -37,14 +44,14 @@ lookup.
 
 ## 2. Limits and safety
 
-| Guard | Value | Why |
-| --- | --- | --- |
-| Max download | 20 MB | A mis-selected `<a href>` to a PDF or video |
-| Content-type allowlist | `image/*` only | Verify the **bytes**, not the header |
-| Max dimensions | 10,000 px either side | Decompression bombs |
-| `Image.MAX_IMAGE_PIXELS` | set explicitly | Pillow's own bomb guard |
-| Timeout | 30 s | |
-| Attempts | 3, then `failed` | |
+| Guard                    | Value                 | Why                                         |
+| ------------------------ | --------------------- | ------------------------------------------- |
+| Max download             | 20 MB                 | A mis-selected `<a href>` to a PDF or video |
+| Content-type allowlist   | `image/*` only        | Verify the **bytes**, not the header        |
+| Max dimensions           | 10,000 px either side | Decompression bombs                         |
+| `Image.MAX_IMAGE_PIXELS` | set explicitly        | Pillow's own bomb guard                     |
+| Timeout                  | 30 s                  |                                             |
+| Attempts                 | 3, then `failed`      |                                             |
 
 Verify the real format by sniffing bytes. A `Content-Type: image/jpeg` on an
 HTML error page is common and must not reach Pillow as trusted input.
@@ -56,7 +63,7 @@ Image hosts are usually a CDN on a different host from the page
 `asset_concurrency` (default 5) with a 200 ms gap — **not** by the page
 domain's gate.
 
-If the asset host *is* the page host, the same loose asset limit still
+If the asset host _is_ the page host, the same loose asset limit still
 applies. This is deliberate: an image is a static byte range costing the
 origin almost nothing, and six concurrent fetches is what a real browser does
 (ADR-0003).

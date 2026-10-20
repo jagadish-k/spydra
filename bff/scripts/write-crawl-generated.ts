@@ -83,7 +83,7 @@ export function withBytea(source: string): string {
 // Normalisation — the reason this artifact can be diffed at all.
 //
 // drizzle-kit's introspection is a function of the DATABASE, not of the
-// schema, in two ways that both broke CI (phase-1 finding F16):
+// schema, in two ways that both broke CI:
 //
 //  1. **Declaration order follows the catalog, i.e. OID order**, which is an
 //     artifact of each database's history. `domains` came out second on a

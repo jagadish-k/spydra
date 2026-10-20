@@ -3,8 +3,8 @@
 // worthless unless the generator is a function of the SCHEMA alone — and
 // drizzle-kit's introspection is not: it is a function of the database.
 //
-// Phase-1 finding F16, and it failed CI rather than anything local. These
-// tests are the regression guard; ADR-0029 is the reasoning.
+// It failed CI while the same command was green locally. These tests are
+// the regression guard; ADR-0029 is the reasoning.
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -53,7 +53,7 @@ export const domainsInCrawl = crawl.table("domains", {
 
 test("makes two databases of the same schema produce one artifact", () => {
   // The whole point. Without this, `make check` fails for anyone whose
-  // database has a different history — which is how F16 presented: green
+  // database has a different history — which is how it presented: green
   // on a well-used dev volume, red in CI on a fresh one.
   assert.equal(normalize(FROM_A), normalize(FROM_B));
 });

@@ -56,14 +56,14 @@ for lxml only if XPath is genuinely needed.
 
 **Transforms** are small pure functions, composed in order:
 
-| Transform | Behaviour |
-| --- | --- |
-| `trim` | collapse whitespace, strip |
+| Transform        | Behaviour                                                     |
+| ---------------- | ------------------------------------------------------------- |
+| `trim`           | collapse whitespace, strip                                    |
 | `strip_currency` | remove symbol and thousands separators, keep sign and decimal |
-| `parse_decimal` | to `Decimal`; fails loudly on ambiguity |
-| `absolute_url` | resolve against the page URL |
-| `first` / `all` | cardinality |
-| `pairs(th, td)` | a spec table to a key/value mapping for JSONB |
+| `parse_decimal`  | to `Decimal`; fails loudly on ambiguity                       |
+| `absolute_url`   | resolve against the page URL                                  |
+| `first` / `all`  | cardinality                                                   |
+| `pairs(th, td)`  | a spec table to a key/value mapping for JSONB                 |
 
 Currency detection: symbol first, then the page's declared currency, then the
 domain default. A price without a determinable currency is a **validation
@@ -74,14 +74,14 @@ failure**, not a guess.
 Every extracted field is checked at crawl time. Validation never raises — it
 records.
 
-| Rule | Passes when |
-| --- | --- |
-| `non_empty` | after trim, length > 0 |
-| `currency` | parses to a Decimal and has a 3-letter currency |
-| `url` | absolute, http(s) |
-| `integer`, `date` | parses |
-| `min_count(n)` | a `many` field yielded at least n |
-| `matches(re)` | matches the pattern |
+| Rule              | Passes when                                     |
+| ----------------- | ----------------------------------------------- |
+| `non_empty`       | after trim, length > 0                          |
+| `currency`        | parses to a Decimal and has a 3-letter currency |
+| `url`             | absolute, http(s)                               |
+| `integer`, `date` | parses                                          |
+| `min_count(n)`    | a `many` field yielded at least n               |
+| `matches(re)`     | matches the pattern                             |
 
 Results land in `page_observations.validation` as
 `{field: {"rule": "currency", "ok": false, "saw": "POA"}}`.
@@ -101,6 +101,21 @@ Results land in `page_observations.validation` as
   domain moves to `broken` and **crawling stops for it mid-run**. Carrying on
   and recording thousands of empty extractions is how a redesign quietly
   corrupts a dataset.
+
+  **Only pages with a prior non-empty observation count toward that 20%**
+  ([ADR-0030](../adr/0030-empty-needs-a-prior.md)). A regression is a
+  _change_, and a page that never yielded anything cannot have changed — so a
+  soft 404 (HTTP 200, "product not found", no content) is reported in the
+  inbox and excluded from the threshold. Without that exclusion a catalogue
+  with more than 20% dead links halts itself on every run and reports a
+  redesign that never happened, and dead links are ordinary.
+
+- **A FIRST run with more than 20% empty → `awaiting_approval`, not
+  `broken`.** Nothing has a prior observation, so no page can evidence a
+  regression; what the run shows is that the template never worked — approved
+  against a few samples, met the real catalogue. `broken` means "this used to
+  work", and sending it there would hide the actual problem behind the wrong
+  state (ADR-0030).
 
   Read ADR-0027 before re-attaching this threshold to per-field validation.
   Counted that way it never fires, because nothing is required — and a
@@ -138,9 +153,15 @@ If the hash matches the previous observation, write a lightweight row
       `page_observations.validation`, writes the observation, and does
       **not** route to `unknown_pages` or halt the domain (ADR-0027).
 - [ ] A template declaring `required: true` is **rejected** by the loader
-      rather than ignored (ADR-0027, BUILD_PLAN 1.12).
-- [ ] 21% of a domain's pages yielding `empty_extraction` moves it to
-      `broken` and halts it; 19% does not.
+      rather than ignored (ADR-0027, BUILD_PLAN 1.14).
+- [ ] 21% of a domain's pages yielding `empty_extraction` **where each had a
+      prior non-empty observation** moves the domain to `broken` and halts
+      it; 19% does not.
+- [ ] A page that has never extracted anything is reported as
+      `empty_extraction` and does **not** count toward the threshold, so a
+      domain whose links are 50% dead keeps crawling (ADR-0030).
+- [ ] A first run with 21% empty moves the domain to `awaiting_approval`
+      rather than `broken`.
 - [ ] Re-extracting an unchanged page produces an identical `content_hash`.
 - [ ] A price of "POA" is a validation failure, not `0.00`.
 - [ ] Transform chains are unit-tested against a table of fixtures, including

@@ -23,18 +23,18 @@ is added, the only change is that the PR becomes a real one instead of a
 type/NN-slug          phase/task number + what it does
 ```
 
-| Prefix | For | Example |
-| --- | --- | --- |
-| `feat/` | a build-plan task | `feat/1.5-postgres-frontier` |
-| `fix/` | a defect | `fix/sse-buffering-through-edge` |
-| `chore/` | tooling, deps, CI | `chore/0.2-makefile` |
-| `docs/` | docs and ADRs only | `docs/adr-0023-asset-dedupe` |
+| Prefix   | For                         | Example                          |
+| -------- | --------------------------- | -------------------------------- |
+| `feat/`  | a build-plan task           | `feat/1.8-postgres-frontier`     |
+| `fix/`   | a defect                    | `fix/sse-buffering-through-edge` |
+| `chore/` | tooling, deps, CI           | `chore/0.2-makefile`             |
+| `docs/`  | docs and ADRs only          | `docs/adr-0023-asset-dedupe`     |
 | `spike/` | throwaway. **Never merged** | `spike/drizzle-crawl-introspect` |
 
 **One build-plan task per branch.** If a task turns out to be three tasks, it
 was three tasks — split it and say so in the PR rather than growing the branch.
 
-**Commits:** imperative subject under 72 characters, body explaining *why* when
+**Commits:** imperative subject under 72 characters, body explaining _why_ when
 the change is not obvious. Reference the task: `feat: claim query with SKIP
 LOCKED (1.5)`.
 
@@ -43,11 +43,11 @@ LOCKED (1.5)`.
 A full build on every commit is too slow to live with, and no gate at all is
 how `develop` breaks. So the work is split by how long it takes:
 
-| Gate | Runs | Time budget | What it does |
-| --- | --- | --- | --- |
-| **pre-commit** | every commit | **< 10 s** | format staged files, lint them, typecheck the changed package |
-| **pre-push** | every push | < 3 min | `make check` — lint, types, the full suite, generated-file drift |
-| **CI** | every PR | — | `make check` again, on a clean checkout, plus `make migrate-down` |
+| Gate           | Runs         | Time budget | What it does                                                      |
+| -------------- | ------------ | ----------- | ----------------------------------------------------------------- |
+| **pre-commit** | every commit | **< 10 s**  | format staged files, lint them, typecheck the changed package     |
+| **pre-push**   | every push   | < 3 min     | `make check` — lint, types, the full suite, generated-file drift  |
+| **CI**         | every PR     | —           | `make check` again, on a clean checkout, plus `make migrate-down` |
 
 CI repeats pre-push deliberately. A hook can be skipped; CI cannot, and the
 hook exists to save you the round trip, not to be the authority.
@@ -79,7 +79,7 @@ Formatters run with `--fix`/`--write` and **re-stage what they changed**, so a
 formatting-only failure never blocks a commit — it fixes it. Lint errors that
 need judgement do block.
 
-### What pre-commit does *not* run
+### What pre-commit does _not_ run
 
 Tests, Docker builds, `make check`. "Ensure the code is buildable before
 commit" is the right instinct aimed at the wrong hook: a typecheck catches
@@ -133,16 +133,16 @@ every clone. A tool's own hooks — the Claude Code `PreToolUse` guard on
 generated files, for instance — catch a mistake earlier, but nothing depends
 on them.
 
-| Agent | Owns | Hands off to |
-| --- | --- | --- |
-| `spydra-planner` | reading the spec, writing `.tasks/<branch>.md`, declaring file ownership | implementer |
-| `spydra-backend` | Python — domain, ports, adapters, scheduler, API | test-writer |
-| `spydra-bff` | Fastify, Drizzle, the `ui` schema | test-writer |
-| `spydra-frontend` | React, components, screens, matching the mockups | test-writer |
-| `spydra-test` | tests that fail without the change; fixtures; no production code | reviewer |
-| `spydra-reviewer` | the diff against the spec and the ADRs. **Read-only** | integrator |
-| `spydra-integrator` | `make check`, the PR, conflict resolution | the human |
-| `spydra-ops` | Docker, compose, the Makefile, Caddyfile, hooks, CI, deps | test-writer |
+| Agent               | Owns                                                                     | Hands off to |
+| ------------------- | ------------------------------------------------------------------------ | ------------ |
+| `spydra-planner`    | reading the spec, writing `.tasks/<branch>.md`, declaring file ownership | implementer  |
+| `spydra-backend`    | Python — domain, ports, adapters, scheduler, API                         | test-writer  |
+| `spydra-bff`        | Fastify, Drizzle, the `ui` schema                                        | test-writer  |
+| `spydra-frontend`   | React, components, screens, matching the mockups                         | test-writer  |
+| `spydra-test`       | tests that fail without the change; fixtures; no production code         | reviewer     |
+| `spydra-reviewer`   | the diff against the spec and the ADRs. **Read-only**                    | integrator   |
+| `spydra-integrator` | `make check`, the PR, conflict resolution                                | the human    |
+| `spydra-ops`        | Docker, compose, the Makefile, Caddyfile, hooks, CI, deps                | test-writer  |
 
 ### The slice
 
@@ -173,8 +173,8 @@ feat/3.10-domains-screen      (frontend)
 feat/3.5-bff-schedules      (bff)
 
 # not safe — same directory
-feat/1.5-postgres-frontier   (backend, spydra/scheduler/)
-feat/1.6-politeness-gate     (backend, spydra/scheduler/)
+feat/1.8-postgres-frontier   (backend, spydra/scheduler/)
+feat/1.9-politeness-gate     (backend, spydra/scheduler/)
 ```
 
 Whatever your tool's concurrency limit is, it is not a target. The limit here
@@ -187,29 +187,33 @@ or four.
 touches it:
 
 ```markdown
-# feat/1.5-postgres-frontier
+# feat/1.8-postgres-frontier
 
-**Task:** BUILD_PLAN 1.5 · **Spec:** specs/002-scheduler.md §1–3
+**Task:** BUILD_PLAN 1.8 · **Spec:** specs/002-scheduler.md §1–3
 **ADRs that constrain this:** 0002 (postgres as queue), 0008 (ports)
 
 ## Files this slice owns
+
 - backend/spydra/ports/frontier.py
 - backend/spydra/adapters/postgres/frontier.py
 - backend/tests/adapters/test_frontier.py
 
 ## Acceptance (from the spec)
+
 - [ ] Claim is one transaction; two workers never claim the same row
 - [ ] An expired lease returns the row to `pending` and increments `attempts`
 - [ ] Three attempts moves a row to `failed`
 
 ## Handoff log
-- planner    — contract above; `in_flight` column confirmed present (spec 001 §1)
-- backend    — port + adapter done. The lease sweep is a separate query, not
-               a trigger; see the comment on why
-- test       — 11 tests. Two-worker concurrency test uses two real connections
-- reviewer   — one finding: the sweep needs an index. Fixed by backend, re-reviewed
+
+- planner — contract above; `in_flight` column confirmed present (spec 001 §1)
+- backend — port + adapter done. The lease sweep is a separate query, not
+  a trigger; see the comment on why
+- test — 11 tests. Two-worker concurrency test uses two real connections
+- reviewer — one finding: the sweep needs an index. Fixed by backend, re-reviewed
 
 ## Open questions
+
 - none
 ```
 

@@ -158,16 +158,23 @@ Pages that could not be understood. Your work queue.
 cause usually produces dozens. Group by `(domain, failure_reason, url_pattern)`
 so one fix clears the group.
 
-| Reason               | Meaning                                       | Action offered                                             |
-| -------------------- | --------------------------------------------- | ---------------------------------------------------------- |
-| `no_template`        | No template matches this URL pattern          | Propose a template                                         |
-| `validation_failed`  | Selectors resolved, values failed their rules | Open in review with this page loaded                       |
-| `fetch_error`        | Non-2xx or timeout                            | Retry, or inspect the response                             |
-| `empty_extraction`   | Selectors matched nothing at all              | Usually a redesign — diff against last working observation |
-| `llm_low_confidence` | Proposal below threshold                      | Review manually                                            |
+| Reason               | Meaning                              | Action offered                                                                                                                                                                                  |
+| -------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `no_template`        | No template matches this URL pattern | Propose a template                                                                                                                                                                              |
+| `fetch_error`        | Non-2xx or timeout                   | Retry, or inspect the response                                                                                                                                                                  |
+| `empty_extraction`   | 200, nothing resolved                | **Diff against the last working observation when there is one — that is a redesign. When there is none the page never worked: a dead link or a layout the template does not cover (ADR-0030).** |
+| `llm_low_confidence` | Proposal below threshold             | Review manually                                                                                                                                                                                 |
 
 _Row expansion_ shows the stored HTML snapshot (within its 7-day TTL), the
 template attempted, and per-field failure detail.
+
+**An `empty_extraction` row says whether the page ever worked**, because that
+is what separates a redesign from a dead link and it is the first thing the
+operator needs (ADR-0030). It is also what decides whether the page counted
+toward the domain's `broken` threshold, so the inbox and the state have to
+agree. `validation_failed` is not in this table: nothing is required, so a
+field failing its rule is recorded on the observation and routes nothing
+(ADR-0027).
 
 **Dismiss-as-not-a-product-page adds a deny pattern to the domain.** Without
 that path the same URLs reappear every run and the inbox slowly becomes noise

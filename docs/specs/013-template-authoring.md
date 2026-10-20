@@ -1,6 +1,18 @@
 # 013 — Template authoring service
 
-**Phase 4** · depends on 003, 005, 007 · ADR-0019, ADR-0020
+**Phases 3 and 4** · ADR-0019, ADR-0020
+
+| Sections  | Phase | Depends on | Built by                 |
+| --------- | ----- | ---------- | ------------------------ |
+| §1–§4     | **3** | 003, 005   | BUILD_PLAN `3.1`–`3.3`   |
+| §5        | **3** | §1–§4      | BUILD_PLAN `3.4`         |
+| §6 (chat) | **4** | §1–§4, 007 | BUILD_PLAN `4.11`–`4.12` |
+
+**The split is the point** (ADR-0019). The draft model, the vocabulary and the
+verify/merge/rank path are built in phase 3 with hand-written selectors as
+their only input, so phase 4 adds a _mode_ rather than a pipeline. Only §6
+needs the model, and only §6 depends on spec 007 — a reader doing `3.1` was
+previously told by this header that they were in phase 4 and needed an LLM.
 
 One pipeline, three front doors. This spec defines the shared draft model,
 the canonical field vocabulary, and the merge/verify/rank path every mode

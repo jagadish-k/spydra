@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Stirnlochschlüssel 30-80mm — Mertens Werkzeuge</title>
+  </head>
+  <body>
+    <!-- JS-dependent page (spec 012 §6, BUILD_PLAN 1.5 and 1.7).
+         The server sends an empty shell; the product exists only after the
+         script runs. So:
+           - HttpxFetcher gets NOTHING extractable here -> empty_extraction
+           - RenderServiceFetcher gets the product
+           - render_mode = auto must fall back and record static_fallback
+         The two assertions that matter are a pair: content present after
+         render, and ABSENT from the raw response. One without the other
+         would pass against a page that was never dynamic. -->
+    <main id="app">
+      <noscript>This catalogue needs JavaScript.</noscript>
+    </main>
+    <script>
+      // Deliberately trivial and synchronous-after-parse: the fixture is
+      // testing that a browser ran, not that we can wait out a framework.
+      document.getElementById("app").innerHTML = [
+        '<div class="produkt">',
+        '  <h1 class="produkt__name">Stirnlochschluessel 30-80mm</h1>',
+        '  <div class="produkt__preis">24,90 EUR</div>',
+        '  <div class="produkt__lager">Auf Lager</div>',
+        '  <img class="produkt__bild" src="/img/sls-30-80.jpg" alt="" />',
+        "</div>",
+      ].join("\n");
+    </script>
+  </body>
+</html>

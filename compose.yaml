@@ -76,9 +76,9 @@ services:
 
   worker:
     build: { context: ., dockerfile: docker/worker.Dockerfile }
-    # PLACEHOLDER until the worker loop arrives. Replaced by (task 1.11):
+    # PLACEHOLDER until the worker loop arrives. Replaced by (task 1.13):
     #   python -m spydra.worker
-    command: python -c "print('worker placeholder — task 1.11'); import time; time.sleep(1e9)"
+    command: python -c "print('worker placeholder — task 1.13'); import time; time.sleep(1e9)"
     environment: *py-env
     depends_on:
       db: { condition: service_healthy }

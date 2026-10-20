@@ -176,8 +176,16 @@ CREATE TABLE unknown_pages (
   id           BIGSERIAL PRIMARY KEY,
   domain_id    BIGINT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
   url          TEXT NOT NULL,
-  reason       TEXT NOT NULL,   -- 'no_template' | 'empty_extraction' | ...
-                                 -- 'validation_failed' no longer fires: ADR-0027
+  -- The authoritative list. A closed vocabulary, like domain_state:
+  --   'no_template'        no template matches this URL pattern
+  --   'empty_extraction'   200, nothing resolved. A redesign OR a soft 404;
+  --                        only pages with a prior non-empty observation
+  --                        count toward the broken threshold (ADR-0030)
+  --   'fetch_error'        non-2xx or timeout
+  --   'llm_low_confidence' proposal below threshold (phase 4)
+  -- 'validation_failed' was removed: nothing is required, so a field
+  -- failing its rule is recorded and routes nothing (ADR-0027).
+  reason       TEXT NOT NULL,
   llm_proposal JSONB,           -- selectors the model suggested
   sample_html_path TEXT,
   resolved_at  TIMESTAMPTZ,

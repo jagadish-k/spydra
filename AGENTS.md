@@ -58,10 +58,12 @@ its four mandatory states. Where the two disagree, `UI_STATES.md` wins.
    are stdlib-Python and git respectively, because the gate has to work
    before any image exists and from any tool's terminal.
 2. **Never commit secrets.** No API keys, no tokens, no credentials, no
-   `.env` files — `.env.example` only. Recorded fixture HTML from public
-   supplier pages is _not_ a secret and is required: a parser cannot be
-   tested against markup nobody has seen. The target list is recorded
-   deliberately in `docs/TARGETS.md` (BUILD_PLAN `1.3`).
+   `.env` files — `.env.example` only. Test fixtures are **hand-written**
+   HTML, not captured from anyone's site (BUILD_PLAN `1.4`): a fixture has
+   to hold still for years, and a copy of a real page goes stale, carries
+   someone else's content and tempts a test into reaching for the original.
+   `docs/TARGETS.md` records example sites for the operator to try by hand,
+   and nothing in the build depends on them.
 3. **Do not add a message broker, a cache layer, or a second datastore.**
    Postgres is the queue and the database (ADR-0002). If you think you need
    Redis, you have misread the problem — read ADR-0002 and say so.

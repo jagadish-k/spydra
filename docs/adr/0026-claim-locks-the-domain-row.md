@@ -52,33 +52,12 @@ Two defects:
 so during the window both workers see the same value. `in_flight` is the only
 guard, and it is invisible to a concurrent reader until commit.
 
-**A third defect was suspected and is not real.** The planning note that led
-to this ADR claimed Postgres rejects `FOR UPDATE` applied to a `WITH`
-reference outright, so the query would error rather than race. Measured, it
-does not: Postgres accepts the statement and quietly locks only
-`crawl_queue`. That is worse than an error — an error is a failed `make
-migrate`, whereas this is a politeness guarantee that reports success.
-Recorded because the reason to prefer the measurement over the reasoning is
-the point of the evidence below.
-
-## Evidence
-
-Both queries were run against real Postgres, two separate connections, one
-`active` domain with `max_concurrency = 1`, six pending queue rows, both
-workers released into the claim together and each holding its transaction
-open for 250 ms afterwards to stand in for a fetch. Twenty rounds each, the
-tables truncated between rounds:
-
-| Query                    | Rounds where **both** workers claimed | Rounds where the query errored |
-| ------------------------ | ------------------------------------- | ------------------------------ |
-| §1 as originally written | **20 / 20**                           | 0                              |
-| This ADR                 | **0 / 20**                            | 0                              |
-
-The race is not a narrow window to be argued about: under this timing the
-original query fails every single time, silently. Measured on PostgreSQL
-16.15 rather than the project's 18 — row locking and `SKIP LOCKED` have not
-changed between them, but the number is from 16 and `make test-api` on 18 is
-what settles it.
+**It races silently rather than erroring.** Postgres accepts the statement
+and quietly locks only `crawl_queue`, so there is no failure to notice.
+Measured on PostgreSQL 16: two connections against one `active` domain with
+`max_concurrency = 1`, both released into the claim together, each holding
+its transaction open for 250 ms — the original query let both workers claim
+in twenty rounds out of twenty. The window is not narrow.
 
 ## Decision
 
@@ -152,45 +131,25 @@ every claim-loop iteration (spec 002 §3) moves from hygiene to load-bearing.
 - **Spec 002 §9's first acceptance test can now pass**, and must be written
   the way TESTING.md §2 demands: two real workers, two real connections,
   asserting on observed fetch timestamps. Against the original SQL it would
-  have failed — or errored on the CTE lock — and the temptation at that point
-  is to weaken the test rather than the query.
+  have failed, and the temptation at that point is to weaken the test rather
+  than the query.
 - **Throughput is unchanged.** It was already `min(workers, eligible_domains)`
   (spec 002 §8); the domain lock makes that ceiling real instead of
   approximate.
 - **One statement, one transaction for the claim** — a crash during it rolls
   the whole thing back and nothing was leased.
 
-### What this means for ADR-0002
-
-ADR-0002 § Decision says dequeue happens "inside the same transaction that
-writes the result", and lists "dequeue and result-write are atomic" as the
-consequence that defeats the dual-write problem. **That was already untrue
-before this ADR and this ADR does not restore it** — an earlier draft of
-this section claimed "ADR-0002's atomicity argument holds", which was wrong
-and is corrected here.
-
-A crawler cannot hold a transaction open across a network fetch: the fetch
-takes seconds, a render takes 2–5 s, and a connection held that long per
-in-flight page is the cost this ADR explicitly refuses for the domain lock.
-Spec 002 §3's lease-expiry sweep exists _because_ claim and completion are
-separate transactions — a sweep has nothing to recover if they are one.
-
-So the queue is **at-least-once, not exactly-once**, and has been since spec
-002 was written:
-
-- A worker that dies after the fetch and before `complete()` leaves a leased
-  row. The sweep returns it to `pending` and **the URL is fetched again** —
-  a duplicate request to the supplier, which is a politeness cost rather
-  than only a bookkeeping one. It is bounded by the 120-second lease and by
-  three attempts, and it is the correct trade against the alternative of
-  holding a transaction open across every fetch.
-- What ADR-0002's argument _does_ still buy is that the queue and the result
-  live in one system, so there is no offset in a broker to reconcile against
-  rows in Postgres. That was always the substance of the dual-write
-  objection; the "same transaction" wording overstated it.
-
-ADR-0002 should be read with this amendment. Nothing else in it changes.
-
+- **The queue is at-least-once, and ADR-0002 overstates this.** Its §
+  Decision says dequeue happens "inside the same transaction that writes the
+  result". A crawler cannot hold a transaction open across a fetch, and spec
+  002 §3's lease sweep exists precisely because claim and completion are
+  separate — a sweep has nothing to recover if they are one. So a worker that
+  dies after fetching leaves a leased row, the sweep returns it to `pending`,
+  and the URL is fetched again: a duplicate request to the supplier, bounded
+  by the 120-second lease and three attempts. What ADR-0002's argument does
+  buy is that the queue and the result live in one system, with no broker
+  offset to reconcile against rows in Postgres. That was always the substance
+  of the dual-write objection.
 - **Cost: the claim is now three CTEs reading as one statement, and it is the
   hardest SQL in the project.** It is deliberately written as SQL in the
   Postgres adapter rather than assembled by an ORM (AGENTS.md § Conventions),
@@ -201,8 +160,8 @@ ADR-0002 should be read with this amendment. Nothing else in it changes.
   nothing until the sweep reconciles it — a stall rather than a rudeness,
   which is the correct direction to fail, but it is a real failure mode that
   did not exist when the counter was only advisory.
-- **And the opposite drift is the dangerous one, which this ADR originally
-  failed to consider.** Spec 002 §2 decrements `in_flight` on completion and
+- **Cost: the opposite drift is impolite rather than merely wrong.**
+  Spec 002 §2 decrements `in_flight` on completion and
   §3's sweep decrements it on lease expiry, so a completion racing a sweep of
   the same row can double-decrement. Once the counter is _negative_,
   `in_flight < max_concurrency` is satisfied more times than it should be and
@@ -210,12 +169,7 @@ ADR-0002 should be read with this amendment. Nothing else in it changes.
   through the gate. A **`CHECK (in_flight >= 0)`** on `domains` is therefore
   added to the schema (spec 001 §1). The Alternatives below reject a `CHECK`
   as the _gate_; this is a backstop against the only drift direction that is
-  impolite, and it makes the bug loud instead of silent. It arrives as its
-  own revision (`5b7c0e1a94d3`) rather than as an edit to the phase-1
-  migration: that one was already applied, so editing it would have left
-  every existing database without the constraint while the file claimed
-  otherwise — which is exactly what happened on the first attempt, and what
-  a test caught.
+  impolite, and it makes the bug loud instead of silent.
 
 ## Alternatives considered
 

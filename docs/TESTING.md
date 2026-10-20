@@ -39,9 +39,12 @@ Unit and integration tests make no outbound requests.
   (ADR-0028: respx supports neither httpx2 nor Python 3.15, and
   `MockTransport` ships in the client so it cannot fall behind it). The rule
   this serves is unchanged: no network in a unit test.
-- Pages: real HTML fixtures in `tests/fixtures/pages/`, captured once from
-  real sites and **committed**. Scrub them of anything identifying beyond the
-  public page content.
+- Pages: **hand-written** HTML fixtures in `tests/fixtures/pages/`,
+  committed, served over loopback by the fixture server (BUILD_PLAN `1.4`).
+  Written rather than captured: a fixture must hold still for years, and a
+  copy of a real page goes stale, carries someone else's content, and tempts
+  a test into re-fetching the original. Each one exists to exercise one
+  shape — see §4.
 - LLM: a fake `LLMClient` returning canned proposals. The entire proposal and
   verification path is tested without a model running.
 - **Rendering: a fake render service.** The Python suite never starts
@@ -80,6 +83,11 @@ These are not negotiable; each maps to a stated failure mode.
   halts it; 19% does not. **Counted on empty extraction, not on per-field
   validation** — counted the latter way this never fires and a redesign
   fills the dataset silently, which is the failure this list exists for.
+- **Only pages with a prior non-empty observation count** (ADR-0030). A
+  domain whose links are half dead keeps crawling; the same domain after a
+  redesign halts. Both assertions, or the soft-404 fixture proves nothing.
+- A first run with 21% empty moves the domain to `awaiting_approval`, not
+  `broken`.
 - A price of "POA" is a validation failure, not `0.00`.
 - Unchanged page → identical `content_hash`, no duplicate full row.
 - A redesigned fixture (same URL, new markup) produces `empty_extraction`.
@@ -137,20 +145,33 @@ These are not negotiable; each maps to a stated failure mode.
 
 ## 4. Fixtures
 
+Hand-written, one file per **shape**, with invented host names. The names are
+fictional on purpose: nothing here is a copy of a real page, and a reader
+should not go looking for the original.
+
 ```
 tests/fixtures/
   pages/
     vantage-abrasives/product.html        well-formed, selector path
-    orbis-components/product-jsonld.html  structured path
-    northfield/product-redesigned.html    same URL, broken selectors
-    mertens/product-rendered.html         JS-dependent
+    orbis-components/product-jsonld.html  schema.org/Product, structured path
+    orbis-components/product-stripped.html same page, JSON-LD removed
+    northfield/product-redesigned.html    same URL, selectors no longer match
+    mertens/product-rendered.html         content only after JavaScript
+    mertens/product-missing.html          soft 404: HTTP 200, no product
   robots/{permissive,crawl-delay,disallow-all}.txt
   llm/{good,malformed,hallucinated}.json
   render/{rendered-ok.json,timeout.json,503.json}
 ```
 
-The redesigned fixture is the most valuable one in the suite. It is the only
-way to test the failure that produces no error.
+**The redesigned fixture is the most valuable one in the suite.** It is the
+only way to test the failure that produces no error — and with nothing
+required (ADR-0027), it is `empty_extraction` that must fire on it.
+
+**The soft 404 is the one most easily forgotten.** A catalogue with dead
+links returns 200 and no product, which is indistinguishable from a redesign
+unless something tells them apart — and at 20% it would move a healthy domain
+to `broken`. Spec 003 §3 has no answer for it yet; the fixture exists so the
+question cannot be skipped silently.
 
 ## 5. CI
 
