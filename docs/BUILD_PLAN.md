@@ -427,12 +427,14 @@ Selectors are still hand-written; the model comes next._
 > `figma.root.children` through `use_figma` — a bare `get_metadata` reports
 > only the pages loaded in the operator's editor.
 >
-> **Build from the component, not from the screen frame.** `docs/COMPONENTS.md`
-> §2 lists sixteen components that the Figma screen frames hand-build even
-> though the library has them as sets — table rows, headers, pagination, the
-> segmented control, chat messages, log rows, toasts and more. A screen built
-> by reading its frame alone will re-hand-roll all sixteen, which is the exact
-> drift `3.9` exists to prevent.
+> **Build from the component, not from the screen frame** (ADR-0032 — anything
+> above a primitive is a component). `docs/COMPONENTS.md` §2 lists **ten**
+> components the Figma frames still hand-draw — table rows, cards, the
+> segmented control, the screenshot viewport, chat messages, log rows, domain
+> cards, toasts, toggle and kbd. A screen built by reading its frame alone
+> re-hand-rolls all ten, which is the drift `3.9` exists to prevent. Six more
+> were closed on 2026-10-20, including the nav rows — whose hand-drawing had
+> left **every frame in the file showing "Domains" as the active screen**.
 
 - [ ] `3.4` Crawler API: domains, seeds, templates, drafts, runs, pages
       (spec 005 §2, spec 013 §5).
@@ -455,25 +457,35 @@ Selectors are still hand-written; the model comes next._
       `--sp-row-comfortable` in a test** — a skeleton of the wrong height is a
       layout jump no screenshot review catches.
       **Read `docs/COMPONENTS.md` §3 first.** It is the measured state of the
-      Figma library against the matrix: 39 components exist, four of the
+      Figma library against the matrix: 42 components exist, four of the
       seventeen §3a completions are already done, five components exist under
       a different name than §3 gives them, and seventeen §3b sets are still
-      unbuilt. `Metric tile State=unavailable` is the one to land early — the
-      four Partial frames are already drawn with a hand-placed dash, so the
-      component and the frames disagree until it exists.
+      unbuilt. Two to land early: `Metric tile State=unavailable` — the five
+      Partial frames already override a `Value` to an em dash, so the
+      component and the frames disagree until it exists — and a size-tolerant
+      `Skeleton`, whose `Shape=Card` overflows when resized, which collides
+      with §1's requirement that a skeleton hold the height it replaces.
+      **Closing an ADR-0032 violation means adding text properties first, with
+      a baseline of existing overrides captured before the change** (it reset
+      5 of 300). Budget for that per component.
 - [ ] `3.10` Domains screen, sorted by health ascending, fed by the BFF's
       `/overview` in **one** request. Includes first-run empty, filtered
       empty — different sentences, different actions — and **partial
       counters**, which is why every counter in spec 011 §5 is nullable
       (`UI_STATES.md` §4, ADR-0025).
 - [ ] `3.11` Schedules screen — list, create, edit, fire history (spec 011
-      §1, §3, §4). **Blocked on design, not on code.** The backend is fully
-      specced and this is the only screen in the project with no section in
-      `SCREENS.md`, no mockup, no Figma frame and no row in `UI_STATES.md`
-      §4 — registry row 11 records the gap. **Design it or defer this task
-      before phase 3 starts** (ADR-0031). Building it as-is means inventing a
-      screen and its five states at the keyboard, which is what the matrix
-      exists to prevent.
+      §1, §3, §4). **Unblocked 2026-10-20.** `SCREENS.md` §11 specifies it,
+      registry row 11 maps it to Figma `81:6826`, and `UI_STATES.md` §4 lists
+      its states. Six frames: populated, loading, both empty sub-cases, error
+      and partial. It is also ADR-0032's worked example — **it contains no
+      hand-drawn component**, so build it by composing `Schedule row`,
+      `Fire row`, `Schedule state`, `Metric tile`, `Table header cell`,
+      `Select`, `Pagination` and the shell, and treat any urge to hand-roll a
+      row as the signal that a component is missing a text property.
+      **Done when:** a skip is visible as an outcome, not as an absence — a
+      schedule skipped because its previous run was still active reads as
+      skipped with its reason (spec 011 §3), because showing that as "nothing
+      happened" is what makes an operator start the run by hand.
 - [ ] `3.12` Domain detail with template versions and diff.
 - [ ] `3.13` Seeds screen with the mandatory preview step.
 - [ ] `3.14` **Template review screen** — three panes, live re-resolve,

@@ -38,11 +38,16 @@ empty_ ("you have not added a domain yet") offers the primary action and
 explains the concept. _Filtered empty_ ("no domains match `broken` +
 `never crawled`") offers to clear the filter and must never offer to create
 anything, because the data exists and the filter is hiding it. Screens 1, 5,
-7 and 8 need both; the rest need only one.
+7, 8 and 11 need both; the rest need only one.
+
+**These are properties, not a closed list.** A screen that filters needs both
+sub-cases whether or not its number appears above — screen 11 was added to
+the list by applying the rule, not by amending it.
 
 **Partial is a fifth state on anything that aggregates.** A six-counter strip
 where one counter's query timed out shows five numbers and one dash with a
-tooltip, not a whole-screen error. Screens 1, 6, 7 and 9.
+tooltip, not a whole-screen error. Screens 1, 6, 7, 9 and 11 — anything with
+a counter strip, by the same reading as above.
 
 ## 2. Tokens this requires
 
@@ -90,21 +95,21 @@ and "Sidebar · Topbar" is two. Both counts appear in this file and both are
 right; `COMPONENTS.md` §3 reconciles them, and **four of the seventeen are
 now complete**.
 
-| Component                                               | Has                   | Must add                                                                                               |
-| ------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------ |
-| Button                                                  | 4 styles × 2 sizes    | `State=` default · hover · active · focus · disabled · **loading** (spinner, label held, width frozen) |
-| Input                                                   | one state             | focus · error · disabled · readonly · with-prefix · with-clear                                         |
-| Card                                                    | one state             | hover · selected · **as-skeleton**                                                                     |
-| Tag                                                     | one state             | removable · disabled                                                                                   |
-| Progress bar                                            | one state             | determinate · **stacked** (run monitor) · indeterminate · complete · failed                            |
-| Tab                                                     | selected, default     | hover · disabled · with-count-badge                                                                    |
-| State pill                                              | 6 lifecycle           | — (complete; do not add a seventh without a schema change)                                             |
-| Metric tile                                             | 3 tones               | `State=` loaded · loading · **unavailable** (the partial case)                                         |
-| Banner                                                  | 3 tones               | dismissible · with-action                                                                              |
-| Selector field                                          | default/warning/error | resolving · disabled · **no-match** (distinct from error: the selector is valid and matched nothing)   |
-| Confidence · Validation badge · Sample cell · Sparkline | complete              | `State=pending` on Sample cell and Sparkline, for before the sample resolves                           |
-| Sidebar · Topbar                                        | one state             | Sidebar: expanded · collapsed. Topbar: default · with-breadcrumb                                       |
-| Logo set                                                | 4                     | —                                                                                                      |
+| Component                                               | Has                                         | Must add                                                                                                                                                      |
+| ------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Button                                                  | 4 styles × 2 sizes                          | `State=` default · hover · active · focus · disabled · **loading** (spinner, label held, width frozen)                                                        |
+| Input                                                   | one state                                   | focus · error · disabled · readonly · with-prefix · with-clear                                                                                                |
+| Card                                                    | one state                                   | hover · selected · **as-skeleton**                                                                                                                            |
+| Tag                                                     | one state                                   | removable · disabled                                                                                                                                          |
+| Progress bar                                            | one state                                   | determinate · **stacked** (run monitor) · indeterminate · complete · failed                                                                                   |
+| Tab                                                     | selected, default                           | hover · disabled · with-count-badge                                                                                                                           |
+| State pill                                              | 6 lifecycle                                 | — (complete; do not add a seventh without a schema change)                                                                                                    |
+| Metric tile                                             | 3 tones                                     | `State=` loaded · loading · **unavailable** (the partial case)                                                                                                |
+| Banner                                                  | 3 tones                                     | dismissible · with-action                                                                                                                                     |
+| Selector field                                          | default/warning/error                       | resolving · disabled · **no-match** (distinct from error: the selector is valid and matched nothing)                                                          |
+| Confidence · Validation badge · Sample cell · Sparkline | complete                                    | `State=pending` on Sample cell and Sparkline, for before the sample resolves                                                                                  |
+| Sidebar · Topbar                                        | Sidebar `Active=` ×10 · Topbar `Breadcrumb` | Sidebar: expanded · collapsed. Topbar: with-search-focus. **The active row and the breadcrumb are now properties** — hard-coding either is an ADR-0032 defect |
+| Logo set                                                | 4                                           | —                                                                                                                                                             |
 
 **`Button/State=loading` freezes its own width.** A button that shrinks to
 fit a spinner moves everything beside it, and the one place this matters most
@@ -203,6 +208,7 @@ does. These are the ones that get missed.
 | **8 Products**        | table view · card view · no images · product detail with one observation (no history to chart) · price history with a template-version change marked                                                                                                                                                                                                                                                                                                         |
 | **9 Reports**         | each report loading · report with no rows in range · export generating · export failed                                                                                                                                                                                                                                                                                                                                                                       |
 | **10 Authoring chat** | idle (no URLs yet) · fetching · streaming reply · **refusal** (over the 5-page limit, another domain, asking for a run) · draft partially verified · draft complete · open-in-review handoff                                                                                                                                                                                                                                                                 |
+| **11 Schedules**      | filtered-empty · partial-counters (the skip counter is the one that fails) · schedule with a dead domain reference · cron invalid on edit · fire history empty · run-now submitting                                                                                                                                                                                                                                                                          |
 
 **Screen 6's reconnecting state is the one to get right.** The browser will
 sleep, SSE will drop, and the difference between "reconnecting, backfilling

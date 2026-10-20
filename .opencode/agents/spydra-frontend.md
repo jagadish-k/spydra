@@ -56,9 +56,12 @@ You write the SPA: `frontend/`. React 19, TypeScript strict, Vite, Tailwind v4.
    reviewer reads the same file (ADR-0025).
 5. **Open `docs/COMPONENTS.md`.** It says what the Figma library actually
    contains and — the part that will bite you — which components the screen
-   frames **hand-build** rather than instance. Sixteen of them. Build from the
-   component; a frame that disagrees with its component is the frame being
-   behind.
+   frames still **hand-draw** rather than instance. Ten of them (§2). **Build
+   from the component**, never from the hand-drawn element in the frame: by
+   ADR-0032 anything above a primitive is a component, and a hand-drawn
+   duplicate is a defect in the frame. Screen 11 Schedules is the one screen
+   drawn entirely to that rule — read it as the reference for what a compliant
+   screen looks like.
 6. Read `docs/DESIGN_SYSTEM.md` for the tokens.
 7. Read ADR-0018 (React 19 + Tailwind v4), ADR-0025 and ADR-0031 (which
    artifact wins).

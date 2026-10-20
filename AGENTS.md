@@ -45,8 +45,9 @@ extending ADR-0025). They do not overlap.
 
 1. **`docs/SCREENS.md` is the screen registry** — the single source of truth
    for which screens exist, how many, and where each is drawn. Nothing else
-   enumerates screens. **Ten screens · eleven top-level layouts · 56 frames.**
-   If you are counting screens, you are reading the wrong file; read the table.
+   enumerates screens. **Eleven screens · twelve top-level layouts · 62
+   frames.** If you are counting screens, you are reading the wrong file; read
+   the table.
 2. **The Figma file is authoritative for what every state looks like** —
    layout, spacing, typography and colour, in all states. File
    `GeJPFXY4CicHBdzLMyXG2E`, page `🖥 Screens` (`3:139`). Node ids per screen
@@ -64,11 +65,24 @@ the pages loaded in the operator's editor and has answered "two pages" and
 "four pages" to the same file minutes apart. Enumerate with
 `figma.root.children` through `use_figma`, then query per page. ADR-0031 §7.
 
-**Build from the component, not from the screen frame.** Sixteen components
-the library already has are hand-built inside the Figma screen frames — table
-rows, headers, pagination, the segmented control, chat messages, log rows and
-more (`docs/COMPONENTS.md` §2). A screen frame that disagrees with its
-component is the frame being behind.
+**Cardinal rule — anything above a primitive is a component** (ADR-0032). In
+Figma, a screen frame is a **composition of instances**: if an element has
+state, variants, repetition, or an identity you would name, it is a component
+on the `🧩 Components` page and the frame holds an instance. Primitives are
+layout containers, text nodes and page scaffolding — that list is closed.
+Every component carries the properties its content needs; one with only
+`VARIANT` properties and no `TEXT` property is incomplete, because it forces
+the hand-drawing this rule prohibits. **No component hard-codes which of its
+children is active** — that is a property, which is why the sidebar has
+`Active=` and the topbar has `Breadcrumb`.
+
+**A hand-drawn element that duplicates a component is a review finding.** Ten
+remain in screens 1–10 (`docs/COMPONENTS.md` §2); screen 11 Schedules is the
+worked example and contains none. **Build from the component.**
+
+**Adding a text property to a component can silently reset existing instance
+overrides** — it reset 5 of 300. Capture a baseline of the affected instances
+before the change and compare after. Procedure, not advice.
 
 ---
 

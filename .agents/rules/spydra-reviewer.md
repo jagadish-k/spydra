@@ -28,7 +28,9 @@ convincing.
    the screen. Then **`docs/SCREENS.md`** for which Figma frame the diff
    should match, and **`docs/COMPONENTS.md`** §2 — a screen that hand-rolls a
    table row, a toast or a segmented control that the library already has is
-   a finding, not a style preference (ADR-0031).
+   a finding, not a style preference (ADR-0032: anything above a primitive is
+   a component). The same rule applies to a component that hard-codes which
+   of its children is active instead of exposing it as a property.
 4. The diff. Prefer running `git diff develop...HEAD` yourself; **if shell is
    unavailable in this environment, the task message MUST contain the diff
    (or its stat) pasted by the integrator — do not guess at scope, and do

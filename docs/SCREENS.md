@@ -8,15 +8,17 @@ is built without a row here is the defect, not the row.
 
 ## The registry
 
-**Eleven screens. Ten designed. Eleven top-level layouts. Fifty-six frames.**
-Screen 11 (Schedules) has a full backend spec and no design — see the defects
-below. The other ten are drawn complete.
+**Eleven screens. Twelve top-level layouts. Sixty-two frames.** All eleven
+are designed; screen 11 (Schedules) was drawn on 2026-10-20 and is the first
+screen drawn Figma-first, with no mockup (ADR-0031 made the mockups a
+reference rather than an authority, so a new screen no longer needs one).
 The counts differ for one reason and it is not a discrepancy: screen 4 has
 three modes (§4), and its Select mode is a different enough layout that
 Figma and the mockups each give it its own top-level artifact. Counting
-drawn artifacts gives eleven; counting designed screens gives ten. Both are
+drawn artifacts gives twelve; counting screens gives eleven. Both are
 correct about different things, and every audit that reported a "missing
-eleventh screen" had found this and not the real gap, which is Schedules.
+eleventh screen" had found this and not the real gap, which was Schedules —
+now closed.
 
 Figma file [`GeJPFXY4CicHBdzLMyXG2E`](https://www.figma.com/design/GeJPFXY4CicHBdzLMyXG2E/Spydra),
 page `🖥 Screens` (`3:139`).
@@ -36,33 +38,38 @@ page `🖥 Screens` (`3:139`).
 | 9   | Reports         | `18:1032`  | [`reports.html`](../design/mockups/reports.html)                 | 009      | `5.8`    |      5 |
 | 10  | Authoring chat  | `24:1349`  | [`authoring-chat.html`](../design/mockups/authoring-chat.html)   | 007, 013 | `4.12`   |      5 |
 | 0   | Foundations     | `8:2` ᶠ    | [`foundations.html`](../design/mockups/foundations.html)         | —        | `0.x`    |      1 |
-| 11  | **Schedules**   | **none**   | **none**                                                         | 011      | `3.11`   |  **0** |
+| 11  | Schedules       | `81:6826`  | none ᵐ                                                           | 011      | `3.11`   |      6 |
 
 ᶠ on page `🎨 Foundations` (`3:137`), not `🖥 Screens`.
+ᵐ Figma-first; no mockup, and none is owed. `design/mockups/` is a reference,
+not an authority (ADR-0031), so it is allowed to lag a screen entirely.
 
-**Two rows are open defects, deliberately left visible.**
+**One row is an open defect, deliberately left visible.**
 
 - **Screen 4's Skeleton mode is drawn nowhere.** `UI_STATES.md` §4 gives
   screen 4 three modes and spec 014 §6 makes Skeleton the escape hatch for
   content behind a click. It is `6.10` work, so being unbuilt is correct;
   being **undrawn** means `6.10` has no reference and will invent one.
-- **The Schedules screen has a complete backend and no design at all.** Spec
-  011 specifies it properly — `ui.schedules` and `ui.schedule_fires` (§1), the
-  once-only fire loop (§3), six endpoints (§4) and five acceptance criteria.
-  `3.11` builds the screen. But there is **no section in this file, no mockup,
-  no Figma frame and no row in `UI_STATES.md` §4** — so of the eleven screens
-  phase 3 and 4 build, ten are drawn and one is not designed at all.
-  (Spec 002 is the crawl politeness scheduler and is unrelated.)
-  **Design it or defer `3.11` before phase 3 starts.** A screen built with no
-  state matrix is the exact failure `UI_STATES.md` exists to prevent, and this
-  is the only screen in the project without one.
+  **Screen 11 Schedules — closed 2026-10-20.** It had a complete backend spec
+  (011 §1, §3, §4) and no design anywhere, which made `3.11` unbuildable. It is
+  now drawn in six frames and specified in §11 below, with a row in
+  `UI_STATES.md` §4. It is also the worked example for ADR-0032: **it contains
+  no hand-drawn component.** Everything in it — the shell, metric tiles, inputs,
+  selects, header cells, schedule rows, fire rows, pagination, and its empty,
+  error and skeleton states — is an instance of a component on the
+  `🧩 Components` page.
 
 ## State coverage
 
 Which states each screen is drawn in. The rule is `UI_STATES.md` §1: all four
-mandatory states everywhere, both empty sub-cases on screens 1 · 5 · 7 · 8,
-partial on 1 · 6 · 7 · 9, dark on one screen per visual pattern (1 · 4 · 6 ·
-10). **Figma matches that rule exactly — no gaps, no extras.**
+mandatory states everywhere, both empty sub-cases on screens 1 · 5 · 7 · 8 ·
+11, partial on 1 · 6 · 7 · 9 · 11, dark on one screen per visual pattern
+(1 · 4 · 6 · 10). **Figma matches that rule exactly — no gaps, no extras.**
+
+Screen 11 takes both empty sub-cases and partial because §1 states them as
+properties, not as a closed list: it filters, so filtered-empty applies, and
+its counter strip aggregates, so partial applies. It takes no dark frame
+because its visual pattern — a table — is already covered by screen 1.
 
 | #   | pop. | loading | empty (first) | empty (filtered) | error | partial | dark |
 | --- | :--: | :-----: | :-----------: | :--------------: | :---: | :-----: | :--: |
@@ -77,6 +84,7 @@ partial on 1 · 6 · 7 · 9, dark on one screen per visual pattern (1 · 4 · 6 
 | 8   |  ✓   |    ✓    |       ✓       |        ✓         |   ✓   |    —    |  —   |
 | 9   |  ✓   |    ✓    |       ✓       |        —         |   ✓   |    ✓    |  —   |
 | 10  |  ✓   |    ✓    |       ✓       |        —         |   ✓   |    —    |  ✓   |
+| 11  |  ✓   |    ✓    |       ✓       |        ✓         |   ✓   |    ✓    |  —   |
 
 A dash is "not required by §1", not "missing". The per-screen states beyond
 these four — SSE reconnecting, snapshot expired, field multi-match and the
@@ -393,6 +401,47 @@ in the system.
 **"Open in review"** hands the draft to screen 4 with every field, example and
 transcript entry intact. The two screens are two front doors to one draft
 (ADR-0019), so there is nothing to migrate.
+
+---
+
+## 11 · Schedules
+
+**The crawler decides _how_ to crawl; this screen decides _when_.** That
+sentence is the whole scope, and it is the reason the screen is thin: every
+politeness decision — delay, jitter, concurrency, backoff — belongs to the
+scheduler in spec 002 and is deliberately not here. A schedule names a set of
+domains and a cron expression, and nothing else.
+
+Backed by `ui.schedules` and `ui.schedule_fires` (spec 011 §1), the once-only
+fire loop (§3) and six endpoints (§4).
+
+_Counter strip._ Enabled · Paused · Next fire · Fires today · Skipped (7 d).
+The last two are the ones worth reading: a schedule that silently never fires
+looks identical to one that has nothing to do, and the skip counter is what
+tells them apart.
+
+_Table._ Schedule (name + timezone) · State · Cron · Domains · Next fire ·
+Last fire. Cron is set in a monospace face, like every other machine-readable
+value in the app — `0 2 * * *` is read character by character or not at all.
+Sorted by next fire ascending: the next thing to happen is the top row.
+
+_Recent fires._ A reverse-chronological strip under the table, with an
+outcome per entry. **A skip is a first-class outcome, not an absence.** Spec
+011 §3 skips a schedule whose previous run is still active and records why;
+if the UI showed that as "nothing happened", the operator would conclude the
+scheduler was broken and start the run by hand — which is exactly the
+double-run the skip existed to prevent.
+
+**Why Schedules is not a tab of Domains.** It is domain-set-shaped, not
+domain-shaped: one schedule names many domains and one domain appears in many
+schedules. Putting it on screen 2 would mean editing a shared object from
+inside one of its members, and the fire history would have no home at all.
+
+**Open:** a schedule can name a domain that was later deleted. Spec 011 §2
+handles it at fire time — the fire loop drops missing domains and records it,
+which is the `Failed` fire row. The screen does not yet show that a schedule
+is carrying a dead reference _before_ it fires. Worth a state once `3.11` is
+real; not drawn.
 
 ---
 

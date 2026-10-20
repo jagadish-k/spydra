@@ -41,7 +41,7 @@ passes to reach four different screen counts (ADR-0031 §Context).
 
 ## Decisions
 
-[`adr/`](adr/README.md) — thirty-one records. Read the relevant one before
+[`adr/`](adr/README.md) — thirty-two records. Read the relevant one before
 changing anything structural. Each states its cost.
 
 The four most likely to be questioned, and most likely to be wrong to change:

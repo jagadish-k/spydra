@@ -2183,7 +2183,7 @@ elements
         <!-- =================================================== 13 · the screens == -->
         <section class="slide" data-title="The screens">
           <p class="kicker">
-            Ten screens drawn in every state before any React was written
+            Eleven screens drawn in every state before any React was written
           </p>
           <h2>Every screen, in every state it can be in</h2>
           <div class="body">
@@ -2230,13 +2230,15 @@ elements
               </div>
             </div>
             <p class="small muted" style="margin-top: 4px">
-              <strong>Fifty-six frames in Figma</strong> — every screen in its
+              <strong>Sixty-two frames in Figma</strong> — every screen in its
               loading, empty, error and populated state, both empty sub-cases on
               the four screens that filter, partial on the four that aggregate,
               and dark on one screen per visual pattern. The matrix is written
               down in <span class="mono">docs/UI_STATES.md</span>, the frames
               match it exactly, and the React components are built against it
-              rather than against a populated screenshot.
+              rather than against a populated screenshot. Every frame is a
+              composition of named components — a hand-drawn element that
+              duplicates one is a review finding (ADR-0032).
             </p>
             <p class="small muted" style="margin-top: 2px">
               <span class="mono">docs/SCREENS.md</span> is the registry — each
@@ -2365,7 +2367,7 @@ elements
           <p class="kicker">Try it</p>
           <h2>The interface, clickable</h2>
           <p class="lede">
-            Fifty-six frames and a wired prototype. Use the sidebar to move
+            Sixty-two frames and a wired prototype. Use the sidebar to move
             between screens; the loading frames advance on their own.
           </p>
           <div class="body embed-wrap">
@@ -2822,7 +2824,8 @@ elements
                     and Skeleton are disabled segments
                   </li>
                   <li>
-                    Screen 11 Schedules — <strong>blocked on design</strong>
+                    Screen <strong>11 Schedules</strong> — spec 011's fire loop
+                    made visible
                   </li>
                 </ul>
                 <p class="gate">
@@ -2915,16 +2918,16 @@ elements
                     exist
                   </li>
                   <li>
-                    <span class="mono">COMPONENTS.md</span> — the library, and
-                    the
-                    <strong>sixteen components the frames hand-build</strong>
+                    <span class="mono">COMPONENTS.md</span> — 42 components,
+                    1,542 instances, and the
+                    <strong>ten the frames still hand-draw</strong>
                   </li>
                   <li>Figma decides what a state looks like (ADR-0031)</li>
                 </ul>
                 <p class="gate">
-                  <b>One open gap:</b> screen 11 Schedules has a full backend
-                  spec (011) and <b>no design at all</b>. Design it or defer
-                  <span class="mono">3.11</span>.
+                  <b>Cardinal rule (ADR-0032):</b> anything above a primitive is
+                  a component, and a screen frame is a composition of instances.
+                  Ten hand-drawn leftovers remain in screens 1–10.
                 </p>
               </div>
             </div>
@@ -2999,7 +3002,7 @@ elements
                     matrix
                   </li>
                   <li>
-                    31 ADRs, each with its stated cost. Disagree in a new one
+                    32 ADRs, each with its stated cost. Disagree in a new one
                     rather than quietly working around it
                   </li>
                 </ul>

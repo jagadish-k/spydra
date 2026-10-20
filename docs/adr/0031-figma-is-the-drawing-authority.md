@@ -1,6 +1,10 @@
 # ADR-0031 — Figma is the drawing authority; `SCREENS.md` is the screen registry
 
-**Status:** Accepted · 2026-10-20
+**Status:** Accepted · 2026-10-20 · **§Consequences corrected by
+[ADR-0032](0032-everything-above-a-primitive-is-a-component.md)** — this ADR
+attributed the hand-drawn screen elements to the frames being "behind". The
+actual cause was that no component in the library had a single TEXT property,
+so an instance could not carry its own content.
 **Extends:** [ADR-0025](0025-ui-states-authority.md) — its two-axis split
 stands; this adds the third artifact it could not name
 **Affects:** `AGENTS.md`, [`docs/SCREENS.md`](../SCREENS.md),
@@ -126,11 +130,12 @@ viewport`, `Log line`→`Log row`, `Table row skeleton`→`Skeleton Shape=Row`,
   segmented control, the screenshot viewport, chat messages, log rows, domain
   cards, toasts, select, toggle, checkbox, card, icon, kbd. A developer
   building screen 1 from frame `7:2` will hand-roll a table row because that
-  is what the frame shows. `3.9`'s rule — components before screens — now has
-  a stated corollary: **build from the component, and treat a screen frame
-  that disagrees as behind.**
+  is what the frame shows. **ADR-0032 supersedes the explanation given here:**
+  the frames were not "behind" — they were the only thing the library made
+  possible, because no component had a TEXT property. Six of the sixteen are
+  now closed; `COMPONENTS.md` §2 carries the rest.
 - **`Metric tile State=unavailable` is contradicted by drawn frames.** The
-  four Partial frames exist and were drawn with a hand-placed dash, so the
+  five Partial frames exist and were drawn with an overridden em dash, so the
   component and the frames disagree today. Adding the variant is `3.9` work;
   the frames should then instance it.
 - **The mockups will drift**, and that is accepted. A non-authoritative
