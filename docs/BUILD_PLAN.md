@@ -428,13 +428,13 @@ Selectors are still hand-written; the model comes next._
 > only the pages loaded in the operator's editor.
 >
 > **Build from the component, not from the screen frame** (ADR-0032 — anything
-> above a primitive is a component). `docs/COMPONENTS.md` §2 lists **ten**
-> components the Figma frames still hand-draw — table rows, cards, the
-> segmented control, the screenshot viewport, chat messages, log rows, domain
-> cards, toasts, toggle and kbd. A screen built by reading its frame alone
-> re-hand-rolls all ten, which is the drift `3.9` exists to prevent. Six more
-> were closed on 2026-10-20, including the nav rows — whose hand-drawing had
-> left **every frame in the file showing "Domains" as the active screen**.
+> above a primitive is a component). **Every screen frame is now a composition
+> of instances**: 49 components, 1,761 instances across 62 frames, with four
+> one-of-a-kind containers deliberately left as frames and listed in
+> `docs/COMPONENTS.md` §3. So the frames are now a reliable guide to which
+> component a region is — read `COMPONENTS.md` §1 for what each is used by,
+> and §4 before changing any component, because three Figma constraints there
+> each cost a visual regression to find.
 
 - [ ] `3.4` Crawler API: domains, seeds, templates, drafts, runs, pages
       (spec 005 §2, spec 013 §5).
@@ -456,8 +456,8 @@ Selectors are still hand-written; the model comes next._
       than re-deriving them. `Skeleton` heights are **asserted against
       `--sp-row-comfortable` in a test** — a skeleton of the wrong height is a
       layout jump no screenshot review catches.
-      **Read `docs/COMPONENTS.md` §3 first.** It is the measured state of the
-      Figma library against the matrix: 42 components exist, four of the
+      **Read `docs/COMPONENTS.md` §5 first.** It is the measured state of the
+      Figma library against the matrix: 49 components exist, four of the
       seventeen §3a completions are already done, five components exist under
       a different name than §3 gives them, and seventeen §3b sets are still
       unbuilt. Two to land early: `Metric tile State=unavailable` — the five
@@ -465,9 +465,10 @@ Selectors are still hand-written; the model comes next._
       component and the frames disagree until it exists — and a size-tolerant
       `Skeleton`, whose `Shape=Card` overflows when resized, which collides
       with §1's requirement that a skeleton hold the height it replaces.
-      **Closing an ADR-0032 violation means adding text properties first, with
-      a baseline of existing overrides captured before the change** (it reset
-      5 of 300). Budget for that per component.
+      Text properties are **not** required to carry content — an instance
+      overrides its own text — so add them only where a developer will read
+      the component's API, and capture a baseline first because adding one can
+      reset existing overrides (it reset 5 of 300).
 - [ ] `3.10` Domains screen, sorted by health ascending, fed by the BFF's
       `/overview` in **one** request. Includes first-run empty, filtered
       empty — different sentences, different actions — and **partial

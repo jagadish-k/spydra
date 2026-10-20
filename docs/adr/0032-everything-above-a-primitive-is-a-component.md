@@ -20,19 +20,37 @@ cells, pagination, nav items, the segmented control, the screenshot viewport,
 chat messages, log rows, domain cards, toasts, select, toggle, checkbox, card,
 icon and kbd.
 
-ADR-0031 recorded this and attributed it to the frames being "behind". **That
-attribution was wrong, and the real cause matters**, because it is the thing
-that would have made this ADR unenforceable:
+ADR-0031 attributed this to the frames being "behind". That was wrong, and
+**the first version of this ADR replaced it with a second wrong explanation**,
+which is worth recording because it nearly set the remediation cost an order of
+magnitude too high.
 
-> **Not one of the 39 components had a single TEXT property.** Every component
-> exposed `VARIANT` properties only. An instance therefore could not carry its
-> own content: every `Button` instance read "Button", every `Table row`
-> instance showed the same placeholder cells.
+That version said: not one of the 39 components had a TEXT property, therefore
+an instance could not carry its own content, therefore hand-drawing was the
+only way to draw a screen at all. The first clause is true. **The inference
+from it is false, and the evidence was already in hand.** Figma lets you
+override text inside an instance with no component property involved, and the
+file was full of it:
 
-A library with no text properties **cannot** compose a content-bearing screen.
-Hand-drawing the rows was not sloppiness; it was the only way to draw a screen
-at all. A rule saying "use components" issued against that library would have
-been ignored within a day, correctly.
+| Component        | TEXT properties | Distinct strings across its instances |
+| ---------------- | --------------- | ------------------------------------: |
+| `Selector field` | none            |                                **68** |
+| `Banner`         | none            |                                     9 |
+| `Empty state`    | none            |                                     9 |
+| `Error state`    | none            |                                     9 |
+
+The 300 instance overrides captured as a safety baseline were themselves the
+disproof, and they were read without being noticed.
+
+**The real cause is structural, and duller.** `Table row` is hard-wired to the
+Domains table's ten columns, so it fits exactly one of the six tables in the
+app; the others had nothing to instance. Elsewhere the screen was simply drawn
+before the component existed. Neither is a reason to keep hand-drawing.
+
+**What text properties actually buy** is a named, discoverable API on the
+component and overrides that survive a variant swap — real but incremental.
+They are **not** a precondition for composing a screen, and this ADR does not
+require them.
 
 Two file-wide defects followed from the same cause and had gone unnoticed
 through four audits:
@@ -79,10 +97,9 @@ active?" has to be answered by a property.
    table header cells, schedule rows, fire rows, pagination, empty, error and
    skeleton states are all instances.
 
-### What this cost to make true
+### Enabling work that landed with the rule
 
-The rule was unenforceable until the library could carry content, so the
-enabling work landed with it:
+Not required by the rule — see above — but done, and worth keeping:
 
 - `TEXT` properties added to **Button** (`Label`, across 48 variants),
   **Tag** (`Label`), **Input** (`Text`), **Table header cell** (`Label`),
@@ -103,22 +120,40 @@ enabling work landed with it:
 It did, five times out of 300 — three `Input` placeholders and two
 `Metric tile` values. They were caught only because the 300 overrides were
 captured before the change and compared after. **Any future property addition
-captures a baseline first.** This is now the procedure, not a suggestion.
+captures a baseline first.** This is now the procedure, not a suggestion — and
+it is a reason to add text properties sparingly, since the override they
+replace already worked.
 
 ## Consequences
 
-- **`Table row` is revealed as `Domain row`.** It is hard-wired to the Domains
-  table's ten columns, which is why screen 11 needed its own `Schedule row`
-  rather than a variant. **A different column set is a different component.**
-  Renaming `Table row` is deferred: it has no instances today, so the rename
-  is free whenever someone does it, and doing it here would have widened an
-  already large change.
-- **Sixteen hand-drawn elements remain** in screens 1–10, listed in
-  `COMPONENTS.md` §2. They are now rule violations rather than observations.
-  Remediating them is **not** a cosmetic pass: each needs its component to
-  gain text properties first, exactly as above, each with a baseline. That is
-  a scoped task, not a drive-by, and it belongs before `3.9` builds the React
-  components against these frames.
+- **`Table row` was deleted.** It was hard-wired to the Domains column set, so
+  it fitted one of six tables and nothing ever instanced it. **A different
+  column set is a different component**, and the app has six tables, so it has
+  six row components, each reused across every frame of its screen.
+- **Three library components turned out not to be violations at all.** `Card`,
+  `Kbd`, `Toast` and `Toggle` are specified in `UI_STATES.md` §3b and drawn by
+  no screen, so there was nothing hand-drawn duplicating them; `Screenshot
+viewport` is a library specimen of the overlay mechanic rather than
+  something a screen instances. The original count of sixteen violations was
+  an over-count made by assuming every unused component had a hand-drawn twin.
+  Checking each one against the frames is what corrected it.
+- **Remediation is done.** All the hand-drawn duplicates in screens 1–10 were
+  closed on 2026-10-20: six per-table row components, plus `Log line`,
+  `Domain card` and `Chat message` rebuilt from the drawn elements, plus
+  `Selection overlay`, `Field highlight` and `Segmented control`. 49
+  components, 1,761 instances across 62 frames. `COMPONENTS.md` §3 lists the
+  four containers deliberately left as frames and why.
+- **Copying only text is not enough.** Replacing a drawn element with an
+  instance must carry **text, text fills, nested variant properties and nested
+  text**. Copying characters alone silently flattened the Domains sparkline
+  colours to one value and reset every Seeds pill label to "New". Both were
+  caught by rendering the frame and comparing against `design/mockups/`, not
+  by reading the diff.
+- **Data-driven geometry cannot be an instance override.** Figma refuses to
+  move an instance child (`relative-transform`) and quietly reverts resized
+  auto-layout children. The run monitor's per-domain progress bars are
+  therefore 50 equal ticks whose fills are overridden. `COMPONENTS.md` §4
+  carries this and two other API constraints that each cost a regression.
 - **`Skeleton` is not size-tolerant.** Its `Shape=Card` variant has absolutely
   positioned children, so an instance resized to a metric tile's 190×96
   overflows; screen 11's loading frame clips them. `UI_STATES.md` §1 requires

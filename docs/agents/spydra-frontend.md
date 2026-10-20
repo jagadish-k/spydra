@@ -22,14 +22,12 @@ You write the SPA: `frontend/`. React 19, TypeScript strict, Vite, Tailwind v4.
 4. **Open `docs/UI_STATES.md`** and find your component in §3 and your screen
    in §4. Shipping only the populated path is an incomplete PR, and the
    reviewer reads the same file (ADR-0025).
-5. **Open `docs/COMPONENTS.md`.** It says what the Figma library actually
-   contains and — the part that will bite you — which components the screen
-   frames still **hand-draw** rather than instance. Ten of them (§2). **Build
-   from the component**, never from the hand-drawn element in the frame: by
-   ADR-0032 anything above a primitive is a component, and a hand-drawn
-   duplicate is a defect in the frame. Screen 11 Schedules is the one screen
-   drawn entirely to that rule — read it as the reference for what a compliant
-   screen looks like.
+5. **Open `docs/COMPONENTS.md`.** Every screen frame is now a composition of
+   instances, so the frame tells you which component each region is — §1 is
+   the usage map. Four one-of-a-kind containers are still frames and §3 says
+   which and why. **Build from the component**, not from the region's
+   appearance (ADR-0032). §4 lists three Figma constraints that each cost a
+   visual regression; read it before changing a component.
 6. Read `docs/DESIGN_SYSTEM.md` for the tokens.
 7. Read ADR-0018 (React 19 + Tailwind v4), ADR-0025 and ADR-0031 (which
    artifact wins).

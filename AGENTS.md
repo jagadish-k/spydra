@@ -76,13 +76,19 @@ the hand-drawing this rule prohibits. **No component hard-codes which of its
 children is active** — that is a property, which is why the sidebar has
 `Active=` and the topbar has `Breadcrumb`.
 
-**A hand-drawn element that duplicates a component is a review finding.** Ten
-remain in screens 1–10 (`docs/COMPONENTS.md` §2); screen 11 Schedules is the
-worked example and contains none. **Build from the component.**
+**A hand-drawn element that duplicates a component is a review finding.**
+None remain: every screen frame is a composition of instances, with four
+one-of-a-kind containers listed in `docs/COMPONENTS.md` §3. **Build from the
+component**, and read `COMPONENTS.md` §4 before changing one — an instance's
+children cannot be moved or reliably resized, `createInstance()` drops
+paint-level opacity on variable-bound fills, and a duplicate property name is
+silently renamed.
 
-**Adding a text property to a component can silently reset existing instance
-overrides** — it reset 5 of 300. Capture a baseline of the affected instances
-before the change and compare after. Procedure, not advice.
+**A component does not need a TEXT property to carry content** — an instance
+overrides its own text, which is how `Selector field` carries 68 distinct
+strings with no property at all. Add properties where a developer will read
+the component's API, and capture a baseline of existing overrides first,
+because adding one can reset them (it reset 5 of 300).
 
 ---
 
