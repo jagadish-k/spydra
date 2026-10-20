@@ -1,0 +1,5 @@
+# Crawl-delay is a FLOOR, never a ceiling (spec 002 §5): this must raise a
+# configured 2s delay to 10s and a configured 30s delay must stay 30s.
+User-agent: *
+Crawl-delay: 10
+Disallow: /cart/

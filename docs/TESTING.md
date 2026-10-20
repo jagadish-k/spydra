@@ -83,6 +83,11 @@ These are not negotiable; each maps to a stated failure mode.
   halts it; 19% does not. **Counted on empty extraction, not on per-field
   validation** — counted the latter way this never fires and a redesign
   fills the dataset silently, which is the failure this list exists for.
+- **Only pages with a prior non-empty observation count** (ADR-0030). A
+  domain whose links are half dead keeps crawling; the same domain after a
+  redesign halts. Both assertions, or the soft-404 fixture proves nothing.
+- A first run with 21% empty moves the domain to `awaiting_approval`, not
+  `broken`.
 - A price of "POA" is a validation failure, not `0.00`.
 - Unchanged page → identical `content_hash`, no duplicate full row.
 - A redesigned fixture (same URL, new markup) produces `empty_extraction`.

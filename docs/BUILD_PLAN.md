@@ -146,7 +146,7 @@ choosing or reaching one.
       dependency:** these exist for the operator's own manual iteration in
       phase 3. Nothing below reads them.
 
-- [ ] `1.4` **The local fixture site.** Hand-written HTML under
+- [x] `1.4` **The local fixture site.** Hand-written HTML under
       `backend/tests/fixtures/` served over loopback inside the test network,
       plus the tiny static server that serves it. One page per shape the
       extraction chain must handle, and the shapes are the point:
@@ -159,6 +159,14 @@ choosing or reaching one.
       unachievable without it.
       **Done when:** `make test-api` and the sidecar suite both reach it with
       no outbound network, and every shape above has a page.
+      **Done:** 7 pages, 3 `robots.txt` variants, a stdlib loopback server and
+      11 tests over the fixtures themselves — because a fixture that quietly
+      stops exercising its shape takes its dependent test down silently and
+      the test still passes. `robots.txt` is served **per host**, since
+      politeness is a per-host property (spec 002 §5) and one host could not
+      exercise `Crawl-delay` and disallow-all in the same run. The JSON-LD
+      twins are generated from one source so they cannot drift apart and make
+      the rung-ordering test meaningless.
 
 - [ ] `1.5` **Render sidecar acceptance suite** — the six criteria in
       [spec 012 §6](specs/012-render-sidecar.md) that a real browser can
@@ -222,22 +230,23 @@ choosing or reaching one.
       the JSON-LD page extracting without a template, the same page without
       it falling through to selectors, and "POA" failing currency validation
       rather than becoming `0.00`.
-      **Decide first:** `1.4` ships a soft-404 fixture — HTTP 200, no
-      product — and **spec 003 §3 has no answer for it.** It is
-      indistinguishable from a redesign by the `empty_extraction` predicate,
-      so a catalogue with dead links would move a healthy domain to `broken`.
-      Whether that is a fourth `unknown_pages` reason, a signal excluded from
-      the threshold, or accepted as-is is a decision no ADR covers: write it
-      before writing the chain (rule 1).
+      The soft-404 question this task used to carry is settled by
+      [ADR-0030](adr/0030-empty-needs-a-prior.md): the predicate is unchanged
+      and the _threshold_ is what excludes a page with no prior observation.
+      `1.11` implements that; `1.10` only has to make the predicate a
+      function with one definition.
 
 - [ ] `1.11` **Observation writes** with `content_hash` over the **normalised
       extracted fields**, never the raw markup (spec 003 §4, ADR-0007).
       Routes `empty_extraction` to `unknown_pages` and moves a domain to
-      `broken` past 20% (ADR-0027's predicate, evaluated on the final
-      observation after any `auto` fallback).
+      `broken` past 20% — ADR-0027's predicate on the final observation after
+      any `auto` fallback, counting only pages with a prior non-empty
+      observation (ADR-0030). A first run past 20% goes to
+      `awaiting_approval` instead, because nothing can have regressed yet.
       **Done when:** re-extracting an unchanged page yields an identical
-      hash, the redesigned fixture produces `empty_extraction`, and 21% trips
-      `broken` while 19% does not.
+      hash; the redesigned fixture trips `broken` while the soft-404 fixture
+      does not, however many of them there are; and 21% trips it while 19%
+      does not.
 
 - [ ] `1.12` **Asset enqueue and backpressure** — the scheduler half only
       (spec 002 §7, ADR-0003): a page worker resolves image URLs, inserts
@@ -255,8 +264,14 @@ choosing or reaching one.
       iteration. Replaces the placeholder `command` in `compose.yaml`. It
       emits no `run_events` yet — that is `2.8`, which adds emission to the
       worker it inherits, and there is no consumer before phase 3.
+      **Carries spec 009 §1 for the crawl path**: structured logging at the
+      volume that spec sets, which is a property of how the worker logs and
+      cannot be added by a later pass. Until this task, "logging" appeared
+      nowhere in this plan and the only observability task was `5.11`.
       **Done when:** `make up` runs a worker that crawls `1.4`'s fixture site
-      to completion and stops cleanly on SIGTERM mid-run.
+      to completion and stops cleanly on SIGTERM mid-run, and a 1,000-page
+      run at `info` stays under spec 009 §5's line budget with no HTML body
+      or credential in any line.
 
 - [ ] `1.14` A YAML template loader so a domain can be configured without a
       UI. **This is scaffolding with a known end date** — it is deleted in
@@ -322,7 +337,7 @@ from the task above it.
       `deny_patterns`.
 
 - [ ] `2.4` **Dedupe within a run and breadth-first enqueue** — `UNIQUE
-    (run_id, url_hash)` (spec 001 §1) with listings drained before
+  (run_id, url_hash)` (spec 001 §1) with listings drained before
       products, which is what keeps the frontier full (spec 002 §1).
       **Done when:** the same URL discovered twice in one run enqueues once
       and in a _later_ run enqueues again, because that is a re-crawl.
@@ -542,7 +557,10 @@ _Everything that is additive and benefits from real data to tune against._
       thresholds and per-domain `render_mode` overrides, tuned against real
       volume. The `auto` fallback and `strategy = static_fallback` ship in
       `1.7`; this is sizing, not behaviour.
-- [ ] `5.11` Observability pass against spec 009.
+- [ ] `5.11` Observability sweep against spec 009 — the metrics of §2, the
+      surfaces of §3, and whatever phases 2–4 added without logging. **Not
+      the first pass**: `1.13` carries §1 for the crawl path, because a line
+      budget is designed in, not retrofitted.
 
 **Exit:** a full run over several domains produces images, reports and a
 coverage number. The crawl-politeness report is defensible evidence.

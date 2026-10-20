@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Product not found — Mertens Werkzeuge</title>
+  </head>
+  <body>
+    <!-- SOFT 404, and the mirror image of product-redesigned.html.
+         HTTP 200 — that is what makes it soft — with no product on the page
+         at all. Per page it is indistinguishable from the redesign: both are
+         a 200 from which nothing resolves.
+         ADR-0030 is what separates them, and it is not in the markup: this
+         page has NO prior non-empty observation, so it is reported as
+         `empty_extraction` and excluded from the broken threshold. A
+         catalogue with dead links is ordinary and must not halt a domain.
+         A test that treats these two files the same has tested neither.
+         Nothing here says "404" in a machine-readable way on purpose. A
+         detector keyed on the title or the status would be a guess, and
+         ADR-0030 rejects guessing in the one detector that has to be
+         trustworthy. -->
+    <main class="message">
+      <h1>Sorry, we couldn't find that product.</h1>
+      <p>It may have been discontinued. Try the catalogue.</p>
+      <a href="/katalog/">Catalogue</a>
+    </main>
+  </body>
+</html>
