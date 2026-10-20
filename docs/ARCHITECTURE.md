@@ -5,15 +5,16 @@ the extraction chain and the failure modes. **This document holds intent.**
 Anything with an exact shape — schema, routes, topology, screens — lives in
 the spec that owns it:
 
-| For                               | Read                                                             |
-| --------------------------------- | ---------------------------------------------------------------- |
-| Services, routing, data ownership | [`specs/010-service-topology.md`](specs/010-service-topology.md) |
-| Schema                            | [`specs/001-domain-model.md`](specs/001-domain-model.md)         |
-| HTTP API and SSE                  | [`specs/005-api.md`](specs/005-api.md)                           |
-| Screens                           | [`SCREENS.md`](SCREENS.md) · mockups in `design/mockups/`        |
-| Visual language                   | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) · [`BRAND.md`](BRAND.md)  |
-| Running it                        | [`DEVELOPMENT.md`](DEVELOPMENT.md)                               |
-| What to build next                | [`BUILD_PLAN.md`](BUILD_PLAN.md)                                 |
+| For                               | Read                                                              |
+| --------------------------------- | ----------------------------------------------------------------- |
+| Services, routing, data ownership | [`specs/010-service-topology.md`](specs/010-service-topology.md)  |
+| Schema                            | [`specs/001-domain-model.md`](specs/001-domain-model.md)          |
+| HTTP API and SSE                  | [`specs/005-api.md`](specs/005-api.md)                            |
+| Screens                           | [`SCREENS.md`](SCREENS.md) — the registry · drawn in Figma        |
+| Screen and component states       | [`UI_STATES.md`](UI_STATES.md) · [`COMPONENTS.md`](COMPONENTS.md) |
+| Visual language                   | [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) · [`BRAND.md`](BRAND.md)   |
+| Running it                        | [`DEVELOPMENT.md`](DEVELOPMENT.md)                                |
+| What to build next                | [`BUILD_PLAN.md`](BUILD_PLAN.md)                                  |
 
 Decisions are recorded in [`adr/`](adr/README.md), each with its stated cost.
 Where this document and a spec disagree, the spec is more specific and wins

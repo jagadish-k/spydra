@@ -6,8 +6,19 @@ get invented during implementation. This file enumerates them once so the
 Figma frames, the React components and the phase 3 acceptance criteria all
 read the same list.
 
-Read with [`SCREENS.md`](SCREENS.md) (what each screen is for) and
-[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) (tokens and the one rule).
+Read with [`SCREENS.md`](SCREENS.md) — **the screen registry**, which is the
+single source of truth for which screens exist and where each is drawn
+(ADR-0031) — [`COMPONENTS.md`](COMPONENTS.md) for what the Figma library
+actually contains, and [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) for tokens.
+
+**This file says which states must exist; the Figma file says what they look
+like.** All 56 frames on page `🖥 Screens` are drawn and they match §1
+exactly. §4's additional per-screen states are _not_ separate frames.
+
+**Counting note.** §4's table has ten rows because there are ten screens.
+Figma and `design/mockups/` each carry eleven top-level layouts, because
+screen 4's Select mode gets its own artifact in both. That is not an eleventh
+screen and not a missing row — see the registry.
 
 ---
 
@@ -72,7 +83,12 @@ shows it should read as "look at this", not as a neutral highlight.
 
 ## 3. Component variant matrix
 
-### 3a. The twenty that exist, and what they are missing
+### 3a. The seventeen rows that exist, and what they are missing
+
+These seventeen rows are twenty Figma components — the row "Logo set" is four
+and "Sidebar · Topbar" is two. Both counts appear in this file and both are
+right; `COMPONENTS.md` §3 reconciles them, and **four of the seventeen are
+now complete**.
 
 | Component                                               | Has                   | Must add                                                                                               |
 | ------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------ |

@@ -11,9 +11,9 @@ The model proposes once per template. It never runs during a crawl.
 ## Status
 
 **Design complete, implementation not started.** This repository holds the
-architecture, the design system, static mockups of all ten screens, and a
-full development handoff: specs, ADRs and a phased build plan. No application
-code yet.
+architecture, the design system, all ten screens drawn in Figma across 56
+state frames, static mockups of the same screens, and a full development
+handoff: specs, ADRs and a phased build plan. No application code yet.
 
 **Starting development?** Read [`AGENTS.md`](AGENTS.md), then
 [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md). Phase 0 is scaffolding.
@@ -33,7 +33,9 @@ docs/
   DEVELOPMENT.md     Docker-native environment, commands, macOS gotchas
   TESTING.md         Test strategy: what must be covered and why
   DESIGN_SYSTEM.md   Tokens, typography, components, anti-patterns
-  SCREENS.md         What each screen is for and what it contains
+  SCREENS.md         The screen registry — what exists, where each is drawn
+  UI_STATES.md       Which states every screen and component must have
+  COMPONENTS.md      The Figma component catalog and per-screen usage
   BRAND.md           Logo construction, variants, usage rules
   WORKFLOW.md        Branches, the two gates, and the agent team
   agents/            Agent roles — canonical, tool-neutral. Edit these
@@ -45,7 +47,8 @@ docs/
 design/
   tokens/            tokens.css (runtime) · tokens.json (W3C, for Figma)
   logo/              Six SVG variants + the generator that produces them
-  mockups/           Static reference implementation of all ten screens
+  mockups/           Runnable reference, NOT authoritative for layout.
+                     Figma wins where they disagree (ADR-0031)
 
 scripts/
   gen-agents.py      docs/agents/ → the four tool formats. Stdlib only
@@ -100,6 +103,11 @@ No build step and no server — they are plain HTML and open straight from disk.
 The theme toggle in the top bar persists per browser; **light is the default**
 unless your OS asks for dark on a first visit.
 
+**These are a reference, not the specification.** They show the populated
+state only. The Figma file is authoritative for what every state looks like,
+and [`docs/SCREENS.md`](docs/SCREENS.md) maps each screen to its frame
+(ADR-0031).
+
 Start at `foundations.html` for the design system, or `template-review.html` for
 the screen that matters most.
 
@@ -126,11 +134,11 @@ problem for no benefit.
 
 **Three worker pools, one politeness gate.**
 
-| Pool | Concurrency | Per-host limit |
-| --- | --- | --- |
-| Static pages | 8–16 | 1, with a 2 s gap |
-| Rendered pages | 3 contexts | 1, same gate |
-| Assets | 16–32 | 4–6, with a 200 ms gap |
+| Pool           | Concurrency | Per-host limit         |
+| -------------- | ----------- | ---------------------- |
+| Static pages   | 8–16        | 1, with a 2 s gap      |
+| Rendered pages | 3 contexts  | 1, same gate           |
+| Assets         | 16–32       | 4–6, with a 200 ms gap |
 
 Assets parallelise within a host because an image is a static byte range,
 usually cached, costing the origin almost nothing — six concurrent image fetches

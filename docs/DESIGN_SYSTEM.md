@@ -5,6 +5,13 @@ every list is filterable, and every state is visible without drilling in. You
 are the only user and you will be looking for problems, so the interface
 surfaces anomalies rather than celebrating successes.
 
+**Authority:** this file owns the tokens. The **Figma file**
+(`GeJPFXY4CicHBdzLMyXG2E`) owns what screens and states look like,
+[`SCREENS.md`](SCREENS.md) owns which screens exist, and
+[`COMPONENTS.md`](COMPONENTS.md) records what the Figma library contains
+(ADR-0031). `design/mockups/` below is a **runnable reference, not an
+authority** — populated-state only, and Figma wins where they disagree.
+
 **Reference implementation:** [`design/mockups/`](../design/mockups/) — open
 `index.html` from disk, no build step. Every class in `assets/app.css` maps to
 a component named below.

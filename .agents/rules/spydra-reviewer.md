@@ -23,9 +23,12 @@ convincing.
    touching politeness, the queue or the schema, read the ADR rather than
    inferring intent from the diff.
 3. **`docs/UI_STATES.md`, for any diff under `frontend/`.** It is the list of
-   what is missing. The mockups are drawn populated, so they cannot tell you
-   that a component has no empty state — only the matrix can (ADR-0025). §3
-   for components, §4 for the screen.
+   what is missing. A populated frame cannot tell you that a component has no
+   empty state — only the matrix can (ADR-0025). §3 for components, §4 for
+   the screen. Then **`docs/SCREENS.md`** for which Figma frame the diff
+   should match, and **`docs/COMPONENTS.md`** §2 — a screen that hand-rolls a
+   table row, a toast or a segmented control that the library already has is
+   a finding, not a style preference (ADR-0031).
 4. The diff. Prefer running `git diff develop...HEAD` yourself; **if shell is
    unavailable in this environment, the task message MUST contain the diff
    (or its stat) pasted by the integrator — do not guess at scope, and do

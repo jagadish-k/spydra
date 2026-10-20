@@ -1,20 +1,32 @@
 # 006 — React application
 
-**Phase 3** · depends on 005, 011 · ADR-0013, ADR-0015, ADR-0018, ADR-0025
+**Phase 3** · depends on 005, 011 · ADR-0013, ADR-0015, ADR-0018, ADR-0025, ADR-0031
 
-The UI specification is two files, and they do not overlap (ADR-0025):
+The UI specification is three artifacts, one axis each (ADR-0031, extending
+ADR-0025):
 
-- **`design/mockups/`** — layout, spacing, typography and colour, in the
-  **populated** state. Static HTML, opens from disk with no build step,
-  accurate down to spacing and colour. Build components to match it.
-- **`docs/UI_STATES.md`** — **which states exist** and what each must not do:
-  §1's four mandatory states and the partial fifth, §3's component variant
-  matrix, §4's per-screen states. The mockups have no loading, empty, error or
-  partial frames, so a component built only from them is incomplete by
-  construction. Where the two disagree, `UI_STATES.md` is newer and wins.
+- **[`docs/SCREENS.md`](../SCREENS.md)** — the **screen registry**. Which
+  screens exist, how many, and the Figma node id, mockup, spec and build task
+  for each. **Ten screens · eleven top-level layouts · 56 frames.** Nothing
+  else enumerates screens; do not re-derive the count.
+- **The Figma file** `GeJPFXY4CicHBdzLMyXG2E`, page `🖥 Screens` (`3:139`) —
+  authoritative for **what every state looks like**: layout, spacing,
+  typography and colour, in all states. Node ids are in the registry.
+  **Inventory it with `figma.root.children` through `use_figma`, never with a
+  bare `get_metadata`** — that call reports only the pages loaded in the
+  operator's editor (ADR-0031 §7).
+- **[`docs/UI_STATES.md`](../UI_STATES.md)** — **which states must exist** and
+  what each must not do: §1's four mandatory states and the partial fifth,
+  §3's component variant matrix, §4's per-screen states.
 
-`docs/SCREENS.md` says what each screen is for; `docs/DESIGN_SYSTEM.md` holds
-the tokens and rules.
+`design/mockups/` is a runnable reference, not an authority: real tokens in a
+real browser with no Figma account, but populated-state only. **Where it and
+Figma disagree, Figma wins.** Where Figma and `UI_STATES.md` disagree about
+whether a state should exist, `UI_STATES.md` wins.
+
+[`docs/COMPONENTS.md`](../COMPONENTS.md) is the component catalog — what the
+Figma library actually contains, what each component is used by, and the
+reconciliation against §3. `docs/DESIGN_SYSTEM.md` holds the tokens.
 
 ---
 
@@ -41,13 +53,20 @@ is the only structural rule the frontend needs and it is worth enforcing.
 
 ## 2. Components to build
 
-From `docs/DESIGN_SYSTEM.md`. The Figma library has all of these; the mockup
-CSS class in brackets is the reference implementation.
+From `docs/DESIGN_SYSTEM.md`. The mockup CSS class in brackets is the
+reference implementation.
 
 **This table names the components; `UI_STATES.md` §3 names their states.** The
 fourteen below are the set the mockups show. §3 adds the variants each one is
-missing and the sets the screens force into existence that the library has
-none of — build from both (ADR-0025).
+missing and the sets the screens force into existence — build from both
+(ADR-0025).
+
+**For what the Figma library actually contains, read
+[`docs/COMPONENTS.md`](../COMPONENTS.md), not this table.** It has 39
+components against §3's 51, five of them under a different name than §3 gives
+them, and it records the sixteen that the screen frames hand-build rather than
+instance. Building a screen from its frame alone will re-hand-roll all
+sixteen.
 
 | Component             | Mockup class      | Notes                                                                                                                  |
 | --------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
