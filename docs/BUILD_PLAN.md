@@ -168,7 +168,7 @@ choosing or reaching one.
       twins are generated from one source so they cannot drift apart and make
       the rung-ordering test meaningless.
 
-- [ ] `1.5` **Render sidecar acceptance suite** — the six criteria in
+- [x] `1.5` **Render sidecar acceptance suite** — the six criteria in
       [spec 012 §6](specs/012-render-sidecar.md) that a real browser can
       prove against `1.4`'s fixtures: JS-dependent content present after
       render and absent from the raw response; a fourth concurrent request
@@ -181,6 +181,19 @@ choosing or reaching one.
       **Done when:** `make test-render` exercises all six through
       `POST /render`, and the four remaining §6 criteria are listed in the
       task file with the phase that will cover them.
+      **Done:** 6 cases through `POST /render` against `1.4`'s fixture site,
+      every one mutation-tested — and two of the six were **not** covered on
+      the first pass, which is the whole argument for the mutation step: `A1`
+      stayed green with the browser's DOM removed from the response (the
+      fixture carries its product's class names in a JS string literal), and
+      `A4` stayed green with the dialog guard deleted (Playwright
+      auto-dismisses when no listener is attached). Both are written up in
+      the task file. **`make test-render` could not fail before this task**:
+      `render` had no bind mount, so the target ran the image's copy of the
+      suite and a planted failing test exited 0. The four remaining §6
+      criteria are in the task file with a phase each; one of them — the
+      network-isolation criterion — has **no owning task** and is raised
+      there rather than resolved.
 
 - [ ] `1.6` **`HttpxFetcher`** behind the `Fetcher` port from `1.2`. An HTTP
       error status is a successful fetch — deciding what a 403 or 429 means
@@ -198,7 +211,12 @@ choosing or reaching one.
       **Done when:** `1.6`'s tests are unchanged — if they need changing the
       port is wrong, not the test — and the sidecar being down leaves
       `static` domains unaffected, stalls `rendered` ones honestly and makes
-      `auto` fall back and record it.
+      `auto` fall back and record it. **Also closes spec 012 §6's "the Python
+      image contains no `playwright` package and no browser"** — deferred
+      here from `1.5` because it needs no browser, and asserted nowhere
+      today: `docker/api.Dockerfile` and `docker/worker.Dockerfile` only say
+      so in a comment. This is where spec 012 §1's "no browser dependency at
+      all" first carries weight.
 
 - [ ] `1.8` **`PostgresFrontier`**: the claim query exactly as
       [ADR-0026](adr/0026-claim-locks-the-domain-row.md) specifies it, the

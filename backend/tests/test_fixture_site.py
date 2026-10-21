@@ -16,13 +16,22 @@ another, and a single-file assertion cannot see that:
 """
 
 import re
+import time
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from tests.fixtures.server import DEFAULT_ROBOTS, PAGES, ROBOTS, ROUTES, FixtureSite
+from tests.fixtures.server import (
+    DEFAULT_ROBOTS,
+    OVERSIZED_MAX_MB,
+    PAGES,
+    ROBOTS,
+    ROUTES,
+    SLOW_IMAGE_DELAY_S,
+    FixtureSite,
+)
 
 OLD_NORTHFIELD_SELECTORS = ("product__title", "product__price")
 
@@ -179,3 +188,88 @@ def test_every_robots_fixture_is_reachable_and_distinct() -> None:
     files = sorted(ROBOTS.glob("*.txt"))
     assert len(files) == 3, [f.name for f in files]
     assert len({f.read_text() for f in files}) == 3
+
+
+# ---------------------------------------------------------------------------
+# The generated shapes (BUILD_PLAN 1.5).
+#
+# Same reasoning as everything above: these exist so spec 012 §6 can be
+# proven, and a generated response that quietly stops stalling, stops being
+# oversized or stops raising a dialog takes its acceptance test down with it
+# while the test still passes. The delay assertions are on OBSERVED elapsed
+# time, never a patched clock.
+# ---------------------------------------------------------------------------
+
+
+def test_the_slow_route_actually_stalls_for_the_time_it_is_asked_for(site: FixtureSite) -> None:
+    """It is what holds a render context open, so the context cap and the 503
+    (spec 012 §2, §6) are observed rather than inferred. A route that
+    returned instantly would make the fourth request succeed and the cap
+    look broken."""
+    start = time.monotonic()
+    with urllib.request.urlopen(f"{site.base_url}/slow/700", timeout=10) as r:
+        assert r.status == 200
+        assert b"produkt__preis" in r.read()
+    assert time.monotonic() - start >= 0.7
+
+
+def test_the_slow_route_defaults_rather_than_erroring_on_a_bad_segment(
+    site: FixtureSite,
+) -> None:
+    """A test writing these URLs by hand should get a slow page, not a stack
+    trace that reads like a server fault."""
+    start = time.monotonic()
+    with urllib.request.urlopen(f"{site.base_url}/slow/not-a-number", timeout=10) as r:
+        assert r.status == 200
+    assert time.monotonic() - start >= 1.0
+
+
+def test_the_slow_images_are_delayed_and_are_actually_images(site: FixtureSite) -> None:
+    """The delay IS the mechanism behind "block_resources measurably reduces
+    render time" (spec 012 §2, §6). Served instantly, a 24-image gallery
+    renders at the same speed blocked or not, and that criterion becomes
+    unfalsifiable."""
+    start = time.monotonic()
+    with urllib.request.urlopen(f"{site.base_url}/img/slow/01.png", timeout=10) as r:
+        assert r.status == 200
+        assert r.headers["content-type"] == "image/png"
+        assert r.read().startswith(b"\x89PNG")
+    assert time.monotonic() - start >= SLOW_IMAGE_DELAY_S
+
+
+def test_the_image_heavy_page_references_the_delayed_images(site: FixtureSite) -> None:
+    """A gallery pointing at instant images proves nothing, and the count has
+    to be high enough that the delay shows through browser concurrency."""
+    with urllib.request.urlopen(
+        f"{site.base_url}/catalog/abrasives/discs/rfd-115-060/galerie", timeout=5
+    ) as r:
+        body = r.read().decode()
+    assert body.count('src="/img/slow/') >= 12
+    assert "produkt__preis" in body
+
+
+def test_the_oversized_route_is_oversized_and_bounded(site: FixtureSite) -> None:
+    """Spec 012 §3 caps the response at 10 MB and flags a truncation, so the
+    fixture has to exceed it — and must not be a committed 20 MB blob, which
+    the pre-commit hook refuses and no reviewer could read. The upper bound
+    is here so a typo in a test cannot ask for 20 GB."""
+    with urllib.request.urlopen(f"{site.base_url}/oversized/20", timeout=60) as r:
+        assert r.status == 200
+        assert len(r.read()) == 20 * 1024 * 1024
+
+    with urllib.request.urlopen(f"{site.base_url}/oversized/9999", timeout=120) as r:
+        assert len(r.read()) == OVERSIZED_MAX_MB * 1024 * 1024
+
+
+def test_the_dialog_fixture_raises_its_dialogs_before_it_writes_the_product() -> None:
+    """Spec 012 §6: "a page opening alert() does not hang the request". The
+    ordering is the test's teeth — if the product were written first, a
+    sidecar that hung on the dialog would still return the content and the
+    criterion would pass against a broken guard."""
+    code = _code(PAGES / "mertens/product-dialog.html")
+    for dialog in ("alert(", "confirm(", "prompt("):
+        assert dialog in code, f"the dialog fixture no longer opens {dialog}"
+    assert code.index("alert(") < code.index("produkt__preis"), (
+        "the product is written before the dialog, so this fixture would pass "
+        "against a sidecar that hangs on alert()"
+    )
