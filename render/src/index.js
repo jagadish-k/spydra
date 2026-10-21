@@ -11,9 +11,17 @@ import { MAX_BODY_BYTES, truncateHtml } from './limits.js';
 import { validateRequest } from './validate.js';
 import { ContextQueue } from './context-queue.js';
 
-const PORT = 3001;
+// 3001 is the published port (ADR-0023 — the loopback publish IS the fetch
+// path). Env-readable only so the acceptance suite can run two instances
+// side by side with different recycle and queue settings.
+const PORT = intEnv('RENDER_PORT', 3001);
 const CONTEXTS_MAX = intEnv('RENDER_CONTEXTS', 3);
 const RECYCLE_AFTER_PAGES = intEnv('RECYCLE_AFTER_PAGES', 500);
+// Spec 012 §2: beyond the cap a request queues for 5 s, then 503s. Env-
+// readable so the acceptance suite can observe the 503 without a 5 s wait
+// per case; intEnv falls back to the spec value, so an unset or junk env
+// cannot weaken it.
+const QUEUE_WAIT_MS = intEnv('RENDER_QUEUE_WAIT_MS', 5000);
 const RECYCLE_AFTER_MS = 30 * 60 * 1000; // spec 012 §2: 500 pages OR 30 min
 
 /** @param {string} name @param {number} fallback */
@@ -98,7 +106,7 @@ class BrowserPool {
 }
 
 const pool = new BrowserPool();
-const queue = new ContextQueue(CONTEXTS_MAX, 5000);
+const queue = new ContextQueue(CONTEXTS_MAX, QUEUE_WAIT_MS);
 
 // ---------------------------------------------------------------------------
 // Rendering
@@ -255,7 +263,7 @@ const server = http.createServer((req, res) => {
         return queue
           .acquire()
           .then(() => render(v.value))
-          .catch(() => ({ status: 503, body: { error: 'no context available within 5s' } }));
+          .catch(() => ({ status: 503, body: { error: `no context available within ${QUEUE_WAIT_MS}ms` } }));
       })
       .then((r) => {
         if (!res.destroyed) json(res, r.status, r.body);

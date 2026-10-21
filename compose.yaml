@@ -96,7 +96,37 @@ services:
     build: { context: ., dockerfile: docker/render.Dockerfile }
     environment:
       RENDER_CONTEXTS: ${RENDER_CONTEXTS:-3}
-      RECYCLE_AFTER_PAGES: 500
+      RECYCLE_AFTER_PAGES: ${RECYCLE_AFTER_PAGES:-500}
+      # Spec 012 §2's 5 s queue window. Overridable ONLY so the acceptance
+      # suite can prove the 503 without a 5 s wall-clock wait per case; the
+      # default is the spec, so a test that forgets to set it sees spec
+      # behaviour rather than test behaviour (BUILD_PLAN 1.5).
+      RENDER_QUEUE_WAIT_MS: ${RENDER_QUEUE_WAIT_MS:-5000}
+    volumes:
+      # The suite under render/tests is the gate for spec 012 §6, and without
+      # these binds it ran the IMAGE's copy: a planted failing test was never
+      # seen and `make test-render` still exited 0. The Dockerfile keeps its
+      # COPY so the shipped image is self-contained; in dev the mount wins.
+      #
+      # TWO NARROW BINDS, NOT `./render:/app`, and both read-only:
+      #   - `node_modules` stays the image's. A named volume over it would be
+      #     populated once and never again, so moving the playwright pin and
+      #     the image tag together (ADR-0016, ADR-0017) would still leave the
+      #     OLD driver mounted against the NEW browsers — the one mismatch
+      #     render.Dockerfile's header says costs a day.
+      #   - read-only because this container runs a real browser over
+      #     operator-supplied URLs (spec 012 §3, "the largest attack surface
+      #     in the system"). `./render:/app` read-write would let a page that
+      #     achieved execution in here rewrite its own source on the host,
+      #     tracked in git and executed on the next boot. `npm test` never
+      #     writes to /app.
+      - ./render/src:/app/src:ro
+      - ./render/tests:/app/tests:ro
+      # 1.4's fixture site, read-only. render is ALONE on egress (ADR-0023),
+      # so the api container's fixture server is unreachable by design — the
+      # suite runs 1.4's own stdlib server on this container's loopback
+      # instead of owning a second copy of the route table.
+      - ./backend/tests/fixtures:/fixtures:ro
     shm_size: 1gb # Chromium crashes oddly on the 64 MB default
     networks:
       [egress] # alone. api/worker reach it via the host loopback

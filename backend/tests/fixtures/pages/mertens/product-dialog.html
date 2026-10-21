@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <title>Drehmomentschluessel 20-100Nm — Mertens Werkzeuge</title>
+  </head>
+  <body>
+    <!-- Spec 012 §3 "JavaScript dialogs: auto-dismissed; never block" and
+         §6 "a page opening alert() does not hang the request".
+
+         The dialog fires BEFORE the product is written, and the product is
+         written by the line after it. So a sidecar that does not dismiss the
+         dialog does not merely take longer — it never reaches the content,
+         and the assertion on produkt__preis fails for the right reason. A
+         fixture that alerted after rendering would pass against a hung
+         browser as long as the timeout was generous. -->
+    <main id="app">
+      <noscript>Dieser Katalog benoetigt JavaScript.</noscript>
+    </main>
+    <script>
+      window.alert("Bitte Lieferzeiten beachten.");
+      confirm("Preise zzgl. MwSt?");
+      prompt("Kundennummer?");
+      document.getElementById("app").innerHTML = [
+        '<div class="produkt">',
+        '  <h1 class="produkt__name">Drehmomentschluessel 20-100Nm</h1>',
+        '  <div class="produkt__preis">89,50 EUR</div>',
+        '  <div class="produkt__lager">Auf Lager</div>',
+        "</div>",
+      ].join("\n");
+    </script>
+  </body>
+</html>

@@ -16,7 +16,9 @@ host's robots is what comes back.
 
 from __future__ import annotations
 
+import base64
 import threading
+import time
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +41,16 @@ ROUTES: dict[str, Path] = {
     # Soft 404: HTTP **200**, no product. That status is the whole point
     # (ADR-0030) — serving 404 here would make the fixture test nothing.
     "/katalog/discontinued-item": PAGES / "mertens/product-missing.html",
+    # Spec 012 §3/§6, BUILD_PLAN 1.5: the page opens three dialogs before it
+    # writes the product, so a sidecar that does not dismiss them never
+    # reaches the content instead of merely taking longer.
+    "/katalog/drehmomentschluessel-20-100": PAGES / "mertens/product-dialog.html",
+    # Spec 012 §6: image-heavy, for the block_resources comparison. Its
+    # images come from SLOW_IMAGE_PREFIX below, which is what makes the
+    # difference observable.
+    "/catalog/abrasives/discs/rfd-115-060/galerie": (
+        PAGES / "vantage-abrasives/product-images.html"
+    ),
 }
 
 # Host → which robots.txt that host answers with.
@@ -52,6 +64,63 @@ DEFAULT_ROBOTS = ROBOTS / "permissive.txt"
 # defences. Unbounded on purpose: the caps must be what stops it, not the
 # fixture running out of pages.
 TRAP_PREFIX = "/trap/"
+
+# ---------------------------------------------------------------------------
+# Generated responses (BUILD_PLAN 1.5).
+#
+# Three of spec 012 §6's criteria are about the *size* or the *timing* of a
+# response rather than its markup, and none of the three can be a committed
+# file: a response that stalls is a property of the server, not of bytes on
+# disk, and the oversized one would be a 20 MB blob that the pre-commit hook
+# refuses (> 2 MB) and that no reviewer could read. So these are synthesized
+# per request, and the shape of each one is a parameter in its URL.
+#
+# They sit beside ROUTES rather than in it for the same reason TRAP_PREFIX
+# does: ROUTES is the explicit contract the tests read, and a generated
+# family has no single path to list.
+# ---------------------------------------------------------------------------
+
+# /slow/<ms> — sleeps server-side, then answers with a small product page.
+# Holds a render context open for a known duration, which is how the context
+# cap and the 503 are observed (§6). Server-side rather than a busy page:
+# a sleeping socket is deterministic, where "how long does Chromium spend on
+# this script" is a measurement of the browser.
+SLOW_PREFIX = "/slow/"
+
+# /img/slow/<anything> — a 1x1 PNG behind a fixed delay. The delay is the
+# whole mechanism behind "block_resources measurably reduces render time":
+# instantly-served images render at the same speed whether blocked or not,
+# which would make that criterion unfalsifiable.
+SLOW_IMAGE_PREFIX = "/img/slow/"
+SLOW_IMAGE_DELAY_S = 0.15
+
+# /oversized/<mb> — <mb> megabytes of HTML, as one text node so the cost is
+# transfer and serialization rather than DOM construction. Spec 012 §3 caps
+# the response at 10 MB and flags a truncation; asking for 20 exercises it.
+OVERSIZED_PREFIX = "/oversized/"
+OVERSIZED_MAX_MB = 32  # a bound, so a typo in a test cannot ask for 20 GB
+
+# Deliberately tiny: the bytes are irrelevant, the delay in front of them is
+# the point. 1x1 transparent PNG.
+# Split across two literals only so the line is under 100 columns without
+# relying on ruff's E501 exemption for a single unsplittable token.
+PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8Dw"
+    "HwAFAAH/q842iQAAAABJRU5ErkJggg=="
+)
+
+
+def _int_segment(path: str, prefix: str, default: int) -> int:
+    """The integer after `prefix`, or `default` when it is absent or junk.
+
+    A bad segment is a default rather than a 400: these URLs are written by
+    hand in tests, and a silent 400 would read as a server fault.
+    """
+    tail = path[len(prefix) :].strip("/").split("/", 1)[0]
+    try:
+        return int(tail)
+    except ValueError:
+        return default
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
@@ -79,6 +148,29 @@ class FixtureHandler(BaseHTTPRequestHandler):
         if path == "/robots.txt":
             which = ROBOTS_BY_HOST.get(host, DEFAULT_ROBOTS)
             self._send(which.read_bytes(), "text/plain; charset=utf-8")
+            return
+
+        if path.startswith(SLOW_IMAGE_PREFIX):
+            time.sleep(SLOW_IMAGE_DELAY_S)
+            self._send(PNG_1X1, "image/png")
+            return
+
+        if path.startswith(SLOW_PREFIX):
+            time.sleep(_int_segment(path, SLOW_PREFIX, 1000) / 1000)
+            body = (
+                b'<!doctype html><title>slow</title><div class="produkt">'
+                b'<h1 class="produkt__name">Slow Fixture</h1>'
+                b'<div class="produkt__preis">GBP 1.00</div></div>'
+            )
+            self._send(body, "text/html; charset=utf-8")
+            return
+
+        if path.startswith(OVERSIZED_PREFIX):
+            mb = min(_int_segment(path, OVERSIZED_PREFIX, 20), OVERSIZED_MAX_MB)
+            head = b'<!doctype html><title>oversized</title><p id="filler">'
+            tail = b"</p>"
+            filler = b"x" * (mb * 1024 * 1024 - len(head) - len(tail))
+            self._send(head + filler + tail, "text/html; charset=utf-8")
             return
 
         if path.startswith(TRAP_PREFIX):
@@ -145,7 +237,13 @@ if __name__ == "__main__":
     import os
 
     port = int(os.environ.get("FIXTURE_PORT", "8099"))
-    srv = ThreadingHTTPServer(("0.0.0.0", port), partial(FixtureHandler))  # noqa: S104
+    # 0.0.0.0 by default so the operator can look at a page from the host.
+    # The render sidecar's suite sets 127.0.0.1: that container is alone on
+    # `egress` (ADR-0023) and a fixture site reachable from the egress
+    # network would be a host the browser can resolve, which is exactly
+    # what that ADR exists to deny.
+    host = os.environ.get("FIXTURE_HOST", "0.0.0.0")  # noqa: S104
+    srv = ThreadingHTTPServer((host, port), partial(FixtureHandler))
     srv.requests = []  # type: ignore[attr-defined]
     print(f"fixture site on :{port} — {len(ROUTES)} routes")
     srv.serve_forever()

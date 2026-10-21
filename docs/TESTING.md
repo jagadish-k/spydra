@@ -40,7 +40,9 @@ Unit and integration tests make no outbound requests.
   `MockTransport` ships in the client so it cannot fall behind it). The rule
   this serves is unchanged: no network in a unit test.
 - Pages: **hand-written** HTML fixtures in `tests/fixtures/pages/`,
-  committed, served over loopback by the fixture server (BUILD_PLAN `1.4`).
+  committed — except the three generated shapes in §4, which are synthesized
+  per request because a stall and a 20 MB body cannot be files — served over
+  loopback by the fixture server (BUILD_PLAN `1.4`).
   Written rather than captured: a fixture must hold still for years, and a
   copy of a real page goes stale, carries someone else's content, and tempts
   a test into re-fetching the original. Each one exists to exercise one
@@ -158,10 +160,22 @@ tests/fixtures/
     northfield/product-redesigned.html    same URL, selectors no longer match
     mertens/product-rendered.html         content only after JavaScript
     mertens/product-missing.html          soft 404: HTTP 200, no product
+    mertens/product-dialog.html           opens alert() before writing (012 §3)
+    vantage-abrasives/product-images.html 24 delayed images, for block_resources
   robots/{permissive,crawl-delay,disallow-all}.txt
   llm/{good,malformed,hallucinated}.json
   render/{rendered-ok.json,timeout.json,503.json}
 ```
+
+**Three shapes are generated rather than committed** (BUILD_PLAN `1.5`).
+Spec 012 §6 has criteria about a response's _timing_ and _size_ rather than
+its markup, and neither can be a file: a response that stalls is a property
+of the server, and a 20 MB page is unreviewable and refused by the
+pre-commit hook. So `server.py` synthesizes `/slow/<ms>`, `/img/slow/*`
+(a 1x1 PNG behind a 150 ms delay) and `/oversized/<mb>`. They are still
+hand-written in the sense the rule means — written locally, with no original
+anywhere to go stale or to tempt a re-fetch. `fixtures/README.md` has the
+table and the reasoning.
 
 **The redesigned fixture is the most valuable one in the suite.** It is the
 only way to test the failure that produces no error — and with nothing
