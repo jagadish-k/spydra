@@ -20,13 +20,19 @@ toward an ADR-0004 pause because a browser of ours was busy, or a genuinely
 broken page quietly retrying forever.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
 import httpx2
 import pytest
 
 from spydra.adapters.http import RenderServiceFetcher
+from spydra.adapters.http.render_service_fetcher import (
+    LEASE_BUDGET_S,
+    RENDER_TIMEOUT_RETRIES,
+    SIDECAR_MAX_TIMEOUT_MS,
+    TRANSPORT_HEADROOM_S,
+)
 from spydra.domain.enums import FetchPath
 from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchRequest
@@ -71,10 +77,32 @@ def fetcher(handler: Handler) -> RenderServiceFetcher:
     )
 
 
-def request(**kw: object) -> FetchRequest:
-    kw.setdefault("url", PAGE_URL)
-    kw.setdefault("user_agent", "MySampleScraper/1.0 (+https://jagadishk.work)")
-    return FetchRequest(**kw)  # type: ignore[arg-type]  # kwargs are checked by the dataclass
+USER_AGENT = "MySampleScraper/1.0 (+https://jagadishk.work)"
+
+
+def request(
+    url: str = PAGE_URL,
+    *,
+    user_agent: str = USER_AGENT,
+    timeout_ms: int = 20_000,
+    headers: Mapping[str, str] | None = None,
+    wait_for_selector: str | None = None,
+) -> FetchRequest:
+    """Spelled out rather than `**kwargs`.
+
+    The first version laundered them through `**kw` and a
+    `# type: ignore[arg-type]` whose comment said "kwargs are checked by the
+    dataclass" — which is false: a plain dataclass checks nothing at runtime,
+    so after the ignore nothing checked them at all. The sibling
+    `test_httpx_fetcher.py` already used this shape.
+    """
+    return FetchRequest(
+        url=url,
+        user_agent=user_agent,
+        timeout_ms=timeout_ms,
+        headers=headers if headers is not None else {},
+        wait_for_selector=wait_for_selector,
+    )
 
 
 def rendered(sidecar_status: int = 200, **overrides: object) -> httpx2.Response:
@@ -154,11 +182,15 @@ async def test_a_503_is_backpressure_and_not_a_fetch_failure() -> None:
         await f.aclose()
 
 
-@pytest.mark.parametrize("status", [502, 422, 500, 404])
+@pytest.mark.parametrize("status", [502, 422, 404])
 async def test_other_sidecar_errors_are_fetch_failures(status: int) -> None:
     """502 is a navigation failure, 422 is a bug in our own request body, and
-    anything else is unexpected. None of them is backpressure, and none
-    improves on a retry."""
+    404 means a misconfigured base URL. None improves on a retry.
+
+    **500 is deliberately not in this list.** It was, and that was a defect:
+    `render/src/index.js` answers 500 when the browser will not launch or a
+    context cannot be created, which is the sidecar being unavailable — see
+    the backpressure test below."""
 
     def handler(_: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(status, json={"error": "nope"})
@@ -320,3 +352,230 @@ def test_the_adapter_satisfies_the_fetcher_protocol() -> None:
 
     adapter: Fetcher = RenderServiceFetcher(base_url=SIDECAR, clock=FakeClock())
     assert adapter.path is FetchPath.RENDERED
+
+
+# ---------------------------------------------------------------------------
+# Guards added after review. Each of these had a surviving mutation.
+# ---------------------------------------------------------------------------
+
+
+async def test_a_sidecar_500_is_backpressure_because_it_means_it_cannot_serve() -> None:
+    """`render/src/index.js` answers 500 when the browser will not launch or a
+    context cannot be created — a `/dev/shm`-starved Chromium that fails to
+    relaunch after a recycle answers 500 to **every** request.
+
+    That is the sidecar being unavailable, which spec 012 §4 and ADR-0016
+    answer with "rows stay `pending`, reported stalled, **not** failed". As
+    `FetchFailed` it was charged to the supplier: RENDERED pages retried
+    three times and marked failed, and — worse — `AutoFetcher` falls back on
+    `Backpressure` only, so AUTO domains would not have fallen back at all
+    for the one status the sidecar emits when its browser is broken.
+    """
+
+    def handler(_: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(500, json={"error": "browser unavailable: launch failed"})
+
+    f = fetcher(handler)
+    try:
+        with pytest.raises(Backpressure):
+            await f.fetch(request())
+    finally:
+        await f.aclose()
+
+
+async def test_a_malformed_base_url_fails_rather_than_requeueing_for_ever() -> None:
+    """A permanent misconfiguration of ours must not look transient.
+
+    As `Backpressure` — which is where `InvalidURL` landed, copied from the
+    static adapter's except tuple — a typo in `RENDER_BASE_URL` requeues
+    every rendered row for ever: no `consecutive_failures`, no backoff, no
+    error and no run completion. It belongs with 422.
+    """
+    f = RenderServiceFetcher(
+        base_url="http://[::1",
+        clock=FakeClock(),
+        client=RenderServiceFetcher.build_client(
+            transport=httpx2.MockTransport(lambda _: rendered())
+        ),
+    )
+    try:
+        with pytest.raises(FetchFailed):
+            await f.fetch(request())
+    finally:
+        await f.aclose()
+
+
+@pytest.mark.parametrize(
+    ("label", "response"),
+    [
+        pytest.param("not JSON", httpx2.Response(200, text="<html>oops</html>"), id="not-json"),
+        pytest.param("a list", httpx2.Response(200, json=[1, 2]), id="json-list"),
+        pytest.param("empty object", httpx2.Response(200, json={}), id="empty-object"),
+        pytest.param(
+            "no html",
+            httpx2.Response(200, json={"status": 200, "final_url": PAGE_URL}),
+            id="missing-html",
+        ),
+        pytest.param(
+            "null status",
+            httpx2.Response(200, json={"html": "<p/>", "status": None, "final_url": PAGE_URL}),
+            id="null-status",
+        ),
+    ],
+)
+async def test_a_200_that_is_not_a_rendered_page_fails_instead_of_inventing_one(
+    label: str, response: httpx2.Response
+) -> None:
+    """The defect this replaced was `payload.get("status", 0)` and
+    `payload.get("html", "")`, which turn a sidecar regression into a page
+    that looks real: empty body, status 0.
+
+    The consequence is not cosmetic. The extraction chain scores
+    `empty_extraction` on an empty body, and `1.11` moves a domain to
+    **BROKEN** past 20% — so a payload bug on *our* side marks healthy
+    supplier domains broken. And status 0 appears in no row of spec 002 §4's
+    table, so the politeness gate has no branch for it and
+    `consecutive_failures` never resets.
+
+    Two of these inputs also escaped the port's vocabulary entirely before
+    the fix: a non-JSON body raised `JSONDecodeError` and a JSON list raised
+    `AttributeError`, neither of which `ports/fetcher.py` declares. Through
+    `1.13`'s TaskGroup that leaves `in_flight` incremented and the row
+    leased, so one bad response stalls the domain until the 120-second sweep.
+    """
+
+    def handler(_: httpx2.Request) -> httpx2.Response:
+        return response
+
+    f = fetcher(handler)
+    try:
+        with pytest.raises(FetchFailed):
+            await f.fetch(request())
+    finally:
+        await f.aclose()
+    assert label
+
+
+async def test_the_request_goes_to_the_render_endpoint() -> None:
+    """Nothing pinned the path or the `rstrip`, so pointing the adapter at
+    `/inspect` left the whole suite green. In production a
+    `RENDER_BASE_URL` with a trailing slash or an included `/render` yields
+    `//render` or `/render/render` — a 404 from our own sidecar for every
+    rendered page."""
+    seen: list[str] = []
+
+    def handler(req: httpx2.Request) -> httpx2.Response:
+        seen.append(str(req.url))
+        return rendered()
+
+    f = RenderServiceFetcher(
+        base_url=SIDECAR + "/",
+        clock=FakeClock(),
+        client=RenderServiceFetcher.build_client(transport=httpx2.MockTransport(handler)),
+    )
+    try:
+        await f.fetch(request())
+    finally:
+        await f.aclose()
+
+    assert seen == [f"{SIDECAR}/render"]
+
+
+async def test_the_transport_timeout_is_set_explicitly_and_covers_the_sidecar() -> None:
+    """Deleting the `timeout=` kwarg left the suite green, and httpx2's
+    default is **5 seconds** (measured) — so every render over 5 s would
+    become `ReadTimeout` → `Backpressure`: RENDERED domains stalling for
+    ever and AUTO domains degrading for ever, with nothing logged as an
+    error.
+
+    The transport budget must exceed the render budget, or the socket gives
+    up before the sidecar can answer 503 or 504 and we lose the more useful
+    reply."""
+    seen: list[Mapping[str, float | None]] = []
+
+    def handler(req: httpx2.Request) -> httpx2.Response:
+        seen.append(req.extensions["timeout"])
+        return rendered()
+
+    f = fetcher(handler)
+    try:
+        await f.fetch(request(timeout_ms=20_000))
+    finally:
+        await f.aclose()
+
+    read = seen[0]["read"]
+    assert read is not None
+    assert read == pytest.approx(20 + TRANSPORT_HEADROOM_S)
+    assert read > 20, "the socket would give up before the sidecar could answer"
+
+
+async def test_the_render_budget_is_clamped_to_the_sidecars_own_ceiling() -> None:
+    """Spec 012 §3 caps render time at 30 s and the sidecar enforces it
+    (`render/src/limits.js`). Asking for more means waiting for a budget that
+    cannot be spent — and with the 504 retry, one page could occupy a worker
+    for longer than ADR-0026's 120-second lease, at which point the sweep
+    returns the row while the fetch is still in flight and another worker
+    takes the same URL. Two simultaneous requests to one host, reached
+    through the mechanism meant to prevent them."""
+    import json
+
+    bodies: list[dict[str, object]] = []
+    seen: list[Mapping[str, float | None]] = []
+
+    def handler(req: httpx2.Request) -> httpx2.Response:
+        bodies.append(json.loads(req.content))
+        seen.append(req.extensions["timeout"])
+        return rendered()
+
+    f = fetcher(handler)
+    try:
+        await f.fetch(request(timeout_ms=600_000))
+    finally:
+        await f.aclose()
+
+    assert bodies[0]["timeout_ms"] == SIDECAR_MAX_TIMEOUT_MS
+    read = seen[0]["read"]
+    assert read is not None
+    assert read == pytest.approx(SIDECAR_MAX_TIMEOUT_MS / 1000 + TRANSPORT_HEADROOM_S)
+
+
+def test_two_attempts_fit_inside_the_claim_lease() -> None:
+    """The arithmetic, asserted rather than reasoned about.
+
+    `RENDER_TIMEOUT_RETRIES` means a page can take two full attempts. If that
+    total can exceed spec 002 §1's 120-second lease, the sweep hands the row
+    to another worker mid-fetch — the ADR-0026 failure, from the other
+    direction. Any future change to the ceiling, the headroom or the retry
+    count has to keep satisfying this.
+    """
+    attempts = RENDER_TIMEOUT_RETRIES + 1
+    worst_case_s = attempts * (SIDECAR_MAX_TIMEOUT_MS / 1000 + TRANSPORT_HEADROOM_S)
+    assert worst_case_s < LEASE_BUDGET_S, (
+        f"{attempts} attempts can take {worst_case_s}s, which outlives the "
+        f"{LEASE_BUDGET_S}s claim lease — the sweep would return the row to "
+        "pending while the fetch is still running and another worker would "
+        "fetch the same URL (ADR-0026)"
+    )
+
+
+async def test_aclose_closes_this_adapters_pool() -> None:
+    """The mutation matrix's one honest dash: nothing asserted this. The
+    composition's `aclose` test covers `AutoFetcher` calling both, not either
+    adapter actually closing."""
+    f = fetcher(lambda _: rendered())
+    await f.fetch(request())
+    await f.aclose()
+
+    with pytest.raises(RuntimeError):
+        await f.fetch(request())
+
+
+def test_the_strategy_vocabulary_carries_static_fallback() -> None:
+    """BUILD_PLAN 1.7's own deliverable, and deleting the enum member left
+    the suite green — nothing referenced it. The string matters as much as
+    the member: it is written into `page_observations.strategy`, which
+    TESTING.md §2 asserts on by value when `render` is stopped."""
+    from spydra.domain.enums import Strategy
+
+    assert Strategy.STATIC_FALLBACK.value == "static_fallback"
+    assert "static_fallback" in {s.value for s in Strategy}

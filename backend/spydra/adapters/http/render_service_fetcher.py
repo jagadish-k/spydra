@@ -46,10 +46,44 @@ DEFAULT_BLOCK_RESOURCES = ("image", "font", "media")
 # Spec 012 §1. Exactly one, and only for 504.
 RENDER_TIMEOUT_RETRIES = 1
 
-# The sidecar's own budget plus room for it to answer. A request that times
-# out at the transport before the sidecar can reply 504 would be reported as
-# a fetch failure when the sidecar was about to tell us something more useful.
+# "The sidecar cannot serve right now", as opposed to "this page did not
+# render". Requeue with no penalty (spec 002 §6).
+BACKPRESSURE_STATUSES = frozenset({503, 500})
+
+# The keys spec 012 §1 promises in a 200. Absent any of them the sidecar has
+# broken its own contract, and the honest answer is to fail the page — NOT to
+# default them. `payload.get("status", 0)` and `payload.get("html", "")` were
+# the first version, and they turn a sidecar regression into a page that
+# looks real: empty body, status 0. The extraction chain then scores
+# `empty_extraction` on every page and 1.11 moves healthy domains to BROKEN
+# past 20% — a payload bug on OUR side, charged to the supplier. Status 0 also
+# appears in no row of spec 002 §4's table, so the gate has no branch for it
+# and `consecutive_failures` never resets.
+REQUIRED_PAYLOAD_KEYS = ("html", "status", "final_url")
+
+# Spec 012 §3's hard ceiling, enforced by the sidecar itself
+# (`render/src/limits.js::MAX_TIMEOUT_MS`). Clamped HERE as well, because
+# asking for more buys nothing — the sidecar will not spend it, and the
+# adapter would sit waiting for a budget that cannot be used.
+SIDECAR_MAX_TIMEOUT_MS = 30_000
+
+# The sidecar's render budget, plus its 5 s context-queue wait (spec 012 §2),
+# plus room to answer. All three: a transport timeout that fires before the
+# sidecar can reply 503 or 504 reports a fetch failure when the sidecar was
+# about to say something more useful, and the queue wait is the part that is
+# easy to forget because it happens before rendering starts.
 TRANSPORT_HEADROOM_S = 10.0
+
+# Spec 002 §1's lease. NOT imported from the frontier — that adapter is
+# BUILD_PLAN 1.8 and this one must not depend on it — so it is duplicated
+# with this comment, and a test asserts the arithmetic.
+#
+# The point: two attempts must finish well inside the lease. If one fetch can
+# outlive it, the sweep returns the row to `pending` while the fetch is still
+# in flight and another worker takes the same URL — two simultaneous requests
+# to one host, which is what ADR-0026 exists to prevent, reached through the
+# mechanism meant to prevent it.
+LEASE_BUDGET_S = 120
 
 
 class RenderServiceFetcher:
@@ -105,9 +139,26 @@ class RenderServiceFetcher:
             if response.status_code == 200:
                 return self._page(request, response, started)
 
-            if response.status_code == 503:
-                # Spec 002 §6: our queue, our problem. No penalty.
-                raise Backpressure(f"{request.url}: render sidecar has no context available")
+            if response.status_code in BACKPRESSURE_STATUSES:
+                # 503 is spec 012 §1's "no context within the queue window".
+                #
+                # 500 is not in that table, and it is the sidecar's own "I
+                # cannot serve": `render/src/index.js` answers 500 when the
+                # browser will not launch or a context cannot be created — a
+                # /dev/shm-starved Chromium that fails to relaunch after a
+                # recycle answers 500 to every request. That is the condition
+                # spec 012 §4 and ADR-0016 answer with "rows stay pending,
+                # reported stalled, NOT failed", so it is backpressure for
+                # the same reason an unreachable sidecar is.
+                #
+                # Charged to the supplier instead, it would mark healthy
+                # domains failed because a browser of ours is broken — and
+                # AutoFetcher, which falls back on Backpressure, would not
+                # fall back at all.
+                raise Backpressure(
+                    f"{request.url}: render sidecar cannot serve "
+                    f"({response.status_code}): {self._error_of(response)}"
+                )
 
             if response.status_code == 504 and attempt < attempts - 1:
                 continue
@@ -125,9 +176,23 @@ class RenderServiceFetcher:
             return await self._client.post(
                 f"{self._base_url}/render",
                 json=self._body(request),
-                timeout=request.timeout_ms / 1000 + TRANSPORT_HEADROOM_S,
+                timeout=self._transport_timeout_s(request),
             )
-        except (httpx2.HTTPError, httpx2.InvalidURL, UnicodeError) as exc:
+        except httpx2.InvalidURL as exc:
+            # A malformed RENDER_BASE_URL is a permanent misconfiguration of
+            # ours and must not look transient: as Backpressure it would
+            # requeue every rendered row for ever, with no failure count, no
+            # backoff, no error and no run completion. It belongs with 422.
+            #
+            # `UnicodeError` is deliberately NOT here, unlike in
+            # HttpxFetcher: there the user-agent goes into an HTTP *header*,
+            # which httpx2 encodes as ASCII, while here it goes into a JSON
+            # body, which encodes any string. Copying that tuple across
+            # without its reasoning would have added an unreachable branch.
+            raise FetchFailed(
+                f"{request.url}: render sidecar URL is malformed ({self._base_url!r}): {exc}"
+            ) from exc
+        except httpx2.HTTPError as exc:
             # The sidecar is down, not the supplier. Spec 012 §4: a RENDERED
             # domain's rows stay `pending` and the run reports them stalled
             # rather than failed — which is Backpressure's contract, not
@@ -137,6 +202,22 @@ class RenderServiceFetcher:
             raise Backpressure(
                 f"{request.url}: render sidecar unreachable: {type(exc).__name__}: {exc}"
             ) from exc
+
+    @staticmethod
+    def _render_timeout_ms(request: FetchRequest) -> int:
+        """The render budget, clamped to the sidecar's own ceiling."""
+        return min(request.timeout_ms, SIDECAR_MAX_TIMEOUT_MS)
+
+    @classmethod
+    def _transport_timeout_s(cls, request: FetchRequest) -> float:
+        """How long to wait on the socket.
+
+        Always passed explicitly. httpx2's default is **5 seconds**
+        (measured), so dropping this argument would silently cap every render
+        at 5 s: RENDERED domains would stall for ever and AUTO domains
+        degrade for ever, with nothing logged as an error.
+        """
+        return cls._render_timeout_ms(request) / 1000 + TRANSPORT_HEADROOM_S
 
     def _body(self, request: FetchRequest) -> dict[str, Any]:
         """The spec 012 §1 request body.
@@ -149,7 +230,7 @@ class RenderServiceFetcher:
         body: dict[str, Any] = {
             "url": request.url,
             "wait_until": "networkidle",
-            "timeout_ms": request.timeout_ms,
+            "timeout_ms": self._render_timeout_ms(request),
             "block_resources": list(DEFAULT_BLOCK_RESOURCES),
             # ADR-0004 applies to the rendered path too — the browser
             # identifies itself as us, not as Chrome.
@@ -167,24 +248,58 @@ class RenderServiceFetcher:
         response: httpx2.Response,
         started: float,
     ) -> FetchedPage:
-        payload = response.json()
+        payload = self._payload(request, response)
         return FetchedPage(
             request_url=request.url,
             # The sidecar's `final_url`, not the transport's: the redirect
             # happened in the browser, so httpx2 never saw it and
             # `response.url` is the sidecar's own /render endpoint.
-            final_url=str(payload.get("final_url", request.url)),
+            final_url=str(payload["final_url"]),
             # Likewise the status: `response.status_code` is the sidecar
             # saying "I rendered something" (200), while `payload["status"]`
             # is what the SUPPLIER said — which is the one the politeness
             # gate reads.
-            http_status=int(payload.get("status", 0)),
-            body=str(payload.get("html", "")),
+            http_status=int(payload["status"]),
+            body=str(payload["html"]),
             headers={},
             fetched_at=self._clock.now(),
             elapsed_ms=int((self._clock.monotonic() - started) * 1000),
             fetch_path=self.path,
         )
+
+    def _payload(self, request: FetchRequest, response: httpx2.Response) -> dict[str, Any]:
+        """The 200 body, or `FetchFailed` — never a defaulted page.
+
+        Four ways a 200 can fail to be a rendered page, all measured against
+        a real response: a body that is not JSON (`JSONDecodeError`), a body
+        that is a JSON list (`AttributeError` on `.get`), a missing key, and
+        a key present but null (`TypeError` from `int(None)`).
+
+        None of those is in the port's vocabulary. `ports/fetcher.py` promises
+        `Backpressure` or `FetchFailed` and nothing else, so a bare
+        `JSONDecodeError` would travel up through `1.13`'s TaskGroup, leave
+        `in_flight` incremented and the row leased, and stall the domain
+        until the 120-second sweep — one bad response taking a domain down.
+        """
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise FetchFailed(
+                f"{request.url}: render sidecar returned 200 with a body that is not JSON: {exc}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise FetchFailed(
+                f"{request.url}: render sidecar returned 200 with a "
+                f"{type(payload).__name__}, not an object"
+            )
+        missing = [key for key in REQUIRED_PAYLOAD_KEYS if payload.get(key) is None]
+        if missing:
+            raise FetchFailed(
+                f"{request.url}: render sidecar returned 200 without "
+                f"{', '.join(missing)} — spec 012 §1 requires "
+                f"{', '.join(REQUIRED_PAYLOAD_KEYS)}"
+            )
+        return payload
 
     @staticmethod
     def _error_of(response: httpx2.Response) -> str:

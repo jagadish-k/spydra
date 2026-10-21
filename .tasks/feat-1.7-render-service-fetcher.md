@@ -121,6 +121,23 @@ wrong.
       `1.11` writes as `strategy = static_fallback`.
 - [x] **C11** `AutoFetcher` propagates a static-path `FetchFailed` rather
       than swallowing it — a dead supplier is not a sidecar problem.
+- [x] **C13** A sidecar **500** is `Backpressure` — it is the sidecar saying
+      it cannot serve, not a page that failed to render.
+- [x] **C14** A malformed base URL raises `FetchFailed`, not `Backpressure`:
+      a permanent misconfiguration must not requeue for ever.
+- [x] **C15** The request goes to `/render`, with the base URL's trailing
+      slash handled.
+- [x] **C16** The transport timeout is passed explicitly and exceeds the
+      render budget.
+- [x] **C17** The render budget is clamped to the sidecar's 30 s ceiling, and
+      two attempts fit inside the 120 s claim lease.
+- [x] **C18** A 200 that is not a rendered page — not JSON, a JSON list, a
+      missing or null `html`/`status`/`final_url` — raises `FetchFailed`
+      rather than inventing a page.
+- [x] **C19** `Strategy.STATIC_FALLBACK` exists and its value is
+      `static_fallback`, which is what TESTING.md §2 asserts on.
+- [x] **C20** `RenderServiceFetcher.aclose()` closes its own pool.
+- [x] **C21** `AutoFetcher.aclose()` closes both.
 - [x] **C12** **`1.6`'s test file is byte-identical.** `git diff` over it is
       empty, asserted in the PR rather than assumed.
 
@@ -130,34 +147,63 @@ the evidence.
 
 ## Mutation matrix
 
-Seventeen mutations across the two new modules, each applied alone, the suite
-run, the file restored. Baseline: 22 passed. **All red, none blind.**
+Nineteen mutations, each applied alone, the suite run, the file restored.
+Baseline: 64 passed. **All red.**
 
-| Mutation                                             | Red                |
-| ---------------------------------------------------- | ------------------ |
-| 503 raises `FetchFailed` instead of `Backpressure`   | C2                 |
-| an unreachable sidecar raises `FetchFailed`          | C7                 |
-| `RENDER_TIMEOUT_RETRIES = 0` — no retry              | C3, C4             |
-| `RENDER_TIMEOUT_RETRIES = 2` — two retries           | C3                 |
-| retry 502 and 422 as well as 504                     | C6                 |
-| use the sidecar's status instead of the supplier's   | C1                 |
-| take `final_url` from the request                    | C1                 |
-| drop `block_resources` from the body                 | C8                 |
-| drop `user_agent` from the body                      | C8                 |
-| always send `wait_for_selector`, even as null        | C8                 |
-| drop `extra_headers`                                 | C8                 |
-| `fetched_at` from the wall clock                     | C1                 |
-| AUTO renders first instead of static-first           | C9, C11            |
-| fall back on `FetchFailed` as well as `Backpressure` | C10 and two others |
-| the fallback does not set `fell_back_from`           | C10                |
-| the fallback loses `http_status`                     | C10                |
-| `aclose` leaks the sidecar's pool                    | —                  |
+| Mutation                                                       | Red      |
+| -------------------------------------------------------------- | -------- |
+| 503 raises `FetchFailed` instead of `Backpressure`             | C2       |
+| a sidecar **500** raises `FetchFailed`                         | C13      |
+| an unreachable sidecar raises `FetchFailed`                    | C7       |
+| `InvalidURL` raises `Backpressure`                             | C14      |
+| `RENDER_TIMEOUT_RETRIES = 0`                                   | C3, C4   |
+| retry 502/422 as well as 504                                   | C6       |
+| the sidecar's status instead of the supplier's                 | C1       |
+| `final_url` from the request                                   | C1       |
+| drop `block_resources` / `user_agent` / `extra_headers`        | C8       |
+| always send `wait_for_selector`                                | C8       |
+| `fetched_at` from the wall clock                               | C1       |
+| **point the request at `/inspect`**                            | C15      |
+| **delete the `timeout=` kwarg**                                | C16, C17 |
+| **restore the `payload.get(..., default)` pattern**            | C18      |
+| no timeout clamp                                               | C17      |
+| payload keys unchecked / non-dict allowed / JSON errors escape | C18      |
+| **delete `Strategy.STATIC_FALLBACK`**                          | C19      |
+| AUTO renders first instead of static-first                     | C9, C11  |
+| **the fallback re-fetches the supplier**                       | C10      |
+| the fallback does not record `fell_back_from`                  | C10      |
+| `aclose` does nothing                                          | C20      |
+| `aclose` leaks the sidecar's pool (composition)                | C21      |
 
-The two most valuable rows are the first two, because both mutations produce
-a system that _works_ — pages still get fetched. What changes is that a
-busy or stopped sidecar starts charging failures against suppliers that
-answered perfectly well, and three of those is an ADR-0004 pause. Nothing
-would surface that except a test that names the distinction.
+### What the first matrix missed, and why the headline was wrong
+
+The first pass was seventeen mutations and the matrix said "**All red, none
+blind**" while its own last row carried a dash. It was 16 of 17, and review
+then found **four more that survived** — so the real figure was 16 of 21.
+Both the task file and `BUILD_PLAN.md` said "17 mutations, all red", which
+was the same overstatement `1.6` was corrected for. Recorded here because
+making it twice is the point worth remembering.
+
+The four survivors, each against a real defect:
+
+- **The endpoint was not pinned.** Pointing the adapter at `/inspect` left
+  the suite green. In production a `RENDER_BASE_URL` with a trailing slash,
+  or one that already ends in `/render`, yields `//render` or
+  `/render/render` — a 404 from our own sidecar on every rendered page.
+- **The `timeout=` kwarg was deletable.** httpx2's default is **5 seconds**
+  (measured), so every render over 5 s would have become `ReadTimeout` →
+  `Backpressure`: RENDERED domains stalling for ever, AUTO domains degrading
+  for ever, nothing logged as an error. The headroom constant the first task
+  file argued for at length had zero coverage.
+- **`payload.get("status", 0)` / `payload.get("html", "")`.** A 200 with an
+  incomplete body produced a page that looked real — empty body, status 0 —
+  and the chain of consequence is the worst in the slice: the extraction
+  chain scores `empty_extraction` on every page, and `1.11` moves healthy
+  supplier domains to **BROKEN** past 20% for a payload bug on _our_ side.
+  Status 0 is also in no row of spec 002 §4's table, so the gate has no
+  branch for it and `consecutive_failures` never resets.
+- **`Strategy.STATIC_FALLBACK` was referenced by nothing.** Deleting the
+  slice's own named deliverable left the suite green.
 
 ## Handoff log
 
@@ -189,7 +235,39 @@ would surface that except a test that names the distinction.
   `develop` — `develop` does not carry `1.6` yet (PR #10), so a diff against
   it reports the whole file as new and would have "passed" for the wrong
   reason.
-- **test (mutation)** — the matrix above, 17 of 17 red.
+- **test (mutation)** — the matrix above. The first pass was **16 of 17**
+  while claiming 17, and review found four more survivors; the corrected
+  matrix is 19 of 19 with the suite at 64 tests.
+- **reviewer** (fresh context, did not write the code) — fourteen findings,
+  six called must-fix. All six were real. Two are the kind this project
+  cares about most, because both produce a system that _works_:
+  **(a) the AUTO fallback re-fetched the supplier.** `1.13` can only reach
+  that seam after a static fetch whose extraction was empty, so the page was
+  already in hand — and spec 002 §2 advances `next_eligible_at` only _after_
+  a fetch completes, so the second request left inside the same claim with
+  **no politeness gap at all**. On a 3,400-page AUTO domain with `render`
+  stopped that is 6,800 supplier requests instead of 3,400, at double the
+  configured per-host rate, returning a page extraction had already rejected
+  as empty. The seam now takes the static page it is given.
+  **(b) a sidecar 500 was charged to the supplier.** `render/src/index.js`
+  answers 500 when the browser will not launch or a context cannot be
+  created — a `/dev/shm`-starved Chromium that cannot relaunch after a
+  recycle answers 500 to _every_ request. That is "the sidecar is
+  unavailable", which spec 012 §4 answers with "pending, stalled, not
+  failed". Worse, `AutoFetcher` falls back on `Backpressure` only, so AUTO
+  domains would not have fallen back at all for the one status the sidecar
+  emits when its browser is broken. The slice's own argument — our service
+  being down must not be charged to a supplier — had been applied to
+  connection-refused and not to that.
+  Also acted on: the worst-case wall time of one `fetch()` was
+  `2 × (timeout_ms/1000 + 10 s)`, which at `timeout_ms = 60000` is **140 s**
+  and outlives ADR-0026's 120-second lease — the sweep would return the row
+  while the fetch was still running and another worker would take the same
+  URL. Now clamped to the sidecar's own 30 s ceiling, with the arithmetic
+  asserted against the lease. And the `# type: ignore[arg-type]` whose
+  comment said "kwargs are checked by the dataclass" is gone: a plain
+  dataclass checks nothing at runtime, so after the ignore nothing checked
+  them at all.
 - **integrator** — `make check` green.
 
 ## Open questions
@@ -211,6 +289,28 @@ would surface that except a test that names the distinction.
    implements it as specified — but the conflation is real and a second
    column (or a `degraded` boolean) would be the cleaner shape. **For the
    human**, and it wants an ADR either way.
-3. **AUTO's extraction-driven retry is not implemented** and cannot be: the
+3. **`fetch_rendered_or_fall_back` is not on the `Fetcher` port**, so `1.13`
+   must know it holds an `AutoFetcher` — the `render_mode` branch
+   `AutoFetcher`'s own docstring claims ADR-0008 removes. Raised by review
+   and real. The honest shape is probably for `1.13` to own the AUTO
+   decision outright rather than for this composition to offer half of it;
+   deciding that now would be designing `1.13` from here. **For the human.**
+4. **An AUTO second chance is issued from the static pool**, so it is outside
+   spec 002 §6's "3 in flight" rendered budget. AUTO domains can therefore
+   oversubscribe the sidecar's three contexts and manufacture the very 503s
+   this code treats as backpressure. `1.13` owns pool sizing. **For the
+   human.**
+5. **The sidecar's `truncated: true` flag is dropped.** `render/src/index.js`
+   sets it per spec 012 §3, and the adapter reads `html` and discards it — so
+   a 10 MB-capped page is extracted as if complete and `1.11` would write a
+   `content_hash` over half a document with nothing recording why.
+   `FetchedPage` has no field for it; naming it here rather than silently
+   losing it.
+6. **`wait_until` is hard-coded to `networkidle`** and `FetchRequest` has no
+   field for it, so a domain can never ask for `load`. `networkidle` is the
+   most timeout-prone of the three: a supplier with long-polling or chatty
+   analytics burns the full budget on every page, 504s, retries once and
+   fails. The spec lists three values and the adapter implements one.
+7. **AUTO's extraction-driven retry is not implemented** and cannot be: the
    `empty_extraction` predicate arrives in `1.10` and the orchestration in
    `1.13`. `AutoFetcher` carries a named hook and no approximation.

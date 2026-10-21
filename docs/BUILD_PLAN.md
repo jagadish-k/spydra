@@ -231,7 +231,22 @@ choosing or reaching one.
       port is wrong, not the test — and the sidecar being down leaves
       `static` domains unaffected, stalls `rendered` ones honestly and makes
       `auto` fall back and record it.
-      **Done:** 22 tests, 17 chosen mutations, all red. **The port needed no
+      **Done:** 64 tests, 19 chosen mutations, all red — after review. The
+      first pass claimed "17 mutations, all red" and was **16 of 17**, with
+      four more survivors found in review: the endpoint was not pinned, the
+      `timeout=` kwarg was deletable (httpx2 defaults to **5 s**, so every
+      render over 5 s would have stalled a RENDERED domain silently), a 200
+      with an incomplete payload invented a page with an empty body and
+      status 0 — which `1.11` would read as `empty_extraction` and move
+      healthy domains to BROKEN — and `Strategy.STATIC_FALLBACK`, the
+      slice's own deliverable, was referenced by nothing. Review also found
+      two defects that produce a system which _works_: the AUTO fallback
+      **re-fetched the supplier** inside the same claim, with no politeness
+      gap, for a page extraction had already rejected; and a sidecar **500**
+      — which is what `render/src/index.js` answers when the browser will not
+      launch — was charged to the supplier instead of being backpressure, so
+      AUTO domains would not have fallen back for the one status the sidecar
+      emits when its browser is broken. **The port needed no
       change and `1.6`'s test file is byte-identical** — the result `1.2` was
       written early to produce. `strategy` is `TEXT`, so `static_fallback`
       needed **no migration**. An unreachable sidecar is `Backpressure`, not

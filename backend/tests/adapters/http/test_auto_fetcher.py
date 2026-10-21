@@ -99,12 +99,14 @@ async def test_a_static_fetch_failure_propagates_rather_than_falling_back() -> N
 async def test_the_second_chance_returns_the_rendered_page_when_the_sidecar_works() -> None:
     static = FakeFetcher(FetchPath.STATIC, body="static body")
     rendered = FakeFetcher(FetchPath.RENDERED, body="rendered body")
+    already = page(FetchPath.STATIC, "static body")
 
-    result = await auto(static, rendered).fetch_rendered_or_fall_back(request())
+    result = await auto(static, rendered).fetch_rendered_or_fall_back(request(), already)
 
     assert result.body == "rendered body"
     assert result.fetch_path is FetchPath.RENDERED
     assert result.fell_back_from is None
+    assert static.calls == 0, "the static page was handed in; it must not be fetched again"
 
 
 async def test_backpressure_on_the_second_chance_falls_back_and_records_it() -> None:
@@ -117,14 +119,25 @@ async def test_backpressure_on_the_second_chance_falls_back_and_records_it() -> 
     too — the two are indistinguishable from that field alone."""
     static = FakeFetcher(FetchPath.STATIC, body="static body")
     rendered = FakeFetcher(FetchPath.RENDERED, raises=Backpressure("sidecar full"))
+    already = page(FetchPath.STATIC, "static body")
 
-    result = await auto(static, rendered).fetch_rendered_or_fall_back(request())
+    result = await auto(static, rendered).fetch_rendered_or_fall_back(request(), already)
 
     assert result.body == "static body"
     assert result.fetch_path is FetchPath.STATIC
     assert result.fell_back_from is FetchPath.RENDERED
     assert result.degraded is True
-    assert static.calls == 1
+    # THE POLITENESS ASSERTION. The first version re-fetched statically here,
+    # which is a second request to the supplier inside the same claim — and
+    # spec 002 §2 advances `next_eligible_at` only after a fetch completes,
+    # so it leaves with no politeness gap at all. On a 3,400-page AUTO domain
+    # with `render` stopped that is 6,800 requests instead of 3,400, at
+    # double the configured per-host rate, returning a page extraction has
+    # already rejected as empty.
+    assert static.calls == 0, (
+        "the fallback re-fetched the supplier. The static page was already in "
+        "hand, and a second request inside one claim has no politeness gap"
+    )
 
 
 async def test_the_fallback_keeps_every_other_field_of_the_static_page() -> None:
@@ -133,9 +146,9 @@ async def test_the_fallback_keeps_every_other_field_of_the_static_page() -> None
     and `1.9` reads the status to decide backoff."""
     static = FakeFetcher(FetchPath.STATIC, body="static body")
     rendered = FakeFetcher(FetchPath.RENDERED, raises=Backpressure("full"))
-
-    result = await auto(static, rendered).fetch_rendered_or_fall_back(request())
     original = page(FetchPath.STATIC, "static body")
+
+    result = await auto(static, rendered).fetch_rendered_or_fall_back(request(), original)
 
     for field in ("request_url", "final_url", "http_status", "headers", "fetched_at", "elapsed_ms"):
         assert getattr(result, field) == getattr(original, field), field
@@ -148,9 +161,10 @@ async def test_a_rendered_fetch_failure_is_not_a_fallback() -> None:
     browser, and the operator would never learn the render path is broken."""
     static = FakeFetcher(FetchPath.STATIC, body="static body")
     rendered = FakeFetcher(FetchPath.RENDERED, raises=FetchFailed("502 from the sidecar"))
+    already = page(FetchPath.STATIC, "static body")
 
     with pytest.raises(FetchFailed):
-        await auto(static, rendered).fetch_rendered_or_fall_back(request())
+        await auto(static, rendered).fetch_rendered_or_fall_back(request(), already)
 
     assert static.calls == 0, "a failed render should not quietly become a static page"
 

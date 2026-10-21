@@ -18,6 +18,8 @@ Which means the name is slightly ahead of the behaviour today, and saying so
 here is cheaper than someone discovering it from the code.
 """
 
+from dataclasses import replace
+
 from spydra.domain.enums import FetchPath
 from spydra.domain.errors import Backpressure
 from spydra.domain.fetch import FetchedPage, FetchRequest
@@ -62,37 +64,47 @@ class AutoFetcher:
         """
         return await self._static.fetch(request)
 
-    async def fetch_rendered_or_fall_back(self, request: FetchRequest) -> FetchedPage:
+    async def fetch_rendered_or_fall_back(
+        self, request: FetchRequest, static_page: FetchedPage
+    ) -> FetchedPage:
         """The second chance, for `1.13` to call when extraction found nothing.
+
+        **It takes the static page it already has.** The first version took
+        only the request and re-fetched statically on `Backpressure`, which
+        is a politeness defect rather than an inefficiency:
+
+        - `1.13` can only reach this seam *after* a static fetch whose
+          extraction came back empty, so the page is already in hand.
+        - Spec 002 §2 advances `next_eligible_at` only **after** a fetch
+          completes, so a second request issued inside the same claim leaves
+          with **no politeness gap at all** — two hits on one host back to
+          back, at double the per-host rate the operator configured.
+        - And it buys nothing. The re-fetched page is bit-for-bit the one
+          extraction has already rejected, so it is still `empty_extraction`,
+          only now labelled `static_fallback`. On a 3,400-page AUTO domain
+          with `render` stopped that is 6,800 supplier requests instead of
+          3,400, for no new data.
 
         Separate from `fetch` because the decision to take it needs the
         extraction result, which the fetch layer does not have and must not
-        guess at. `1.13` calls this; nothing else should.
+        guess at. **It is therefore not part of the `Fetcher` port**, so
+        `1.13` must know it holds an `AutoFetcher` — a `render_mode` branch
+        the class docstring claims ADR-0008 removes. That tension is real and
+        raised in the task file: the honest shape is probably for `1.13` to
+        own the AUTO decision outright rather than for this composition to
+        offer half of it.
 
         A sidecar that is full or down must not make an AUTO domain stall —
-        that is what `RENDERED` does, and the difference between the two modes
-        is precisely this fallback. So `Backpressure` is caught **here and
-        only here**, and the static page is returned carrying
+        that is what `RENDERED` does, and the difference between the two
+        modes is precisely this fallback. So `Backpressure` is caught **here
+        and only here**, and the static page comes back carrying
         `fell_back_from = RENDERED`, which `1.11` writes as
         `strategy = static_fallback`.
         """
         try:
             return await self._rendered.fetch(request)
         except Backpressure:
-            static_page = await self._static.fetch(request)
-            # dataclasses.replace would be tidier, but FetchedPage is
-            # frozen+slots and replace() on it is no clearer than this.
-            return FetchedPage(
-                request_url=static_page.request_url,
-                final_url=static_page.final_url,
-                http_status=static_page.http_status,
-                body=static_page.body,
-                headers=static_page.headers,
-                fetched_at=static_page.fetched_at,
-                elapsed_ms=static_page.elapsed_ms,
-                fetch_path=static_page.fetch_path,
-                fell_back_from=FetchPath.RENDERED,
-            )
+            return replace(static_page, fell_back_from=FetchPath.RENDERED)
 
     async def aclose(self) -> None:
         """Both pools. Closing one and leaking the other is the kind of thing
