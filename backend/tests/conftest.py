@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
@@ -135,6 +136,37 @@ async def engine(database_url: str, migrated: None) -> AsyncIterator[AsyncEngine
         yield eng
     finally:
         await eng.dispose()
+
+
+@pytest.fixture
+async def clean_crawl(engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
+    """An engine against a crawl schema emptied before and after the test.
+
+    **Why this exists alongside `conn`.** `PostgresFrontier` takes an engine
+    and opens its own transaction per call, because ADR-0026 requires the
+    claim to be one short transaction that is *not* held across a fetch. So
+    its tests cannot run inside the rolled-back `conn` transaction — the
+    adapter would commit outside it, and the rollback would leave rows
+    behind. They commit, and this truncates instead.
+
+    That is the same reason `conn`'s docstring gives for the concurrency
+    tests, arrived at from the other direction: there, two workers cannot see
+    each other's uncommitted work; here, the adapter cannot see the test's.
+
+    TRUNCATE rather than DELETE, and `RESTART IDENTITY` so a test asserting
+    on ordering by `id` is not reading ids left by the previous one.
+    """
+    tables = "crawl.crawl_queue, crawl.page_observations, crawl.pages, crawl.unknown_pages"
+    owners = "crawl.templates, crawl.runs, crawl.domains"
+    async with engine.begin() as connection:
+        await connection.execute(sa.text(f"TRUNCATE {tables}, {owners} RESTART IDENTITY CASCADE"))
+    try:
+        yield engine
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(
+                sa.text(f"TRUNCATE {tables}, {owners} RESTART IDENTITY CASCADE")
+            )
 
 
 @pytest.fixture

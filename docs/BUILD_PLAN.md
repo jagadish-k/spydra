@@ -265,7 +265,7 @@ choosing or reaching one.
       so in a comment. This is where spec 012 §1's "no browser dependency at
       all" first carries weight.
 
-- [ ] `1.8` **`PostgresFrontier`**: the claim query exactly as
+- [x] `1.8` **`PostgresFrontier`**: the claim query exactly as
       [ADR-0026](adr/0026-claim-locks-the-domain-row.md) specifies it, the
       lease-expiry sweep, completion, `release()` and `abandon_domain()`
       (spec 002 §1–3). The sweep is load-bearing, not hygiene: `in_flight`
@@ -275,6 +275,22 @@ choosing or reaching one.
       active domain never claim concurrently, and four domains reach four
       concurrent claims — real rows, real elapsed time, no mocked clock
       (TESTING.md §2).
+      **Done:** 35 tests, 19 chosen mutations, all red, none blind — and the
+      one this slice stands on is proven: **with the domain lock removed the
+      guarantee test reports 8 overlapping fetch windows** against one domain
+      at `max_concurrency = 1`. ADR-0026's defect, reproduced and caught.
+      Two harness defects were found by its own anti-vacuity control, both of
+      which had made the guarantee test pass for the wrong reason: one worker
+      was being starved for all 20 rounds (so "never concurrent" was true
+      because only one worker ever fetched), and a fixed iteration budget
+      stopped both workers with the queue half drained. The sweep reconciles
+      `in_flight` by **recount**, not by decrement — subtracting from a value
+      spec 001 §1 calls a cache leaves a differently-wrong cache, and
+      ADR-0026 says negative is the one drift direction that is actually
+      impolite. One ADR-0026 addendum raised: `SKIP LOCKED` on `domains`
+      means two _simultaneous_ claimers of one domain are mutually exclusive
+      even when `max_concurrency` is 2 — the loser skips a domain it was
+      entitled to use, and wins on retry.
 
 - [ ] `1.9` **Politeness gate**: `robots.txt` once per domain per run with
       `Crawl-delay` as a floor and 5xx failing closed, jitter in [0.7, 1.3],
