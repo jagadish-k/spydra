@@ -33,7 +33,7 @@ class Backpressure(SpydraError):
     (ADR-0004) because our own sidecar was busy.
 
     It is part of the Fetcher contract rather than a detail of one adapter, so
-    that 1.7's tests do not change when 1.8 lands.
+    that 1.6's tests do not change when 1.7 lands.
     """
 
 

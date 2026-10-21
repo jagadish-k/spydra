@@ -1,12 +1,12 @@
 """The Fetcher port (ADR-0008, ADR-0016).
 
 Two real adapters ship in phase 1 behind this one Protocol — `HttpxFetcher`
-(1.7) and `RenderServiceFetcher` (1.8) — because a port with one
+(1.6) and `RenderServiceFetcher` (1.7) — because a port with one
 implementation is an untested abstraction.
 
 The contract is defined here, in the foundation slice, and not by either
 adapter. That is what makes the phase's stated requirement achievable: when
-1.8 lands, 1.7's tests should need no changes, and they cannot if the first
+1.7 lands, 1.6's tests should need no changes, and they cannot if the first
 adapter written was also the thing that decided the shape.
 
 Everything the two adapters disagree about is already named:
