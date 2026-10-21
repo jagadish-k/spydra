@@ -29,6 +29,12 @@ _EDGES: Final[dict[tuple[DomainState, DomainEvent], DomainState]] = {
     (DomainState.ACTIVE, DomainEvent.PAUSE): DomainState.PAUSED,
     (DomainState.ACTIVE, DomainEvent.BLOCK): DomainState.PAUSED,
     (DomainState.ACTIVE, DomainEvent.BREAK): DomainState.BROKEN,
+    # ADR-0030 requires this edge and spec 001 §2's diagram does not draw
+    # it: a first run whose template never matched goes back through
+    # review, not to `broken`. Without the edge the accepted ADR's own
+    # prescription raises InvalidTransition at the moment it fires — on a
+    # newly approved domain, which is when an operator is watching.
+    (DomainState.ACTIVE, DomainEvent.NEVER_MATCHED): DomainState.AWAITING_APPROVAL,
     (DomainState.PAUSED, DomainEvent.RESUME): DomainState.ACTIVE,
     # A broken domain does not resume: its template stopped matching the site,
     # so it goes back through approval rather than straight back to crawling

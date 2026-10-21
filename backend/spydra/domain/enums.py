@@ -39,6 +39,13 @@ class DomainEvent(StrEnum):
     BLOCK = "block"  # three consecutive 403s — ADR-0004
     RESUME = "resume"
     BREAK = "break"  # empty_extraction rate over threshold — spec 003 §3, ADR-0027
+    # A FIRST run past the same threshold (ADR-0030). Not BREAK: `broken`
+    # means "this used to work", and on a first run nothing did — the
+    # template was approved against samples and never matched the
+    # catalogue, so the destination is review rather than a halt. Its own
+    # event because the lifecycle is keyed on events precisely so a run
+    # report can tell two causes of one edge apart.
+    NEVER_MATCHED = "never_matched"
     RE_REVIEW = "re_review"
     ARCHIVE = "archive"
 

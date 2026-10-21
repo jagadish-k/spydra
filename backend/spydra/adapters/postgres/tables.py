@@ -202,6 +202,21 @@ page_observations = sa.Table(
     # spec 003 §4). Hashing the HTML marks every page changed every run.
     sa.Column("content_hash", sa.LargeBinary),
     sa.Column("strategy", sa.Text),
+    # Which extraction rung produced the fields. `strategy` cannot say when
+    # it is carrying spec 012 §4's `static_fallback`, which is a statement
+    # about the FETCH; without this a render-down run reports zero selector
+    # and zero structured extractions (`1.7` open question 2).
+    sa.Column("extraction_rung", sa.Text),
+    # Spec 003 §4's lightweight row: the page's hash matched its predecessor,
+    # so the fields are not repeated. The `Observation` entity has carried
+    # this flag since `1.2` and had nowhere to write it.
+    sa.Column("unchanged", sa.Boolean, nullable=False, server_default=sa.text("false")),
+    # ADR-0027's verdict, computed in Python and persisted. The `broken`
+    # threshold is a JOIN over this column; recomputing emptiness in SQL
+    # would be a fourth definition of the predicate ADR-0027 requires to
+    # have exactly one (`attributes = '{}'::jsonb` is a different question
+    # from `all(is_empty(v))`).
+    sa.Column("empty_extraction", sa.Boolean, nullable=False, server_default=sa.text("false")),
     # typed core fields
     sa.Column("title", sa.Text),
     sa.Column("price_amount", sa.Numeric(14, 4)),

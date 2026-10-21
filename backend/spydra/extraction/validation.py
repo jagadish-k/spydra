@@ -37,11 +37,14 @@ from spydra.domain.enums import RuleName
 _CURRENCY_CODE = re.compile(r"^[A-Z]{3}$")
 
 
-def is_empty(value: FieldValue) -> bool:
+def is_empty(value: object) -> bool:
     """Did this field resolve to anything usable?
 
     The definition `empty_extraction` is built on, factored out so the two
-    cannot drift. An empty string, a whitespace-only string, an empty
+    cannot drift. Takes `object` rather than `FieldValue` so `1.11`'s
+    normaliser can ask the same question about a nested item without a cast
+    — a second emptiness test in the hasher is exactly the drift ADR-0027
+    names. An empty string, a whitespace-only string, an empty
     sequence and an empty mapping are all "nothing" — `0` and
     `Decimal("0")` are **not**, because a genuine zero is data.
     """

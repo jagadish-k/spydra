@@ -177,11 +177,27 @@ class Observation:
     template_id: TemplateId | None
     observed_at: datetime
     http_status: int
-    strategy: Strategy
+    # Optional because an observation can exist with no rung behind it:
+    # a 200 from which nothing resolved is still an observation (it is
+    # the one the `broken` threshold counts), and spec 001 §1 makes the
+    # column nullable for exactly that row.
+    strategy: Strategy | None
     content_hash: bytes
     fields: ExtractedFields
     validation: Mapping[str, ValidationResult] = field(default_factory=dict)
     unchanged: bool = False
+    # ADR-0027's verdict, COMPUTED ONCE and carried to the row (1.11).
+    # The `broken` threshold is a query, and a query that re-derived
+    # emptiness from the columns would be a fourth definition of
+    # `empty_extraction` — the one most able to disagree, since
+    # `attributes = '{}'` is not the question `all(is_empty(v))` asks.
+    empty_extraction: bool = False
+    # Which rung produced the fields, when `strategy` is spending itself
+    # on spec 012 §4's `static_fallback` instead. See
+    # `.tasks/feat-1.11-observation-writes.md` open question 1: one
+    # column cannot answer both questions and three documents name
+    # `strategy = static_fallback`, so both facts are recorded.
+    extraction_rung: Strategy | None = None
 
     @property
     def failed_validation(self) -> frozenset[str]:
