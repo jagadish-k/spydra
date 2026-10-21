@@ -39,9 +39,11 @@ class FetchedPage:
     text, and spec 002 §5 makes that fetch part of the politeness path rather
     than a special case someone bolts on beside it.
 
-    `fetch_path` records which adapter served it, so an AUTO domain falling
-    back to static is observable in the data rather than inferred from a log
-    (spec 001 §3, ADR-0016 § Behaviour when the sidecar is down).
+    `fetch_path` records which adapter served it. It does **not** on its own
+    reveal an AUTO fallback, which an earlier version of this docstring
+    claimed: AUTO fetches static first by design (spec 012 §4), so
+    `fetch_path = STATIC` is the healthy outcome as well as the degraded one.
+    `fell_back_from` is what distinguishes them.
     """
 
     request_url: str
@@ -52,6 +54,22 @@ class FetchedPage:
     fetched_at: datetime
     elapsed_ms: int
     fetch_path: FetchPath
+    # Set only when a path was WANTED and could not be used — today, an AUTO
+    # domain whose rendered fetch found the sidecar unavailable (spec 012 §4).
+    # `1.11` turns this into `strategy = static_fallback`, which is what
+    # TESTING.md §2 asserts when `render` is stopped.
+    #
+    # It is a field rather than a third `FetchPath` value because `FetchPath`
+    # answers "which adapter served this", and rather than adapter state
+    # because one adapter serves three concurrent workers. Defaulted, so no
+    # existing construction or assertion changes — which is how 1.6's tests
+    # stay untouched (BUILD_PLAN 1.7).
+    fell_back_from: FetchPath | None = None
+
+    @property
+    def degraded(self) -> bool:
+        """True when this page is not from the path the domain asked for."""
+        return self.fell_back_from is not None
 
     @property
     def redirected(self) -> bool:
