@@ -158,15 +158,42 @@ async def clean_crawl(engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
     """
     tables = "crawl.crawl_queue, crawl.page_observations, crawl.pages, crawl.unknown_pages"
     owners = "crawl.templates, crawl.runs, crawl.domains"
-    async with engine.begin() as connection:
-        await connection.execute(sa.text(f"TRUNCATE {tables}, {owners} RESTART IDENTITY CASCADE"))
-    try:
-        yield engine
-    finally:
-        async with engine.begin() as connection:
-            await connection.execute(
-                sa.text(f"TRUNCATE {tables}, {owners} RESTART IDENTITY CASCADE")
-            )
+    truncate = sa.text(f"TRUNCATE {tables}, {owners} RESTART IDENTITY CASCADE")
+
+    # Serialise against any OTHER pytest session pointed at this database.
+    #
+    # Measured: two concurrent sessions produce six failures each, and they
+    # are the worst possible failures to get — `two_workers_never_fetch_one
+    # _domain_concurrently` among them. Someone would read that as a
+    # politeness bug in the claim query and go looking for a race in
+    # ADR-0026's SQL, when the real cause is a TRUNCATE from the other
+    # session deleting the rows this one just seeded.
+    #
+    # It happens easily: a `make test-api` while a `git push` hook is running
+    # the same thing, or two CI jobs on one database. The rollback-based
+    # `conn` fixture is immune, so this hazard arrived with the committed
+    # rows ADR-0026's guarantee needs — and TESTING.md §1's "the concurrency
+    # tests clean up after themselves" anticipated committed rows, not two
+    # sessions.
+    #
+    # An advisory lock turns the corruption into a wait. Session-level and
+    # held on its own connection for the whole test, so the two TRUNCATEs
+    # and everything between them are inside it.
+    lock_key = 0x5DA_C4A4  # arbitrary, fixed: "spydra crawl"
+    async with engine.connect() as guard:
+        await guard.execute(sa.text("SELECT pg_advisory_lock(:k)"), {"k": lock_key})
+        await guard.commit()
+        try:
+            async with engine.begin() as connection:
+                await connection.execute(truncate)
+            try:
+                yield engine
+            finally:
+                async with engine.begin() as connection:
+                    await connection.execute(truncate)
+        finally:
+            await guard.execute(sa.text("SELECT pg_advisory_unlock(:k)"), {"k": lock_key})
+            await guard.commit()
 
 
 @pytest.fixture

@@ -245,7 +245,20 @@ is reachable.
   components from disagreeing about when a domain may be fetched.
 - **test (mutation)** — the matrix above, and the two harness defects its own
   control caught.
-- **integrator** — `make check` green.
+- **integrator** — `make check` green, and one hazard found by running the
+  gate twice at once rather than by reading it. **Two concurrent pytest
+  sessions against one test database produced six failures each**, including
+  `two_workers_never_fetch_one_domain_concurrently` — the worst possible
+  failure to get, because anyone reading it would go looking for a race in
+  ADR-0026's SQL when the real cause was the other session's TRUNCATE
+  deleting rows this one had just seeded.
+  It arrives easily: `make test-api` while a `git push` hook runs the same
+  thing, or two CI jobs on one database. The hazard came in with this slice —
+  the rollback-based `conn` fixture is immune, and TESTING.md §1's "the
+  concurrency tests clean up after themselves" anticipated committed rows,
+  not two sessions. `clean_crawl` now takes a Postgres advisory lock for the
+  duration of each test, which turns the corruption into a wait: measured,
+  two concurrent sessions go from 6 failures each to 35 passed each.
 
 ## Open questions
 
