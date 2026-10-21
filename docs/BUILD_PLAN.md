@@ -371,14 +371,14 @@ choosing or reaching one.
       page halted the domain at 100%; `MINIMUM_PAGES_FOR_A_VERDICT = 5` is
       derived from `1/n > 0.20`, and spec 003 §3 names no minimum — raised.
       **ADR-0030's own prescription had no lifecycle edge**: `active ->
-    awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
+  awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
       diagram, so a first run that never matched would have raised
       `InvalidTransition` instead of going back to review. And the inherited
       emptiness verdict **was production code that could not fail** —
       mutation showed it agreed with the computed verdict everywhere
       reachable and was wrong in the one corner where they differ.
 
-- [ ] `1.12` **Asset enqueue and backpressure** — the scheduler half only
+- [x] `1.12` **Asset enqueue and backpressure** — the scheduler half only
       (spec 002 §7, ADR-0003): a page worker resolves image URLs, inserts
       `asset_queue` rows and moves on without ever blocking on an image, and
       page claiming slows once the pending queue passes 10,000. **Nothing
@@ -388,6 +388,19 @@ choosing or reaching one.
       **Done when:** a page yielding six images leaves six `asset_queue`
       rows and the page worker's own timing is unchanged, and a queue seeded
       past the threshold measurably slows page claiming (TESTING.md §2).
+      **Done:** 22 mutations, all red. "Never blocks on an image" is proven
+      against `1.4`'s 150 ms image route with a control fetch in the same
+      test, because a row-counting test passes against an enqueue that
+      downloads everything first. Two findings: `position` restarted at 0 on
+      every call, so two enqueues for one observation gave two rows at
+      position 0 — which `5.2` copies into `observation_assets.position`,
+      where a duplicate is an undefined gallery order; and **ADR-0026's claim
+      starves on an eligible domain with an empty queue** (it locks the most
+      eligible domain, then claims a row of that domain), which `1.13` must
+      not read as "the frontier is empty". The asset-URL predicate is now one
+      function shared with `content_hash`'s exclusion — a test asserts the
+      two halves against each other, because a URL excluded from the hash but
+      not enqueued is an image invisible to both.
 
 - [ ] `1.13` **Worker process** — the three `asyncio.TaskGroup` pools over one
       connection pool (ADR-0003), the sweep at the start of every claim-loop
