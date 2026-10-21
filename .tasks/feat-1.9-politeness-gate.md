@@ -227,9 +227,86 @@ correct from broken.
   this**, and spec 009's observability work in `1.13` and `5.11` is almost
   entirely log assertions.
 
+- **reviewer** (fresh context, did not write the code) — thirteen findings,
+  six called must-fix. **All six were real and all six are fixed.** Two of
+  them made the slice's own stated deliverable undeliverable:
+  **(a) ADR-0004's pause could not fire in a running crawler.** The gate
+  computed `consecutive_403s` and there was nowhere to put it: no column on
+  `domains`, no field on `Completion`, and `complete()` is the only write
+  path — so the count was discarded the moment the queue row closed. A
+  domain 403s twice, the worker restarts or the next claim lands in another
+  replica, the count is zero, and it refuses for ever while never reaching
+  three. The outcome ADR-0004 exists to prevent, passing every unit test.
+  In-process politeness state is also precisely what ADR-0003 and ADR-0026
+  rejected. Fixed with a column, a migration (up/down/up proven), a
+  `Completion` field, and a test asserting the value survives — which the
+  first mutation pass showed was missing even after the column existed.
+  **(b) `Decision.state` silently reset `floor_ms` to 2000.** `Decision`
+  carried no floor, so the property that threads state between decisions
+  rebuilt it from the dataclass default. Measured: a domain whose
+  `robots.txt` said `Crawl-delay: 30` had its floor replaced on the **first**
+  decision, and ~37 successes later the decay had it hitting the site every
+  2 seconds — spec 002 §5's "never lowers it", broken in live code rather
+  than by a mutation. Invisible because the only test threading state across
+  a backoff used a 2000 ms delay, where the correct floor and the accidental
+  default coincide.
+  **Also fixed:** the 15-minute cap could **lower** a delay — a site with
+  `Crawl-delay: 1200` got 900 s back from a 429, a reduction below its own
+  stated floor on the one response asking us to slow down;
+  `RobotsRules.can_fetch` answered for **any** host, because
+  `RobotFileParser` compares paths and ignores the netloc, and `1.13`
+  checking `final_url` to avoid following a redirect into a disallowed area
+  is exactly what would have triggered it; 404, a 2xx that is not 200, a
+  surviving 3xx and `FetchFailed` had **no method at all**, so `1.13` would
+  have guessed — and both plausible guesses are wrong in a silent way, since
+  `on_success` decays the delay (a domain speeds itself up on its own dead
+  links) and `on_server_error` leaves the 403 count untouched (so
+  `403, 404, 403, 404, 403` pauses on three non-consecutive refusals); and
+  the AUTO second chance would re-request a URL that had **just returned
+  403**, inside the same claim and so with no politeness gap, which is a
+  retry through a block.
+  **Mutation found two more things after the fixes**: `>=` vs `==` on the
+  block threshold (no test asserted a _fourth_ 403), and — most
+  embarrassingly — nothing asserted the frontier persists the new column,
+  so the headline fix was itself unguarded until a mutation said so.
+- **integrator (second pass)** — 14 further mutations, all red. Migration
+  proven up/down/up. `make check` green.
+
 ## Open questions
 
-1. **Spec 002 §4's decay has nothing to decay toward.** `domains` carries
+1. **Spec 002 §4's decay still has nothing to decay toward.** The floor now
+   survives a chain of decisions (it did not), but `domains` carries one
+   `crawl_delay_ms` and nothing records what the operator configured, so the
+   ×2 backoff still destroys it and `floor_ms` has to be supplied by the
+   caller. `1.13` will have to get it from somewhere. **For the human:** this
+   wants `configured_crawl_delay_ms` on `domains`, and it is the same shape
+   of defect as the `consecutive_403s` column this slice had to add — a
+   value the gate needs with nowhere to live.
+2. **The robots fetch is outside the gate.** `RobotsCache` calls the fetcher
+   directly, so no `next_eligible_at` is honoured before it and no gap is
+   imposed after it: the first page fetch of a domain follows the
+   `robots.txt` fetch back to back. Two hits on a host configured for 2 s —
+   and the robots `Crawl-delay`, possibly 10 s, is not knowable until that
+   fetch returns. Named for `1.13`, which owns the loop.
+3. **A 403 on `robots.txt` is read as "no restrictions" and never counted.**
+   Spec 002 §5 says a 4xx means no restrictions, so the behaviour is
+   compliant — but a WAF that blanket-403s has refused us once, and that
+   refusal is discarded rather than counted toward ADR-0004's three. **For
+   the human:** spec 002 §5 and ADR-0004 disagree here and one of them should
+   say which wins.
+4. **The observed-timing test's margin is thinner than it looks.** The
+   assertion doing the work is the 6 ms spread against an 18 ms jitter span,
+   roughly 3× scheduler noise at a 60 ms delay — comfortable on this machine.
+   The distinct-gap count alone would pass a constant gate, because
+   sub-millisecond `asyncio.sleep` overshoot varies enough on its own. If it
+   ever goes yellow on a loaded box the fix is a longer delay, not a looser
+   threshold.
+5. **`RobotsRules` is now `eq=False`.** `RobotFileParser` has no `__eq__`, so
+   two rules parsed from byte-identical bodies compared unequal while the
+   generated `__hash__` was identity-based — a rules object used as a dict
+   key would have behaved surprisingly. `frozen` is also only skin-deep
+   there, since `_parser` is mutable.
+6. **Previously raised, still open:** `domains` carries
    one `crawl_delay_ms`, so the ×2 backoff destroys the configured value and
    "never below it" has no referent. Three ways out: add
    `configured_crawl_delay_ms` to `domains` (a migration, and the honest

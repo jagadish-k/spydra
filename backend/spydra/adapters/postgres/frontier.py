@@ -106,6 +106,11 @@ UPDATE crawl.domains
 SET next_eligible_at = :next_eligible_at,
     crawl_delay_ms = :crawl_delay_ms,
     consecutive_failures = :consecutive_failures,
+    -- ADR-0004's pause counts CONSECUTIVE 403s, which spec 002 §4's shared
+    -- failure counter cannot express. Written here because the gate computes
+    -- it and nothing else may: held in worker memory it resets on restart
+    -- and the domain refuses for ever without ever pausing.
+    consecutive_403s = :consecutive_403s,
     -- GREATEST, not `- 1`: the counter is a cache (spec 001 §1) and a
     -- completion racing the sweep of the same row would otherwise drive it
     -- negative. ADR-0026 §Consequences: negative is the one drift direction
@@ -261,6 +266,7 @@ class PostgresFrontier:
                     "next_eligible_at": completion.next_eligible_at,
                     "crawl_delay_ms": completion.crawl_delay_ms,
                     "consecutive_failures": completion.consecutive_failures,
+                    "consecutive_403s": completion.consecutive_403s,
                 },
             )
 

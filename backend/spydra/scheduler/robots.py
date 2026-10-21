@@ -20,6 +20,7 @@ than a special case bolted on beside it.
 
 import logging
 from dataclasses import dataclass
+from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
 from spydra.domain.errors import FetchFailed
@@ -29,7 +30,7 @@ from spydra.ports.fetcher import Fetcher
 log = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class RobotsRules:
     """What one domain's `robots.txt` said, for the duration of one run.
 
@@ -40,12 +41,36 @@ class RobotsRules:
 
     allowed_at_all: bool
     crawl_delay_s: float | None
+    # The host these rules were FETCHED for. Recorded because
+    # `RobotFileParser.can_fetch` compares paths and ignores the netloc
+    # entirely — measured: rules parsed for `a.test` with `Disallow: /cart/`
+    # answer False for `https://evil.other/cart/x` and True for
+    # `https://evil.other/ok`. Since `HttpxFetcher` follows redirects, a
+    # caller checking `page.final_url` — the natural thing to do, to avoid
+    # following a redirect into a disallowed area — would apply one host's
+    # rules to another's URLs.
+    host: str | None = None
     _parser: RobotFileParser | None = None
     _user_agent: str = "*"
 
     def can_fetch(self, url: str) -> bool:
+        """Is this URL allowed? **False for any other host.**
+
+        Refusing a foreign host rather than guessing: these rules say nothing
+        about it, and the safe answer to "may I fetch a host whose rules I
+        have not read" is no. A caller that wants an answer for another host
+        must ask the cache for that host's rules.
+        """
         if not self.allowed_at_all:
             return False
+        if self.host is not None:
+            asked = urlparse(url).hostname
+            if asked is not None and asked != self.host:
+                log.warning(
+                    "robots_host_mismatch",
+                    extra={"rules_for": self.host, "asked_about": asked},
+                )
+                return False
         if self._parser is None:
             return True
         return self._parser.can_fetch(self._user_agent, url)
@@ -125,10 +150,10 @@ class RobotsCache:
             # No file, or no permission to read it: no restrictions.
             return RobotsRules.unrestricted()
 
-        return self._parse(page.body, user_agent)
+        return self._parse(page.body, user_agent, host)
 
     @staticmethod
-    def _parse(body: str, user_agent: str) -> RobotsRules:
+    def _parse(body: str, user_agent: str, host: str) -> RobotsRules:
         parser = RobotFileParser()
         parser.parse(body.splitlines())
 
@@ -142,6 +167,7 @@ class RobotsCache:
         return RobotsRules(
             allowed_at_all=True,
             crawl_delay_s=float(delay) if delay is not None else None,
+            host=host,
             _parser=parser,
             _user_agent=user_agent,
         )

@@ -316,3 +316,174 @@ async def test_the_gate_never_sleeps() -> None:
     for call in (g.on_success, g.on_rate_limited, g.on_forbidden, g.on_server_error):
         decision = call(state())
         assert decision.next_eligible_at > FIXED_NOW
+
+
+# ---------------------------------------------------------------------------
+# Guards added after review. Each had a real defect behind it.
+# ---------------------------------------------------------------------------
+
+
+async def test_the_backoff_cap_never_lowers_a_delay() -> None:
+    """A site with `Crawl-delay: 1200` has an effective 1,200,000 ms, and
+    `min(cap, x2)` returned **900,000** — a reduction below the site's own
+    stated floor, on the one response that asked us to slow down.
+
+    `Crawl-delay: 1200` and `3600` do occur. The cap exists to stop a delay
+    walking toward hours, not to override what a site asked for."""
+    g = gate()
+    above_cap = g.on_rate_limited(state(crawl_delay_ms=1_200_000))
+    assert above_cap.crawl_delay_ms == 1_200_000, "a 429 must never speed us up"
+
+    at_cap = g.on_rate_limited(state(crawl_delay_ms=BACKOFF_CAP_MS))
+    assert at_cap.crawl_delay_ms == BACKOFF_CAP_MS
+
+    under_cap = g.on_rate_limited(state(crawl_delay_ms=600_000))
+    assert under_cap.crawl_delay_ms == BACKOFF_CAP_MS, "doubling is still capped"
+
+
+async def test_the_floor_survives_a_chain_of_decisions() -> None:
+    """`Decision.state` is how `1.13` threads state between decisions, so
+    anything it drops is silently lost — and `floor_ms` was dropped.
+
+    Measured before the fix: a domain whose `robots.txt` said
+    `Crawl-delay: 30` had its floor replaced by the dataclass default of 2000
+    on the **first** decision, and ~37 successes later the 10% decay had it
+    hitting the site every 2 seconds. Spec 002 §5's "never lowers it",
+    broken in live code rather than by a mutation, and invisible because the
+    only test threading state used a 2000 ms delay where the correct floor
+    and the accidental default coincide."""
+    g = gate()
+    current = DomainPoliteness(crawl_delay_ms=30_000, floor_ms=30_000)
+
+    for _ in range(40):
+        decision = g.on_success(current)
+        current = decision.state
+        assert current.floor_ms == 30_000, "the floor was dropped between decisions"
+
+    assert current.crawl_delay_ms == 30_000, (
+        f"the decay walked a 30s robots floor down to {current.crawl_delay_ms}ms"
+    )
+
+
+async def test_the_floor_survives_every_kind_of_decision() -> None:
+    """Not just `on_success`. One method forgetting it is the same bug."""
+    g = gate()
+    start = DomainPoliteness(crawl_delay_ms=30_000, floor_ms=30_000)
+    for call in (
+        g.on_success,
+        g.on_rate_limited,
+        g.on_forbidden,
+        g.on_server_error,
+        g.on_client_error,
+        g.on_fetch_error,
+    ):
+        assert call(start).state.floor_ms == 30_000, call.__name__
+
+
+async def test_a_fourth_403_still_pauses_the_domain() -> None:
+    """`>=`, not `==`. Found by mutation: every test asserted the third 403
+    and none a fourth, so `== BLOCK_THRESHOLD` passed.
+
+    The fourth is reachable — the pause write fails, the count is restored
+    from the database after a restart, a replica picks up a domain mid-run —
+    and with `==` the domain would never pause again."""
+    g = gate()
+    current = state()
+    for _ in range(BLOCK_THRESHOLD - 1):
+        current = g.on_forbidden(current).state
+
+    for expected in range(BLOCK_THRESHOLD, BLOCK_THRESHOLD + 3):
+        decision = g.on_forbidden(current)
+        assert decision.consecutive_403s == expected
+        assert decision.pause_domain is True, f"the {expected}th 403 did not pause"
+        assert decision.abandon_queue is True
+        current = decision.state
+
+
+# ---------------------------------------------------------------------------
+# The dispatch — spec 002 §4's table as code, which review found missing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("status", "delay_change", "failures", "forbidden", "pauses", "why"),
+    [
+        (200, "decays", 0, 0, False, "2xx resets both counters and decays"),
+        (204, "decays", 0, 0, False, "a 2xx that is not 200 is still a success"),
+        (403, "same", 1, 1, False, "a refusal counts and does not back off"),
+        (429, "doubles", 1, 0, False, "rate limited backs off"),
+        (503, "doubles", 1, 0, False, "a SUPPLIER's 503, not the sidecar's"),
+        (500, "same", 0, 0, False, "5xx other: no domain-level penalty at all"),
+        (404, "same", 0, 0, False, "a dead link must not speed the domain up"),
+        (410, "same", 0, 0, False, "nor a gone page"),
+        (401, "same", 0, 0, False, "nor an auth wall, which is not a refusal of US"),
+        (301, "same", 0, 0, False, "a surviving redirect is unremarkable"),
+    ],
+)
+async def test_every_status_has_a_defined_outcome(
+    status: int,
+    delay_change: str,
+    failures: int,
+    forbidden: int,
+    pauses: bool,
+    why: str,
+) -> None:
+    """Spec 002 §4's table has four rows; the response space is wider, and
+    before this dispatch existed 404, a 2xx that is not 200, a surviving 3xx
+    and a `FetchFailed` had **no method at all**.
+
+    That left `1.13` to guess, and both plausible guesses are wrong in a
+    specific silent way: `on_success` **decays the delay**, so a domain with
+    many dead links speeds itself up on its own rot, and `on_server_error`
+    leaves `consecutive_403s` untouched, so `403, 404, 403, 404, 403` pauses
+    a domain on three refusals that were never consecutive.
+
+    The mapping belongs with the slice that owns ADR-0004, because left to
+    the caller every unlisted status is a judgement someone makes once and
+    nobody tests.
+    """
+    g = gate()
+    before = state(crawl_delay_ms=10_000)
+    decision = g.for_status(before, status)
+
+    if delay_change == "doubles":
+        assert decision.crawl_delay_ms == 20_000, why
+    elif delay_change == "decays":
+        assert decision.crawl_delay_ms == 9000, why
+    else:
+        assert decision.crawl_delay_ms == 10_000, why
+
+    assert decision.consecutive_failures == failures, why
+    assert decision.consecutive_403s == forbidden, why
+    assert decision.pause_domain is pauses, why
+
+
+async def test_a_404_between_two_403s_breaks_the_consecutive_run() -> None:
+    """The ordering that `on_server_error` would have got wrong. A 404 is not
+    a refusal, so `403, 404, 403, 404, 403` is three refusals that are not
+    consecutive — and ADR-0004 pauses on consecutive ones."""
+    g = gate()
+    current = state()
+    for status in (403, 404, 403, 404, 403):
+        decision = g.for_status(current, status)
+        current = decision.state
+    assert current.consecutive_403s == 1
+    assert decision.pause_domain is False
+
+
+async def test_a_fetch_error_counts_without_backing_off() -> None:
+    """`FetchFailed` — DNS, refused, timeout — had no method either.
+
+    Charged to the failure count, because `1.6`'s adapter documents it as "a
+    rising `consecutive_failures`" and the scheduler has to agree with the
+    adapter. **No backoff**: a DNS failure is not the site asking us to slow
+    down. And the 403 count is left alone, because a connection failure is
+    not evidence that a site which was refusing us has stopped."""
+    g = gate()
+    before = state(crawl_delay_ms=10_000, consecutive_failures=1, consecutive_403s=2)
+    decision = g.on_fetch_error(before)
+
+    assert decision.consecutive_failures == 2
+    assert decision.crawl_delay_ms == 10_000, "a DNS failure must not double the delay"
+    assert decision.consecutive_403s == 2, "nor clear a refusal the site has not withdrawn"
+    assert decision.pause_domain is False

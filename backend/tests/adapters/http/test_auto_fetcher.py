@@ -188,3 +188,43 @@ def test_auto_satisfies_the_fetcher_protocol() -> None:
         rendered=FakeFetcher(FetchPath.RENDERED),
     )
     assert composed.path is FetchPath.STATIC
+
+
+@pytest.mark.parametrize("status", [403, 404, 500, 429])
+async def test_the_second_chance_is_refused_for_a_non_200_static_page(status: int) -> None:
+    """Spec 012 §4 retries through the sidecar "if the extraction yields
+    nothing usable **on a 200**", and that qualifier is load-bearing.
+
+    A 403 body ("Access denied") extracts nothing, so without this guard the
+    obvious `1.13` loop would issue a **second request for a URL that had
+    just been refused** — inside the same claim, so with no politeness gap at
+    all, because spec 002 §2 advances `next_eligible_at` only after a fetch
+    completes. That is a retry through a block, which ADR-0004 forbids
+    outright and which `1.9`'s whole argument rests on.
+
+    The other statuses are here because the rule is "only a 200", not "not a
+    403": a 500 or a 429 body extracts nothing either, and rendering it would
+    be a second request to a site that is already struggling.
+    """
+    refused = FetchedPage(
+        request_url=PAGE_URL,
+        final_url=PAGE_URL,
+        http_status=status,
+        body="<html><body>Access denied</body></html>",
+        headers={},
+        fetched_at=FIXED_NOW,
+        elapsed_ms=30,
+        fetch_path=FetchPath.STATIC,
+    )
+    static = FakeFetcher(FetchPath.STATIC)
+    rendered = FakeFetcher(FetchPath.RENDERED, body="rendered body")
+
+    result = await auto(static, rendered).fetch_rendered_or_fall_back(request(), refused)
+
+    assert result is refused, "the non-200 page must come back untouched"
+    assert rendered.calls == 0, (
+        f"a {status} was re-requested through the render path — a retry through a "
+        "block, with no politeness gap (ADR-0004)"
+    )
+    assert static.calls == 0
+    assert result.fell_back_from is None, "nothing was degraded; nothing was attempted"

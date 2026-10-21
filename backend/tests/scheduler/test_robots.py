@@ -262,3 +262,44 @@ async def test_respect_robots_false_overrides_and_logs_every_time() -> None:
     assert cache.fetch_count == 0, "the override must not even ask"
     overrides = [r for r in records if r.getMessage() == "robots_override"]
     assert len(overrides) == 3, "logged every time it takes effect, not once"
+
+
+async def test_rules_refuse_a_url_on_a_different_host() -> None:
+    """`RobotFileParser.can_fetch` compares **paths** and ignores the netloc.
+
+    Measured: rules parsed for one host with `Disallow: /cart/` answer
+    `False` for `https://evil.other/cart/x` and `True` for
+    `https://evil.other/ok` — one host's rules applied to another's URLs,
+    silently.
+
+    This is reachable rather than theoretical. `HttpxFetcher` follows
+    redirects, which is why `FetchedPage.final_url` and `.redirected` exist,
+    and the natural thing for `1.13` to do — check `can_fetch(final_url)` so
+    a redirect cannot carry the crawl into a disallowed area — is exactly
+    what would trigger it.
+
+    The safe answer to "may I fetch a host whose rules I have not read" is
+    no, so a foreign host is refused rather than guessed at.
+    """
+    rules = await RobotsCache(FakeFetcher(200, fixture("crawl-delay"))).rules_for(
+        RUN, "crawl-delay.test", UA
+    )
+
+    assert rules.can_fetch("https://crawl-delay.test/catalog/discs") is True
+    assert rules.can_fetch("https://crawl-delay.test/cart/x") is False
+
+    # The same two paths on another host: both refused, including the one
+    # that is allowed on the host these rules describe.
+    assert rules.can_fetch("https://evil.other/cart/x") is False
+    assert rules.can_fetch("https://evil.other/catalog/discs") is False, (
+        "rules for one host answered for another — a cross-host redirect would "
+        "be checked against the wrong robots.txt"
+    )
+
+
+async def test_the_fail_closed_verdict_refuses_every_host() -> None:
+    """A 5xx means we could not read the rules at all, so there is no host
+    whose rules we know — including the one we asked about."""
+    rules = await RobotsCache(FakeFetcher(500, "")).rules_for(RUN, "x.test", UA)
+    assert rules.can_fetch("https://x.test/a") is False
+    assert rules.can_fetch("https://other.test/a") is False

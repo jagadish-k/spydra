@@ -63,6 +63,17 @@ class Completion:
     next_eligible_at: datetime
     crawl_delay_ms: int
     consecutive_failures: int
+    # ADR-0004 pauses a domain on three CONSECUTIVE 403s, and spec 002 §4
+    # increments `consecutive_failures` for 403, 429 and 503 alike — so one
+    # counter cannot answer both and the refusals need their own.
+    #
+    # It is persisted rather than held in the worker because in-process
+    # politeness state is what ADR-0003 and ADR-0026 rejected, for exactly
+    # this reason: a domain that 403s twice, is restarted, and comes back
+    # with a count of zero refuses for ever and never pauses. That is the
+    # outcome ADR-0004 exists to prevent, and it would have passed every
+    # unit test (BUILD_PLAN 1.9, found in review).
+    consecutive_403s: int = 0
 
 
 class Frontier(Protocol):

@@ -43,6 +43,10 @@ DECAY_FACTOR = 0.9
 # ADR-0004: three consecutive 403s pause the domain.
 BLOCK_THRESHOLD = 3
 
+# Spec 002 §4's first row. A supplier's 503 — NOT the render sidecar's, which
+# arrives as `Backpressure` and never reaches the gate (spec 002 §6).
+RATE_LIMIT_STATUSES = frozenset({429, 503})
+
 
 @dataclass(frozen=True, slots=True)
 class DomainPoliteness:
@@ -81,13 +85,28 @@ class Decision:
     consecutive_403s: int
     pause_domain: bool = False
     abandon_queue: bool = False
+    # Carried, not defaulted. Without this field `state` rebuilt
+    # `DomainPoliteness` with the dataclass default of 2000, so a domain whose
+    # robots.txt said `Crawl-delay: 30` had its floor silently replaced on the
+    # FIRST decision — and ~37 successes later the 10% decay had it hitting
+    # the site every 2 seconds. That is spec 002 §5's "never lowers it"
+    # broken in the live code, and no test touched it because the only test
+    # threading state across a backoff used a 2000 ms delay, where the correct
+    # floor and the accidental default coincide.
+    floor_ms: int = 2000
 
     @property
     def state(self) -> DomainPoliteness:
+        """The state to carry into the next decision.
+
+        `1.13` threads decisions through this, so anything it drops is
+        silently lost — which is exactly what happened to `floor_ms`.
+        """
         return DomainPoliteness(
             crawl_delay_ms=self.crawl_delay_ms,
             consecutive_failures=self.consecutive_failures,
             consecutive_403s=self.consecutive_403s,
+            floor_ms=self.floor_ms,
         )
 
 
@@ -119,6 +138,7 @@ class PolitenessGate:
             crawl_delay_ms=decayed,
             consecutive_failures=0,
             consecutive_403s=0,
+            floor_ms=state.floor_ms,
         )
 
     def on_rate_limited(self, state: DomainPoliteness) -> Decision:
@@ -132,12 +152,21 @@ class PolitenessGate:
         between refusals has not stopped refusing, and resetting would let
         403/429/403/429/403 run for ever.
         """
-        backed_off = min(BACKOFF_CAP_MS, state.crawl_delay_ms * BACKOFF_FACTOR)
+        # `max(current, ...)` around the cap, because the cap must never
+        # LOWER a delay. Measured: a site with `Crawl-delay: 1200` has an
+        # effective 1_200_000 ms, and `min(cap, x2)` returned 900_000 — a
+        # REDUCTION below the site's own stated floor, on the one response
+        # that asked us to slow down. `Crawl-delay: 1200` and `3600` do occur.
+        backed_off = max(
+            state.crawl_delay_ms,
+            min(BACKOFF_CAP_MS, state.crawl_delay_ms * BACKOFF_FACTOR),
+        )
         return Decision(
             next_eligible_at=self._next_eligible(backed_off),
             crawl_delay_ms=backed_off,
             consecutive_failures=state.consecutive_failures + 1,
             consecutive_403s=state.consecutive_403s,
+            floor_ms=state.floor_ms,
         )
 
     def on_forbidden(self, state: DomainPoliteness) -> Decision:
@@ -168,11 +197,74 @@ class PolitenessGate:
             crawl_delay_ms=state.crawl_delay_ms,
             consecutive_failures=state.consecutive_failures + 1,
             consecutive_403s=forbidden,
+            floor_ms=state.floor_ms,
             pause_domain=blocked,
             # ADR-0004: the work not done is recorded, not deleted, so the
             # run report shows it instead of reporting a clean finish.
             abandon_queue=blocked,
         )
+
+    def on_client_error(self, state: DomainPoliteness) -> Decision:
+        """Any 4xx that is **not** 403, and any other unremarkable status.
+
+        A 404 is not a refusal and not a success, so neither existing method
+        fits: `on_success` would **decay the delay**, which means a domain
+        with many dead links speeds itself up on its own rot, and
+        `on_server_error` leaves `consecutive_403s` untouched, which makes
+        `403, 404, 403, 404, 403` pause a domain on three refusals that were
+        never consecutive.
+
+        So: no backoff, no decay, no failure charged — and the 403 count
+        **resets**, because a 404 between two refusals means they are not
+        consecutive, which is the whole word ADR-0004 turns on.
+        """
+        return Decision(
+            next_eligible_at=self._next_eligible(state.crawl_delay_ms),
+            crawl_delay_ms=state.crawl_delay_ms,
+            consecutive_failures=state.consecutive_failures,
+            consecutive_403s=0,
+            floor_ms=state.floor_ms,
+        )
+
+    def on_fetch_error(self, state: DomainPoliteness) -> Decision:
+        """No response at all — DNS, refused, timeout (`FetchFailed`).
+
+        Charged to the domain's failure count, because `1.6`'s adapter
+        documents this as "a rising `consecutive_failures`" and the scheduler
+        has to agree with it. **No backoff**: a DNS failure is not the site
+        asking us to slow down, and doubling the delay on it would punish a
+        domain for a network blip.
+
+        `consecutive_403s` is left **unchanged** rather than reset: a
+        connection failure is not evidence that a site which was refusing us
+        has stopped.
+        """
+        return Decision(
+            next_eligible_at=self._next_eligible(state.crawl_delay_ms),
+            crawl_delay_ms=state.crawl_delay_ms,
+            consecutive_failures=state.consecutive_failures + 1,
+            consecutive_403s=state.consecutive_403s,
+            floor_ms=state.floor_ms,
+        )
+
+    def for_status(self, state: DomainPoliteness, http_status: int) -> Decision:
+        """Dispatch a status to its outcome — spec 002 §4's table, as code.
+
+        Here rather than in `1.13` because the mapping **is** ADR-0004: left
+        to the caller, every unlisted status is a judgement someone makes once
+        and nobody tests. A 403 reaching `on_rate_limited` would back off and
+        retry through a block; a 404 reaching `on_success` would speed the
+        domain up.
+        """
+        if 200 <= http_status < 300:
+            return self.on_success(state)
+        if http_status == 403:
+            return self.on_forbidden(state)
+        if http_status in RATE_LIMIT_STATUSES:
+            return self.on_rate_limited(state)
+        if http_status >= 500:
+            return self.on_server_error(state)
+        return self.on_client_error(state)
 
     def on_server_error(self, state: DomainPoliteness) -> Decision:
         """5xx other than 503. **No domain-level penalty** (spec 002 §4).
@@ -187,6 +279,7 @@ class PolitenessGate:
             crawl_delay_ms=state.crawl_delay_ms,
             consecutive_failures=state.consecutive_failures,
             consecutive_403s=state.consecutive_403s,
+            floor_ms=state.floor_ms,
         )
 
     # -- the floor -------------------------------------------------------

@@ -122,8 +122,8 @@ async def domain_row(engine: AsyncEngine, domain_id: DomainId) -> sa.Row[tuple[i
             await conn.execute(
                 sa.text(
                     """
-                    SELECT in_flight, consecutive_failures, crawl_delay_ms,
-                           next_eligible_at, state::text AS state
+                    SELECT in_flight, consecutive_failures, consecutive_403s,
+                           crawl_delay_ms, next_eligible_at, state::text AS state
                     FROM crawl.domains WHERE id = :id
                     """
                 ),
