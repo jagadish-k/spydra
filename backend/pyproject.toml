@@ -13,6 +13,24 @@ dependencies = [
     # default group set — which is also why the shipped images carry ruff,
     # mypy and pytest. httpx2, not httpx: ADR-0028.
     "httpx2",
+    # Extraction (BUILD_PLAN 1.10). Both are named in AGENTS.md § Stack and
+    # spec 003 §1–2 and were declared nowhere until this task — like httpx2
+    # before 1.6, except these were not installed at all.
+    #
+    # ADR-0017's readiness gate was run before adding them rather than
+    # discovered in a failing build: both resolve on cp315 / aarch64, which
+    # is this project's dev and target architecture and the thing that kept
+    # import-linter out (see the dev group's note on grimp).
+    #
+    # selectolax for CSS selection — spec 003 §2 chose it over BeautifulSoup
+    # for being roughly an order of magnitude faster, with lxml reserved for
+    # if XPath is ever genuinely needed.
+    "selectolax",
+    # extruct for JSON-LD / microdata / RDFa. Spec 003 §1: "do not hand-roll
+    # JSON-LD parsing". It pulls `requests` transitively, which is a second
+    # HTTP client in the image and worth knowing about — see the task file's
+    # open question. Nothing imports it; the crawl path is httpx2 only.
+    "extruct",
     "sqlalchemy[asyncio]", # Core only, asyncpg driver — ADR-0014
     "uvicorn",
 ]
@@ -111,6 +129,14 @@ filterwarnings = ["error"]
 
 [tool.mypy]
 strict = true
+
+[[tool.mypy.overrides]]
+# extruct ships no py.typed marker and no stubs. Scoped to this one module
+# rather than relaxed globally: everything taken from its output is re-typed
+# at the boundary in `extraction/strategies/structured.py`, which is why that
+# file works in `Mapping[str, Any]` and converts every value explicitly.
+module = "extruct.*"
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 # asyncpg ships no inline types and we deliberately do not carry third-party
