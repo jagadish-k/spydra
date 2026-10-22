@@ -50,6 +50,7 @@ from spydra.domain.entities import Domain, Template
 from spydra.domain.enums import DomainEvent, RenderMode, UnknownReason
 from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchedPage, FetchRequest
+from spydra.domain.urls import canonical_url
 from spydra.extraction.chain import ChainResult, ExtractionChain
 from spydra.extraction.validation import empty_extraction
 from spydra.observations.writer import CrawledPage, ObservationWriter
@@ -256,12 +257,16 @@ class PageCrawler:
         template: Template | None,
         result: ChainResult,
     ) -> None:
-        # Spec 004 §2 step 7: the page's own same-host canonical names the
-        # `pages` row, so two URLs for one product are one page. Only on a
-        # 200: an error page's canonical says nothing about the URL asked for.
-        page_url = (
-            canonical_link(fetched.body, item.url) if fetched.http_status == 200 else None
-        ) or item.url
+        # Spec 004 §2 step 7: the page's own canonical names the `pages` row,
+        # so two URLs for one product are one page. Resolved against the URL
+        # the body came from (redirects are followed), and honoured only on a
+        # 200 and only on this domain's host: a redirect off-host must never
+        # file another site's page under this domain.
+        page_url = canonical_url(item.url)
+        if fetched.http_status == 200:
+            named = canonical_link(fetched.body, fetched.final_url)
+            if named is not None and _same_host(named, item.url):
+                page_url = named
         page_id = await self._repos.pages.upsert(
             domain.id,
             page_url,
@@ -404,3 +409,7 @@ def _path(url: str) -> str:
     (spec 001 §1)."""
     parts = urlsplit(url)
     return f"{parts.path}?{parts.query}" if parts.query else parts.path
+
+
+def _same_host(url: str, other: str) -> bool:
+    return urlsplit(canonical_url(url)).netloc == urlsplit(canonical_url(other)).netloc

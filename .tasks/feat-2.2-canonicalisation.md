@@ -32,8 +32,10 @@ None` (new, `spydra/discovery/canonical.py`, selectolax): the first
   same scheme and host after step 1). Off-host, missing, empty or
   unparseable → `None`.
 - **Where it applies:**
-  - every write of `crawl_queue.url`/`url_hash` (the loader's seeds,
-    `Frontier.enqueue`) stores the canonical URL;
+  - every write of `crawl_queue.url_hash` (the loader's seeds,
+    `Frontier.enqueue`) hashes the canonical URL, while `crawl_queue.url`
+    keeps the URL as discovered, minus fragment and credentials
+    (`fetchable_url`; review finding 3); `pages.url` is canonical;
   - `PageCrawler` upserts the `pages` row under `canonical_link(...)` when
     present, otherwise under the (already canonical) queue URL. That is what
     collapses two URLs into one page row (spec 004 §5).
@@ -62,8 +64,9 @@ None` (new, `spydra/discovery/canonical.py`, selectolax): the first
       into one `pages` row: crawling Halden's `/shop/cutting/blades/p/<sku>`
       and `/shop/p/<sku>` in one run yields one page row; the off-host
       canonical (polishes) is ignored.
-- [ ] The loader stores canonical seed URLs; `Frontier.enqueue` stores
-      canonical URLs and dedupes two spellings of one URL to one row.
+- [ ] The loader and `Frontier.enqueue` dedupe two spellings of one URL to
+      one row (canonical hash) and store the fetchable spelling: no
+      fragment, no credentials, otherwise as written.
 - [ ] `canonical_url` is idempotent (property over the fixture's spellings).
 - [ ] `make check` green; mutation: each step broken alone turns a test red.
 
@@ -176,6 +179,41 @@ discs` (the unsorted pair → `?colour=red&per_page=25`, `?page=2` kept);
     module: every page with a canonical (2.3 onwards, the exit) hits it.
   - Suite: 908 passed, 2 skipped; lint clean.
 
+- reviewer (fresh context; did not write it): 2 blocking, 7 non-blocking,
+  all reproduced at unit level with scratchpad probes.
+  1. **Blocking, fixed.** A malformed `<link rel=canonical>` (`https://[object
+Object]/p`, `h:99999`, `[bad`) raised `ValueError` out of
+     `canonical_link`, so `_observe` crashed and the page was refetched up
+     to `MAX_ATTEMPTS` and failed with no observation. Now `None`.
+  2. **Blocking, fixed.** The canonical resolved against `item.url`, but
+     redirects are followed: a relative canonical after `/cat` → `/cat/`
+     landed on the wrong page row, and an http→https upgrade made every
+     canonical `None`. Now resolved against `fetched.final_url`, and
+     honoured only when its host is the queue URL's host, so an off-host
+     redirect never files another site's page under this domain.
+  3. **Decided: fetch as discovered, hash canonical** (contract change).
+     Spec 004 §2 canonicalises "before hashing", not before fetching.
+     Storing the canonical URL as the one to fetch would cost a 301 per page
+     on Django/nginx/WordPress sites that append the slash, and make sites
+     that 404 `/x` unreachable. `crawl_queue.url` now holds
+     `fetchable_url(url)`: as written, minus the fragment and any
+     `user:pass@` (logged with every line about the page). `url_hash` and
+     `pages.url` stay canonical, so dedupe is unchanged. ARCHITECTURE's
+     "canonicalised and enqueued" reads either way; raised as open question
+     4 in case you meant the other.
+  4. **Fixed.** Ties in the query sort (`q=a+b` vs `q=a%20b`, `a` vs `a=`)
+     are broken by the pair as written, so both orders hash alike.
+     Percent-encoding case is still kept as written (contract), noted.
+  5. **Fixed.** `canonical_url` raises `ValueError` on a URL with no scheme
+     or host instead of producing `/example.com/a` or `mailto:/x@y`.
+  6. **Fixed.** Hosts are IDNA-encoded and lose a trailing dot:
+     `BÜCHER.de.` and `xn--bcher-kva.de` are one host.
+  7. **Raised** (open question 5): a site pointing every `?page=N` at page 1
+     merges listing pages into one `pages` row. Spec 004 §2 step 7 mandates
+     honouring it.
+  8. **Already raised** (open question 2).
+  9. **Fixed with the PR**: BUILD_PLAN tick.
+
 ## Open questions — for the human
 
 Carried from 2.1 and 2.0.
@@ -189,3 +227,12 @@ New:
 3. **Scheme is part of identity.** `http://h/x` and `https://h/x` are two
    URLs. A site that serves both would be crawled twice; a redirect usually
    settles it. Left as spec 004 has it.
+4. **Fetch as discovered, hash canonical** (review finding 3). Chosen from
+   spec 004 §2's "applied before hashing". If you meant the queue to fetch
+   the canonical form (ARCHITECTURE's "canonicalised and enqueued"), it is
+   one call in two adapters; the cost is a redirect or a 404 per page on
+   sites that append slashes.
+5. **A same-host canonical is always honoured**, so a site that points every
+   `?page=N` at page 1 has its listing pages merged into one `pages` row.
+   Spec 004 §2 step 7 says to honour it; listings are not product data, so
+   the cost is history, not extraction.

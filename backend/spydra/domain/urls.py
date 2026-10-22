@@ -36,10 +36,18 @@ def canonical_url(url: str) -> str:
     and rewriting it would be a different URL that merely looks the same.
     Only the key is decoded, to recognise a tracking parameter however it is
     escaped.
+
+    **Absolute URLs only.** A relative URL, or one with no host, raises
+    `ValueError` rather than being turned into a path that looks valid
+    (`example.com/a` would otherwise become `/example.com/a`). Resolving a
+    link against its page is the caller's job, before this. So does a bad
+    netloc (`h:99999`, `[bad`): `urlsplit` raises, and that is the answer.
     """
     parts = urlsplit(url.strip())
     scheme = parts.scheme.lower()
-    host = (parts.hostname or "").lower()
+    host = _host(parts.hostname or "")
+    if not scheme or not host:
+        raise ValueError(f"not an absolute URL: {url!r}")
     port = parts.port
     # Rebuilt from host and port only, so `user:pass@` in a link is dropped:
     # credentials are never part of a page's identity, and keeping them would
@@ -51,6 +59,25 @@ def canonical_url(url: str) -> str:
     return urlunsplit((scheme, netloc, _path(parts.path), _query(parts.query), ""))
 
 
+def fetchable_url(url: str) -> str:
+    """The URL to request: as the site wrote it, minus what is never sent
+    or must never be stored.
+
+    Spec 004 §2 applies canonicalisation **before hashing**, not before
+    fetching. A site that answers `/x` with a 301 to `/x/`, or a 404, or
+    routes on `ref=`, would otherwise cost a redirect per page or be
+    unreachable. So the queue fetches the discovered spelling, and only the
+    hash and `pages.url` are canonical. Two things go regardless: the
+    fragment (a client never sends it) and `user:pass@` (it would be stored
+    in the queue and logged with every line about the page).
+    """
+    parts = urlsplit(url.strip())
+    if not parts.scheme or not parts.hostname:
+        raise ValueError(f"not an absolute URL: {url!r}")
+    netloc = parts.netloc.rpartition("@")[2]
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, ""))
+
+
 def url_hash(url: str) -> bytes:
     """`sha256(canonical_url(url))`, the key of `UNIQUE (domain_id,
     url_hash)` and `UNIQUE (run_id, url_hash)` (spec 001 §1, spec 004 §2).
@@ -60,6 +87,18 @@ def url_hash(url: str) -> bytes:
     nothing on it.
     """
     return hashlib.sha256(canonical_url(url).encode("utf-8")).digest()
+
+
+def _host(hostname: str) -> str:
+    """Lowercased, without a trailing dot, and in its ASCII (IDNA) form, so
+    `BÜCHER.de` and `xn--bcher-kva.de` are one host."""
+    host = hostname.lower().rstrip(".")
+    if host.isascii():
+        return host
+    try:
+        return host.encode("idna").decode("ascii")
+    except UnicodeError as e:
+        raise ValueError(f"not a valid host: {hostname!r}") from e
 
 
 def _path(path: str) -> str:
@@ -90,6 +129,9 @@ def _is_tracking(pair: str) -> bool:
     return key in _TRACKING or key.startswith(_TRACKING_PREFIX)
 
 
-def _sort_key(pair: str) -> tuple[str, str]:
+def _sort_key(pair: str) -> tuple[str, str, str]:
+    """Decoded key, decoded value, then the pair as written: `q=a+b` and
+    `q=a%20b` decode alike, and without the last element their order would
+    be whatever order the page wrote them in."""
     key, _, value = pair.partition("=")
-    return (unquote_plus(key), unquote_plus(value))
+    return (unquote_plus(key), unquote_plus(value), pair)

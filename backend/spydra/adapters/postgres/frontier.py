@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from spydra.domain.enums import RenderMode
 from spydra.domain.ids import DomainId, QueueItemId, RunId
-from spydra.domain.urls import canonical_url, url_hash
+from spydra.domain.urls import fetchable_url, url_hash
 from spydra.ports.frontier import EVERY_RENDER_MODE, MAX_ATTEMPTS, ClaimedUrl, Completion
 
 __all__ = ["LEASE_SECONDS", "MAX_ATTEMPTS", "PostgresFrontier", "url_hash"]
@@ -379,7 +379,7 @@ class PostgresFrontier:
                         {
                             "run_id": int(run_id),
                             "domain_id": int(domain_id),
-                            "url": canonical_url(url),
+                            "url": fetchable_url(url),
                             "url_hash": url_hash(url),
                             "depth": depth,
                         },
