@@ -250,6 +250,8 @@ make test-api      # pytest
 make test-bff      # the BFF suite
 make test-web      # vitest
 make e2e           # Playwright against the running stack
+make phase1-exit   # phase 1's exit: both fetchers, render stopped mid-way (ADR-0036)
+make load f=x.yaml # configure domains from YAML and start a run (1.14; gone in 3.2)
 
 make lint          # ruff + mypy + eslint + prettier --check
 make fmt           # ruff format + prettier --write

@@ -36,6 +36,10 @@ dependencies = [
     # BUILD_PLAN 1.13, the first code that logs a crawl. Pure Python, so
     # ADR-0017's wheel gate has nothing to fail on.
     "structlog",
+    # The YAML template loader (BUILD_PLAN 1.14), loaded `typ="safe",
+    # pure=True`. Not PyYAML: it publishes no cp315 wheel for any platform,
+    # so ADR-0017's gate refuses it. ADR-0035.
+    "ruamel.yaml",
     "uvicorn",
 ]
 

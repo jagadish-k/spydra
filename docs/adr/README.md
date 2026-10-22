@@ -48,3 +48,5 @@ shape everything else sits inside.
 | [0032](0032-everything-above-a-primitive-is-a-component.md) | Everything above a primitive is a component; screens are compositions       | Accepted                                   |
 | [0033](0033-current-state-skips-lightweight-rows.md)        | Current state skips lightweight rows; "nothing comparable" has no hash      | Accepted                                   |
 | [0034](0034-claim-only-a-domain-with-work.md)               | The claim takes only a domain with work, for the pool that asks             | Accepted                                   |
+| [0035](0035-ruamel-yaml-for-the-loader.md)                  | ruamel.yaml for the YAML template loader                                    | Accepted                                   |
+| [0036](0036-fixture-site-on-egress-for-the-exit.md)         | A test-only fixture service may join `egress`, behind a profile             | Accepted                                   |

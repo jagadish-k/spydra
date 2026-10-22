@@ -436,7 +436,7 @@ awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
       `configured_crawl_delay_ms` (the decay's floor) and structlog JSON
       logging.
 
-- [ ] `1.14` A YAML template loader so a domain can be configured without a
+- [x] `1.14` A YAML template loader so a domain can be configured without a
       UI. **This is scaffolding with a known end date** — it is deleted in
       `3.2` once templates come from the API. Do not build a format anyone
       could grow attached to: no schema, no validator, no inheritance. It
@@ -444,6 +444,16 @@ awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
       **Done when:** the exit criterion below runs from a YAML file, and a
       template declaring `required: true` is refused with a message naming
       ADR-0027.
+      **Done:** `make load f=…` and `make phase1-exit`. The exit passes end to
+      end: static via httpx, the JS page via the sidecar, AUTO's second
+      chance, then render stopped and AUTO recording `static_fallback`. CI
+      runs it as its own step. `required` is refused in any spelling but a
+      literal `false`. Review found three blocking defects, all fixed: a
+      reload un-paused a blocked domain, a seed on another host escaped its
+      robots, and the Linux render publish outlived the run. ruamel.yaml,
+      because PyYAML has no cp315 wheel (ADR-0035). The fixture service sits
+      behind a profile (ADR-0036). **ADR-0023's sidecar path does not work
+      on Linux Docker Engine**; raised in the task file.
 
 **Exit:** the local fixture site crawled politely end to end from a YAML
 template — a static page **and** a JavaScript-dependent page, both fetchers

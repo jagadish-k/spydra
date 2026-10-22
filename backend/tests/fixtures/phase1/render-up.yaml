@@ -1,0 +1,69 @@
+# Phase 1's exit, first run (BUILD_PLAN 1.14, ADR-0036): render is up.
+#
+# Three hosts on the one `fixtures` service, one per render mode:
+#   vantage  static    the well-formed selector page          -> HttpxFetcher
+#   mertens  rendered  the JS-dependent page                  -> the sidecar
+#   orbis    auto      the same JS page: the static HTML has nothing usable,
+#                      so AUTO's second chance renders it
+domains:
+  - host: vantage.fixtures:8099
+    scheme: http
+    render_mode: static
+    crawl_delay_ms: 300
+    templates:
+      - &vantage
+        name: vantage product
+        url_pattern: "/catalog/.+/.+"
+        page_kind: product
+        extraction:
+          title:
+            {
+              selector: ".product__title",
+              transform: [trim],
+              validation: [non_empty],
+            }
+          price: { selector: ".product__price", validation: [currency] }
+          availability: { selector: ".product__availability" }
+          vendor: { selector: ".product__vendor" }
+          images:
+            {
+              selector: ".gallery__image",
+              attr: src,
+              many: true,
+              transform: [absolute_url],
+            }
+    seeds: [/catalog/abrasives/discs/rfd-115-060]
+
+  - host: mertens.fixtures:8099
+    scheme: http
+    render_mode: rendered
+    crawl_delay_ms: 300
+    templates:
+      - &mertens
+        name: mertens product
+        url_pattern: "/katalog/.+"
+        page_kind: product
+        extraction:
+          title:
+            {
+              selector: ".produkt__name",
+              transform: [trim],
+              validation: [non_empty],
+            }
+          price: { selector: ".produkt__preis", validation: [currency] }
+          availability: { selector: ".produkt__lager" }
+          images:
+            {
+              selector: ".produkt__bild",
+              attr: src,
+              many: true,
+              transform: [absolute_url],
+            }
+    seeds: [/katalog/stirnlochschluessel-30-80]
+
+  - host: orbis.fixtures:8099
+    scheme: http
+    render_mode: auto
+    crawl_delay_ms: 300
+    templates: [*mertens]
+    seeds: [/katalog/stirnlochschluessel-30-80]
