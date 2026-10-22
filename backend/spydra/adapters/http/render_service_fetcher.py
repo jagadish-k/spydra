@@ -89,10 +89,10 @@ LEASE_BUDGET_S = 120
 class RenderServiceFetcher:
     """`Fetcher` over the render sidecar's `POST /render`.
 
-    The base URL comes from `RENDER_BASE_URL`, which points at the **host
-    loopback** rather than a container name: `render` is alone on the
-    `egress` network and nothing internal resolves from it (ADR-0023). That
-    is a compose concern, not this adapter's — it is passed a URL.
+    The base URL comes from `RENDER_BASE_URL`: `http://render:3001` over
+    `render-link`, the network only the worker and the sidecar share
+    (ADR-0038). That is a compose concern, not this adapter's — it is passed
+    a URL.
     """
 
     path = FetchPath.RENDERED

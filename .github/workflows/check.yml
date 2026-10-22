@@ -82,7 +82,7 @@ jobs:
       # BUILD_PLAN 1.14: the phase 1 exit criterion, against the live stack.
       # Both fetchers through one scheduler, render stopped mid-way. A gate
       # that only runs by hand stops being true without anyone noticing.
-      # ADR-0036 for the `fixtures` profile; docker/compose.linux.yaml for why
-      # the runner needs a second render publish.
+      # ADR-0036 for the `fixtures` profile. The same compose file as a Mac:
+      # the worker reaches render over `render-link` (ADR-0038).
       - name: Phase 1 exit
         run: make phase1-exit

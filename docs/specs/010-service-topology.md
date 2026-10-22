@@ -22,6 +22,13 @@ Six services. The rule that keeps this from being a distributed monolith:
 Plus `llama-server` on the host (ADR-0009). Seven things, one of which the
 operator starts themselves.
 
+**Networks.** `default` holds everything except `render`. `render` is on
+`egress` (its way out) and `render-link`, an internal network whose only
+other member is `worker`, which reaches it at `http://render:3001`. The same
+topology runs on Linux Docker Engine and Docker Desktop
+([ADR-0038](../adr/0038-render-link-network.md)). Adding a service to
+`egress` or `render-link` gives a crawled page a route to it.
+
 **Only `edge` publishes a port to the host in production.** In development
 `api`, `bff` and `db` also publish, for direct inspection — convenience, not
 architecture.

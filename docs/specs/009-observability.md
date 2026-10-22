@@ -34,6 +34,15 @@ noise.
 Per-page detail is `debug`, and the live log in the UI comes from SSE, not
 from scraping stdout.
 
+**One carve-out: operator overrides.** When the operator has told the crawler
+to disregard a site's stated rules, every page crawled under that instruction
+is logged at `warning` (spec 002 §5: `robots_override`, "logged every time it
+takes effect"). That is per page on purpose: the crawl ignored the site's
+wishes because a person said so, and each request should be attributable to
+that decision. These lines are outside §5's line budget. Today
+`robots_override` is the only one. A new override event joins the carve-out
+only by being named here.
+
 Never log: full HTML bodies, the user's email beyond the configured
 User-Agent, or credentials of any kind.
 
@@ -91,7 +100,10 @@ It does **not** check `llama-server` — the model is not in the crawl path.
 
 ## 5. Acceptance
 
-- [ ] A crawl at `info` produces fewer than 100 lines for a 1,000-page run.
+- [ ] A crawl at `info` produces fewer than 100 lines for a 1,000-page run,
+      not counting §1's operator-override lines. Asserted on a
+      `respect_robots = false` domain: one `robots_override` per page, and
+      fewer than 100 of everything else.
 - [ ] Every error-level line names the domain and the action to take.
 - [ ] `runs.stats` is populated on completion, stop and failure alike.
 - [ ] A run started with 4 GB free is refused with a clear reason.

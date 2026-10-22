@@ -22,9 +22,9 @@ from lxml.etree import ParserError  # type: ignore[import-untyped]
 from spydra.domain.entities import ExtractedFields, Template
 from spydra.domain.enums import Strategy
 from spydra.domain.fetch import FetchedPage
+from spydra.extraction.emptiness import is_empty
 from spydra.extraction.hashing import is_substantive
 from spydra.extraction.transforms import absolute_url, parse_decimal
-from spydra.extraction.validation import is_empty
 
 # schema.org/Product, however the page spells the @type.
 _PRODUCT_TYPES = {

@@ -2,7 +2,8 @@
 
 Spec 012 §4 gives AUTO two behaviours. This module implements the first and
 offers the seam for the second; the worker (`scheduler/crawl.py`, BUILD_PLAN
-`1.13`) decides when to take it, using "not substantive" as "nothing usable".
+`1.13`) decides when to take it, using `empty_extraction` as "nothing usable"
+(ADR-0037).
 What follows is the reasoning as it stood when this module was written:
 
 1. **The sidecar is unavailable.** Fall back to static and record that it

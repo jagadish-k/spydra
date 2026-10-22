@@ -1,9 +1,10 @@
 # Spydra — dev topology per docs/DEVELOPMENT.md § Compose topology.
 #
-# render is ALONE on the egress network: api/worker reach it through the host
-# loopback (RENDER_BASE_URL), and every inspection port binds 127.0.0.1 —
-# that binding is part of the isolation boundary, not a style choice
-# (ADR-0023). Do not "fix" this by sharing a network.
+# render shares no network with db, api, bff, edge or web. It is on `egress`
+# (its way out) and on `render-link`, an internal network whose only other
+# member is the worker, which listens on nothing (ADR-0038). Every inspection
+# port binds 127.0.0.1 (ADR-0023 §3). Do not add a service to `render-link`
+# or `egress`: a shared network is a route from a crawled page to it.
 name: spydra
 
 x-py-env: &py-env
@@ -15,7 +16,6 @@ x-py-env: &py-env
   # a browser. The contact address is the point — a site that wants the
   # crawling to stop has somewhere to write instead of a WAF rule to add.
   USER_AGENT: "${USER_AGENT:-MySampleScraper/1.0 (+https://jagadishk.work; k.jagdish@gmail.com)}"
-  RENDER_BASE_URL: http://host.docker.internal:3001 # via host loopback — ADR-0023
   LLM_BASE_URL: http://host.docker.internal:8080
   ASSET_ROOT: /data/assets
   HTML_CACHE_ROOT: /data/html
@@ -71,13 +71,18 @@ services:
       - .:/repo # host-side python (scripts/) for fmt/typecheck targets
       - venv:/app/.venv # named: never the bind mount
       - ${SPYDRA_DATA:-./.data}:/data
-    extra_hosts: ["host.docker.internal:host-gateway"] # llama-server AND render (ADR-0023)
+    extra_hosts: ["host.docker.internal:host-gateway"] # llama-server (ADR-0009)
     ports: ["127.0.0.1:8000:8000"]
 
   worker:
     build: { context: ., dockerfile: docker/worker.Dockerfile }
     command: python -m spydra.worker
-    environment: *py-env
+    environment:
+      <<: *py-env
+      # Over `render-link`, by name, on every platform (ADR-0038). Not in
+      # x-py-env: only the worker is on that network, so for the api the
+      # name would not resolve.
+      RENDER_BASE_URL: http://render:3001
     # Longer than the worker's SHUTDOWN_GRACE_S (20 s): Docker SIGKILLs at
     # the end of this, and a SIGKILL strands every in-flight row until its
     # two-minute lease expires instead of releasing it (spec 002 §3).
@@ -88,7 +93,8 @@ services:
       - ./backend:/app
       - venv:/app/.venv
       - ${SPYDRA_DATA:-./.data}:/data
-    extra_hosts: ["host.docker.internal:host-gateway"]
+    extra_hosts: ["host.docker.internal:host-gateway"] # llama-server (ADR-0009)
+    networks: [default, render-link]
     deploy:
       replicas: 1 # politeness is enforced in the DB; raise freely
     # NOTE: no depends_on render. A rendered domain stalls honestly when the
@@ -130,11 +136,13 @@ services:
       # instead of owning a second copy of the route table.
       - ./backend/tests/fixtures:/fixtures:ro
     shm_size: 1gb # Chromium crashes oddly on the 64 MB default
-    networks:
-      [egress] # alone. api/worker reach it via the host loopback
-      # (ADR-0023) — a shared network would give a crawled
-      # page a route back to api. No extra_hosts either.
-    ports: ["127.0.0.1:3001:3001"] # loopback publish IS the fetch path
+    # `egress` is the way out; `render-link` is the worker's way in, and the
+    # worker listens on nothing. No network with db/api/bff, and no
+    # extra_hosts: a crawled page has no name for any of them (ADR-0038). The
+    # sidecar itself refuses browser-shaped requests (render/src/guard.js),
+    # because the browser shares this container and can reach :3001.
+    networks: [egress, render-link]
+    ports: ["127.0.0.1:3001:3001"] # dev inspection only, not the fetch path
     healthcheck:
       test:
         [
@@ -195,7 +203,9 @@ services:
 
 networks:
   default: # api, worker, bff, db, edge, web
-  egress: # render only — no route inward, none needed outward-in
+  egress: # render (and the phase1-exit fixtures) — the way out
+  render-link: # worker ↔ render only. internal: no gateway, no way out
+    internal: true
 
 volumes:
   pgdata:

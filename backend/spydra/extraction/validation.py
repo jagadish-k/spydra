@@ -15,6 +15,11 @@ stated requirement rather than a style preference (spec 003 §3, ADR-0027):
 3. the `broken` threshold — both evaluated on the **final** observation,
    after any `auto` fallback has run.
 
+All three call this function and nothing else. 1.13 briefly gave the first
+caller its own test ("not substantive"), which made two definitions of
+"nothing usable" in production; ADR-0037 folded that test into the predicate
+so the three agree again.
+
 ADR-0027 pins where each is evaluated, and the reason is concrete: without
 (3) a domain whose grid needs rendering would score empty on essentially
 every page, cross 20% and move itself to `broken` on its first run while the
@@ -31,37 +36,23 @@ from urllib.parse import urlparse
 
 from spydra.domain.entities import ExtractedFields, FieldRule, FieldValue, Rule, ValidationResult
 from spydra.domain.enums import RuleName
+from spydra.extraction.emptiness import is_empty
+from spydra.extraction.hashing import is_substantive
 
 # ISO-4217 is three letters. A two- or four-letter "currency" is a parsing
 # accident rather than a currency.
 _CURRENCY_CODE = re.compile(r"^[A-Z]{3}$")
 
 
-def is_empty(value: object) -> bool:
-    """Did this field resolve to anything usable?
-
-    The definition `empty_extraction` is built on, factored out so the two
-    cannot drift. Takes `object` rather than `FieldValue` so `1.11`'s
-    normaliser can ask the same question about a nested item without a cast
-    — a second emptiness test in the hasher is exactly the drift ADR-0027
-    names. An empty string, a whitespace-only string, an empty
-    sequence and an empty mapping are all "nothing" — `0` and
-    `Decimal("0")` are **not**, because a genuine zero is data.
-    """
-    if value is None:
-        return True
-    if isinstance(value, str):
-        return not value.strip()
-    if isinstance(value, Mapping):
-        return not value
-    if isinstance(value, Sequence):
-        return len(value) == 0
-    return False
-
-
 def empty_extraction(http_status: int, fields: ExtractedFields) -> bool:
-    """ADR-0027's predicate, verbatim: a 200 response from which no field
-    resolved to a non-empty value.
+    """ADR-0027's predicate as ADR-0037 restates it: a 200 response from
+    which nothing **substantive** was extracted.
+
+    "Substantive" is `hashing.is_substantive`: something survives the content
+    hash's normalisation. Asset URLs do not, so a page whose only field is an
+    image URL is an empty extraction. That is the SEO plugin's image-only
+    `Product` stub over a redesigned page, which must reach the inbox and
+    count toward the threshold rather than read as a page that worked.
 
     **The status is part of it.** A 404 that yielded nothing is not an empty
     extraction — it is a 404, and counting it would make every dead link
@@ -71,7 +62,7 @@ def empty_extraction(http_status: int, fields: ExtractedFields) -> bool:
     """
     if http_status != 200:
         return False
-    return all(is_empty(value) for value in fields.values())
+    return not is_substantive(fields)
 
 
 def validate_field(value: FieldValue, rules: Sequence[Rule]) -> ValidationResult | None:

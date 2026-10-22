@@ -2,6 +2,8 @@
 
 **Status:** Accepted · 2026-10-15
 **Amended by:** [ADR-0036](0036-fixture-site-on-egress-for-the-exit.md) (a test-only fixture service, behind a profile)
+**Superseded in part by:** [ADR-0038](0038-render-link-network.md): Decision §1, §2 and §4
+(the host-loopback fetch path, which works on Docker Desktop only). §3 stands.
 **Context:** phase 0 · affects `docs/specs/010-service-topology.md`,
 `docs/specs/012-render-sidecar.md`, `docs/DEVELOPMENT.md`, `compose.yaml`
 

@@ -7,7 +7,7 @@ pool sizes:
 | ------------------ | ------- | ----------------------------------------------- |
 | `DATABASE_URL`     | —       | the `crawl` schema's owner role                 |
 | `USER_AGENT`       | —       | ADR-0004's honest identification; required      |
-| `RENDER_BASE_URL`  | —       | the sidecar, through the host (ADR-0023)        |
+| `RENDER_BASE_URL`  | —       | the sidecar, over `render-link` (ADR-0038)      |
 | `WORKER_STATIC`    | 12      | static-pool claim loops (spec 002 §6)           |
 | `WORKER_RENDERED`  | 3       | rendered-pool loops, and the sidecar budget     |
 | `SHUTDOWN_GRACE_S` | 20      | how long in-flight pages get after SIGTERM      |

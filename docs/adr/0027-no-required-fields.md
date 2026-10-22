@@ -1,6 +1,8 @@
 # 0027 — No field is ever required; emptiness is the only failure signal
 
 **Status:** Accepted · 2026-10-18
+**Amended by:** [ADR-0037](0037-empty-means-nothing-substantive.md) (the predicate is
+"nothing substantive", so an image-only stub is empty)
 **Amends:** [spec 001](../specs/001-domain-model.md) §3,
 [spec 003](../specs/003-extraction.md) §3 and §5,
 [spec 012](../specs/012-render-sidecar.md) §4,

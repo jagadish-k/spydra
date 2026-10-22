@@ -92,6 +92,13 @@ LIMIT 1
 #   pages_crawled  distinct pages this run observed for this domain
 #   regressions    of those, the ones whose LATEST observation in this run is
 #                  empty AND which have an EARLIER non-empty observation
+#
+# "Non-empty" for the prior is `content_hash IS NOT NULL`, not
+# `NOT empty_extraction` (ADR-0037). The hash is NULL exactly when nothing
+# substantive was extracted, which is the predicate's meaning today. The
+# column is not: rows written before ADR-0037 say `empty_extraction = false`
+# for an image-only stub, and observations are never updated (ADR-0007), so
+# reading the column would count a page that never worked as one that did.
 #   empty_pages    of those, the ones whose latest is empty, prior or not
 #
 # `DISTINCT ON (page_id) ... ORDER BY observed_at DESC` is why this is a
@@ -127,7 +134,7 @@ SELECT
               FROM crawl.page_observations prior
               WHERE prior.page_id = f.page_id
                 AND prior.observed_at < f.observed_at
-                AND NOT prior.empty_extraction
+                AND prior.content_hash IS NOT NULL
           )
     ) AS regressions
 FROM final f

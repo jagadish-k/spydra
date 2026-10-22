@@ -10,10 +10,11 @@ import { chromium } from 'playwright';
 import { MAX_BODY_BYTES, truncateHtml } from './limits.js';
 import { validateRequest } from './validate.js';
 import { ContextQueue } from './context-queue.js';
+import { refusal } from './guard.js';
 
-// 3001 is the published port (ADR-0023 — the loopback publish IS the fetch
-// path). Env-readable only so the acceptance suite can run two instances
-// side by side with different recycle and queue settings.
+// 3001 is the port the worker reaches over `render-link` (ADR-0038).
+// Env-readable only so the acceptance suite can run two instances side by
+// side with different recycle and queue settings.
 const PORT = intEnv('RENDER_PORT', 3001);
 const CONTEXTS_MAX = intEnv('RENDER_CONTEXTS', 3);
 const RECYCLE_AFTER_PAGES = intEnv('RECYCLE_AFTER_PAGES', 500);
@@ -232,6 +233,14 @@ function readBody(req) {
 }
 
 const server = http.createServer((req, res) => {
+  // Before routing and before the body is read: a refused request costs a
+  // header lookup, never a browser context (ADR-0038).
+  const refused = refusal(req);
+  if (refused) {
+    json(res, refused.status, { error: refused.error });
+    return;
+  }
+
   if (req.method === 'GET' && req.url === '/healthz') {
     pool
       .ensure()

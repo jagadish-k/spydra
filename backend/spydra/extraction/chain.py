@@ -25,8 +25,8 @@ from typing import Protocol
 from spydra.domain.entities import ExtractedFields, Template
 from spydra.domain.enums import Strategy
 from spydra.domain.fetch import FetchedPage
+from spydra.extraction.emptiness import is_blank
 from spydra.extraction.hashing import is_substantive
-from spydra.extraction.validation import empty_extraction
 
 
 class ExtractionStrategy(Protocol):
@@ -62,30 +62,30 @@ class ExtractionChain:
     async def extract(self, page: FetchedPage, template: Template | None = None) -> ChainResult:
         """The first rung whose extraction is **substantive** wins.
 
-        **"Nothing usable" is decided twice, and both tests are shared.**
-
-        - A rung that returns a mapping of all-empty values has extracted
-          nothing (`empty_extraction`, ADR-0027's one predicate), so the chain
-          moves on.
-        - A rung that returned *something*, but nothing that survives
-          normalisation (`is_substantive`), has not settled the page either.
-          SEO plugins emit skeleton markup: a `Product` carrying only an
-          `image`. Stopping there would leave the approved template
-          unreachable, and the page would hash like nothing at all, so it
-          would be neither reported nor counted and would read `unchanged`
-          for ever.
+        A rung that returned nothing, or only blank values, is passed over.
+        A rung that returned *something*, but nothing that survives
+        normalisation (`is_substantive`), has not settled the page either.
+        SEO plugins emit skeleton markup: a `Product` carrying only an
+        `image`. Stopping there would leave the approved template
+        unreachable.
 
         That second kind of result is kept as a fallback, not discarded.
-        When no later rung does better, it is still the best answer, and its
-        image URLs still reach the asset queue (`1.12`). The first such
-        result wins, which keeps spec 003 §1's cheapest-first order.
+        When no later rung does better it is still returned, so its image
+        URLs reach the asset queue (`1.12`). The page is nonetheless an
+        `empty_extraction` (ADR-0037): the fallback carries assets, not a
+        verdict. The first such result wins, which keeps spec 003 §1's
+        cheapest-first order.
         """
         fallback: ChainResult | None = None
         for strategy in self._strategies:
             fields = await strategy.extract(page, template)
             if fields is None:
                 continue
-            if empty_extraction(page.http_status, fields):
+            # Only on a 200, as before ADR-0037. On a 404 the rung that ran is
+            # still the answer: the observation and its log line name it
+            # (spec 009 §1), and a dead link is not a reason to try a rung
+            # that cannot do better.
+            if page.http_status == 200 and is_blank(fields):
                 continue
             result = ChainResult(fields=fields, strategy=strategy.name)
             if is_substantive(fields):

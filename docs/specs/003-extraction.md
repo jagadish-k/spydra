@@ -94,8 +94,11 @@ Results land in `page_observations.validation` as
   control flow. The observation is written with whatever resolved; partial
   data is never discarded.
 - **`empty_extraction` is the only reason a page reaches `unknown_pages`
-  from this path**: a 200 response from which no field resolved to a
-  non-empty value. This is the redesign signature, and the diff against the
+  from this path**: a 200 response from which nothing **substantive** was
+  extracted, i.e. nothing survives §4's normalisation
+  ([ADR-0037](../adr/0037-empty-means-nothing-substantive.md)). An image-only
+  SEO stub over a redesigned page is therefore empty; its image URLs are
+  still enqueued. This is the redesign signature, and the diff against the
   last working observation is what the operator needs.
 - **`empty_extraction` exceeding 20% of a domain's pages in a run** → the
   domain moves to `broken` and **crawling stops for it mid-run**. Carrying on
@@ -103,7 +106,8 @@ Results land in `page_observations.validation` as
   corrupts a dataset.
 
   **Only pages with a prior non-empty observation count toward that 20%**
-  ([ADR-0030](../adr/0030-empty-needs-a-prior.md)). A regression is a
+  ([ADR-0030](../adr/0030-empty-needs-a-prior.md)); "non-empty" is read as a
+  prior with a `content_hash` (ADR-0037). A regression is a
   _change_, and a page that never yielded anything cannot have changed — so a
   soft 404 (HTTP 200, "product not found", no content) is reported in the
   inbox and excluded from the threshold. Without that exclusion a catalogue

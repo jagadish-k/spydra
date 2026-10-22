@@ -193,7 +193,8 @@ CREATE TABLE unknown_pages (
   url          TEXT NOT NULL,
   -- The authoritative list. A closed vocabulary, like domain_state:
   --   'no_template'        no template matches this URL pattern
-  --   'empty_extraction'   200, nothing resolved. A redesign OR a soft 404;
+  --   'empty_extraction'   200, nothing substantive (ADR-0037). A redesign
+  --                        OR a soft 404;
   --                        only pages with a prior non-empty observation
   --                        count toward the broken threshold (ADR-0030)
   --   'fetch_error'        non-2xx or timeout

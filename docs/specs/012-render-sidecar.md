@@ -97,20 +97,29 @@ one user.
 | Permissions        | geolocation, camera, mic, notifications all denied |
 | Network            | **no access to the docker-internal network**       |
 
-The last one matters. Put `render` on an egress-only network with no route to
-`db`, `api` or `bff`. A page that fetches `http://db:5432` or
-`http://api:8000/api/crawler/domains` should not be able to reach anything.
-This is cheap to configure and the only real isolation boundary in the stack.
+The last one matters. `render` is on `egress` (its way out) and on
+`render-link`, an internal network shared only with the worker, which listens
+on nothing. It has no route to `db`, `api` or `bff`. A page that fetches
+`http://db:5432` or `http://api:8000/api/crawler/domains` should not be able
+to reach anything. This is cheap to configure and the only real isolation
+boundary in the stack ([ADR-0038](../adr/0038-render-link-network.md),
+superseding ADR-0023's host-loopback path).
+
+The browser shares the sidecar's container, so a page can always reach
+`:3001`. The sidecar therefore refuses browser-shaped requests: `403` for
+any request carrying `Origin`, `Sec-Fetch-Site`, `Sec-Fetch-Dest` or
+`Sec-Fetch-User`, and `415` for a `POST /render` that is not
+`application/json` (ADR-0038).
 
 ## 4. The Python side
 
 `RenderServiceFetcher` implements `Fetcher` (ADR-0008) and is selected by
 `domains.render_mode`:
 
-| Mode       | Behaviour                                                                                                                              |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `static`   | `HttpxFetcher` only                                                                                                                    |
-| `rendered` | `RenderServiceFetcher` only                                                                                                            |
+| Mode       | Behaviour                                                                                                                    |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `static`   | `HttpxFetcher` only                                                                                                          |
+| `rendered` | `RenderServiceFetcher` only                                                                                                  |
 | `auto`     | static first; if the extraction yields **nothing usable** on a 200, retry once through the sidecar and record which path won |
 
 `auto` is why the cost of a wrong onboarding guess is one wasted cheap fetch

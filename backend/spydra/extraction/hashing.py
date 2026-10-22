@@ -61,7 +61,7 @@ from typing import Final
 
 from spydra.domain.entities import ExtractedFields
 from spydra.extraction.assets import is_asset_url
-from spydra.extraction.validation import is_empty
+from spydra.extraction.emptiness import is_empty
 
 # A mapping carrying either of these is the price composite (spec 003 §2),
 # which is the only shape whose `raw` is evidence rather than data.
