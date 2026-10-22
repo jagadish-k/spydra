@@ -9,19 +9,20 @@ One file per **shape** the extraction chain must handle. The host names are
 invented — nothing here is a copy of a real page and a reader should not go
 looking for the original.
 
-| Page                                        | Shape it exists to exercise                      |
-| ------------------------------------------- | ------------------------------------------------ |
-| `vantage-abrasives/product.html`            | well-formed, selector path (spec 003 §2)         |
-| `vantage-abrasives/listing.html`            | product links + next page (spec 004 §1)          |
-| `orbis-components/product-jsonld.html`      | `schema.org/Product`, structured rung 1          |
-| `orbis-components/product-stripped.html`    | the same page, JSON-LD removed → falls to rung 2 |
-| `northfield/product-redesigned.html`        | same URL, selectors no longer match → redesign   |
-| `mertens/product-rendered.html`             | content only after JavaScript (spec 012)         |
-| `mertens/product-missing.html`              | soft 404: HTTP 200, no product (ADR-0030)        |
-| `mertens/product-dialog.html`               | opens `alert()` before writing (spec 012 §3)     |
-| `vantage-abrasives/product-images.html`     | 24 delayed images, for `block_resources`         |
-| `vantage-abrasives/product-image-stub.html` | image-only JSON-LD stub over `product.html` (B3) |
-| `robots/*.txt`                              | permissive · `Crawl-delay` · disallow-all        |
+| Page                                                   | Shape it exists to exercise                      |
+| ------------------------------------------------------ | ------------------------------------------------ |
+| `vantage-abrasives/product.html`                       | well-formed, selector path (spec 003 §2)         |
+| `vantage-abrasives/listing.html`                       | product links + next page (spec 004 §1)          |
+| `orbis-components/product-jsonld.html`                 | `schema.org/Product`, structured rung 1          |
+| `orbis-components/product-stripped.html`               | the same page, JSON-LD removed → falls to rung 2 |
+| `northfield/product-redesigned.html`                   | same URL, selectors no longer match → redesign   |
+| `mertens/product-rendered.html`                        | content only after JavaScript (spec 012)         |
+| `mertens/product-missing.html`                         | soft 404: HTTP 200, no product (ADR-0030)        |
+| `mertens/product-dialog.html`                          | opens `alert()` before writing (spec 012 §3)     |
+| `vantage-abrasives/product-images.html`                | 24 delayed images, for `block_resources`         |
+| `vantage-abrasives/product-image-stub.html`            | image-only JSON-LD stub over `product.html` (B3) |
+| `vantage-abrasives/product-image-stub-redesigned.html` | the same stub over a redesign (ADR-0037)         |
+| `robots/*.txt`                                         | permissive · `Crawl-delay` · disallow-all        |
 
 ## Generated responses
 
@@ -53,12 +54,20 @@ spec 012 §6's `block_resources` criterion becomes unfalsifiable.
 
 **`vantage-abrasives/product-image-stub.html` is `product.html` plus a
 `schema.org/Product` block whose only property is `image`.** Rung 1 finds a
-Product and extracts one asset URL: not empty (ADR-0027), but nothing the
-content hash can compare (spec 003 §4). With the approved template the
-selector rung must still win; without one the stub's image must still come
-back. The share image's path is one the gallery does not use, so a test can
+Product and extracts one asset URL, which is nothing the content hash can
+compare (spec 003 §4) and so an empty extraction (ADR-0037). With the
+approved template the selector rung must still win; without one the stub's
+image must still come back, and reach the asset queue. The share image's path is one the gallery does not use, so a test can
 tell which rung produced the result. Not routed by `server.py`: only the
 chain and writer tests read it, straight from disk.
+
+**`vantage-abrasives/product-image-stub-redesigned.html` is the same stub
+over a redesign**: the JSON-LD block unchanged, every class the template
+was approved against renamed. Before ADR-0037 the stub's image made this
+page "not empty", so a redesign on a domain with such an SEO plugin never
+reached the inbox and never tripped `broken`. It must be an empty
+extraction now, count toward the threshold when the page has worked
+before, and still enqueue the share image. Read from disk, like the stub.
 
 **`mertens/product-dialog.html` opens its dialogs before it writes the
 product**, on purpose. With the product written first, a sidecar that hung on
@@ -87,8 +96,8 @@ suite reaches the public internet (AGENTS.md rule 14).
 
 **Two suites consume this, and they reach it differently.** The Python suite
 imports `FixtureSite` and gets an ephemeral port. The render sidecar's suite
-(BUILD_PLAN `1.5`) cannot: `render` is alone on `egress`, so the api
-container is unreachable by design (ADR-0023). It mounts this directory at
+(BUILD_PLAN `1.5`) cannot: `render` shares no network with the api (ADR-0038), so the api
+container is unreachable by design. It mounts this directory at
 `/fixtures` read-only and runs **this same server** on its own loopback with
 `FIXTURE_HOST=127.0.0.1` — binding `0.0.0.0` there would put a resolvable
 host on the egress network, which is exactly what that ADR denies. The

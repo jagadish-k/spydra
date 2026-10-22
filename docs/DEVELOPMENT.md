@@ -162,7 +162,6 @@ name: spydra
 
 x-py-env: &py-env
   DATABASE_URL: postgresql+asyncpg://spydra_api:spydra@db:5432/spydra
-  RENDER_BASE_URL: http://host.docker.internal:3001 # via host loopback — ADR-0023
   LLM_BASE_URL: http://host.docker.internal:8080
   ASSET_ROOT: /data/assets
   HTML_CACHE_ROOT: /data/html
@@ -210,20 +209,23 @@ services:
       - ./backend:/app # bind: source, hot reload
       - venv:/app/.venv # named: never the bind mount
       - ${SPYDRA_DATA:-./.data}:/data
-    extra_hosts: ["host.docker.internal:host-gateway"] # llama-server AND render (ADR-0023)
+    extra_hosts: ["host.docker.internal:host-gateway"] # llama-server (ADR-0009)
     ports: ["127.0.0.1:8000:8000"]
 
   worker:
     build: { context: ., dockerfile: docker/worker.Dockerfile }
     command: python -m spydra.worker
-    environment: *py-env
+    environment:
+      <<: *py-env
+      RENDER_BASE_URL: http://render:3001 # over render-link — ADR-0038
     depends_on:
       db: { condition: service_healthy }
     volumes:
       - ./backend:/app
       - venv:/app/.venv
       - ${SPYDRA_DATA:-./.data}:/data
-    extra_hosts: ["host.docker.internal:host-gateway"]
+    extra_hosts: ["host.docker.internal:host-gateway"] # llama-server (ADR-0009)
+    networks: [default, render-link]
     deploy:
       replicas: 1 # politeness is enforced in the DB; raise freely
     # NOTE: no depends_on render. A rendered domain stalls honestly when the
@@ -235,11 +237,10 @@ services:
       RENDER_CONTEXTS: ${RENDER_CONTEXTS:-3}
       RECYCLE_AFTER_PAGES: 500
     shm_size: 1gb # Chromium crashes oddly on the 64 MB default
-    networks:
-      [egress] # alone. api/worker reach it via the host loopback
-      # (ADR-0023) — a shared network would give a crawled
-      # page a route back to api
-    ports: ["127.0.0.1:3001:3001"] # loopback publish IS the fetch path
+    # egress is the way out; render-link is the worker's way in (ADR-0038).
+    # No network with db/api/bff; the sidecar refuses browser requests.
+    networks: [egress, render-link]
+    ports: ["127.0.0.1:3001:3001"] # dev inspection only, not the fetch path
     healthcheck:
       test:
         [
@@ -279,7 +280,9 @@ services:
 
 networks:
   default: # api, worker, bff, db, edge, web
-  egress: # render only — no route inward, none needed outward-in
+  egress: # render only — its way out
+  render-link: # worker ↔ render only (ADR-0038)
+    internal: true
 
 volumes:
   pgdata:

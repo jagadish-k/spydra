@@ -6,7 +6,7 @@
 //      1.4's OWN stdlib server, not a Node reimplementation — a second copy
 //      of the route table is the drift the single-source JSON-LD twins exist
 //      to prevent, and `backend/tests/test_fixture_site.py` is what keeps
-//      the shapes honest. `render` is alone on `egress` (ADR-0023), so the
+//      the shapes honest. `render` shares no network with api (ADR-0038), so the
 //      api container's fixture server is unreachable by design; this one
 //      binds the render container's own loopback.
 //

@@ -8,9 +8,10 @@ healthy domain stopping itself.
 """
 
 from .chain import ChainResult, ExtractionChain, ExtractionStrategy
+from .emptiness import is_empty
 from .strategies.selector import SelectorStrategy
 from .strategies.structured import StructuredStrategy
-from .validation import empty_extraction, is_empty, validate, validate_field
+from .validation import empty_extraction, validate, validate_field
 
 __all__ = [
     "ChainResult",

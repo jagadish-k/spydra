@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Resin Fibre Disc 115mm P60 — Vantage Abrasives</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <!-- THE REDESIGN BEHIND AN SEO STUB (ADR-0037).
+         product-image-stub.html's JSON-LD block, unchanged: a
+         schema.org/Product whose only property is a share image. Below it,
+         the same product after a redesign: every class name the vantage
+         template was approved against is gone, so the selector rung
+         resolves nothing.
+         Rung 1 still returns the share image. Before ADR-0037 that made the
+         page "not empty", so a redesign on a domain with this plugin never
+         reached the inbox and never tripped `broken`. It must now be an
+         empty extraction, and the share image must still reach the asset
+         queue. The old template looked for .product__title /
+         .product__price / .gallery__image. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "image": "/img/rfd-115-060-share.jpg"
+      }
+    </script>
+  </head>
+  <body>
+    <header><a href="/">Vantage Abrasives</a></header>
+    <main data-view="pdp">
+      <section data-slot="heading">
+        <span data-field="name">Resin Fibre Disc 115mm P60</span>
+      </section>
+      <section data-slot="commerce">
+        <span data-field="amount">£14.75</span>
+        <span data-field="stock-state">In stock</span>
+        <span data-field="maker">Vantage Abrasives</span>
+      </section>
+      <figure data-slot="media">
+        <img data-field="photo" src="/img/rfd-115-060-a.jpg" alt="front" />
+      </figure>
+      <section data-slot="copy">
+        <p data-field="blurb">
+          Zirconia resin fibre disc for weld dressing and heavy stock removal on
+          steel and stainless.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,6 +1,8 @@
 # 0030 — An empty extraction only counts as a regression if the page once worked
 
 **Status:** Accepted · 2026-10-19
+**Amended by:** [ADR-0037](0037-empty-means-nothing-substantive.md) (the prior is read as
+`content_hash IS NOT NULL`)
 **Amends:** [spec 003](../specs/003-extraction.md) §3,
 [spec 001](../specs/001-domain-model.md) §1 (`unknown_pages.reason`),
 [`TESTING.md`](../TESTING.md) §2

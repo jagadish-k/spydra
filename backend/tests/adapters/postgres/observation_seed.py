@@ -12,7 +12,10 @@ that writes the wrong `empty_extraction`, since the same bug would be in the
 fixture and in the assertion.
 """
 
+import hashlib
 from datetime import UTC, datetime, timedelta
+from enum import Enum
+from typing import Final, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -89,6 +92,21 @@ async def seed_page(
         )
 
 
+class _Derived(Enum):
+    """Sentinel: "the hash a row with this `empty` flag would carry"."""
+
+    DERIVED = "derived"
+
+
+DERIVED: Final = _Derived.DERIVED
+
+# The hash a seeded non-empty prior carries. A literal digest rather than
+# `hashing.content_hash(...)`: the module docstring's reason applies to the
+# hasher as much as to the adapter, and nothing reads the value, only whether
+# it is there (ADR-0037 reads the prior as `content_hash IS NOT NULL`).
+_SEEDED_HASH: Final = hashlib.sha256(b"Hex Head Set Screw M8x40").digest()
+
+
 async def seed_observation(
     engine: AsyncEngine,
     page_id: PageId,
@@ -96,7 +114,7 @@ async def seed_observation(
     *,
     empty: bool,
     observed_at: datetime | None = None,
-    content_hash: bytes | None = None,
+    content_hash: bytes | None | Literal[_Derived.DERIVED] = DERIVED,
     http_status: int = 200,
 ) -> int:
     """One historical observation, written as SQL (see the module docstring).
@@ -105,8 +123,18 @@ async def seed_observation(
     EARLIER than anything the test writes next — ADR-0030's "an earlier
     observation" is a strict `<`, and two rows at the same microsecond is a
     coin toss the test would lose intermittently.
+
+    **`content_hash` follows `empty` unless the test says otherwise.** Since
+    1.11 the writer gives every substantive observation a hash and every
+    other one none, so a non-empty row with no hash is a row it cannot
+    produce. Seeding one by default made every "prior that worked" in this
+    suite a legacy row, and ADR-0037 reads the prior from the hash. Pass
+    `content_hash=None` with `empty=False` on purpose to get exactly that
+    legacy shape: an image-only page written before ADR-0037.
     """
     at = observed_at or (datetime.now(UTC) - timedelta(hours=1))
+    if content_hash is DERIVED:
+        content_hash = None if empty else _SEEDED_HASH
     async with engine.begin() as conn:
         return int(
             (
@@ -127,9 +155,11 @@ async def seed_observation(
                         "status": http_status,
                         "hash": content_hash,
                         "empty": empty,
-                        # A non-empty observation needs something in it, or
-                        # the fixture would contradict its own flag.
-                        "title": None if empty else "Hex Head Set Screw M8x40",
+                        # A row with a hash had something substantive in it,
+                        # or the fixture would contradict its own hash. A
+                        # legacy `empty = false` row with no hash is the
+                        # image-only page, which had no title either.
+                        "title": None if content_hash is None else "Hex Head Set Screw M8x40",
                     },
                 )
             ).scalar_one()

@@ -466,18 +466,75 @@ async def test_an_image_only_jsonld_stub_does_not_shadow_a_working_template() ->
     }
 
 
-async def test_an_image_only_jsonld_stub_alone_still_yields_its_images() -> None:
-    """The mirror: with no template there is no better rung, and the stub's
-    image is a field that resolved (ADR-0027). Discarding it would make the
-    page an empty extraction it is not, and lose the one URL the asset queue
-    could have fetched."""
+async def test_an_image_only_jsonld_stub_alone_yields_its_images_as_an_empty_extraction() -> None:
+    """Changed on purpose by ADR-0037; this was
+    `test_an_image_only_jsonld_stub_alone_still_yields_its_images`, which
+    also asserted the page was NOT an empty extraction.
+
+    The images half stands: with no template there is no better rung, and
+    discarding the stub would lose the one URL the asset queue could fetch.
+    The verdict half is inverted. An image URL is nothing substantive, and
+    "a field resolved" was the reading that let a stub over a redesign hide
+    from the inbox and the threshold. The chain carries the stub; the
+    predicate calls the page empty.
+    """
     fetched = page(IMAGE_STUB, STUB_URL)
 
     result = await chain("GBP").extract(fetched, template=None)
 
     assert result.strategy is Strategy.STRUCTURED
     assert result.fields["images"] == ["https://vantage-abrasives.test/img/rfd-115-060-share.jpg"]
+    assert empty_extraction(fetched.http_status, result.fields) is True
+
+
+STUB_REDESIGNED = "vantage-abrasives/product-image-stub-redesigned.html"
+
+
+async def test_a_stub_over_a_redesigned_page_keeps_the_stub_and_is_an_empty_extraction() -> None:
+    """ADR-0037's case at the chain: the approved template resolves nothing,
+    so the stub's share image is the fallback the chain returns (its images
+    must reach the asset queue), and the page is an empty extraction. The
+    template was consulted and found nothing, which is a redesign."""
+    fetched = page(STUB_REDESIGNED, STUB_URL)
+
+    result = await chain("GBP").extract(fetched, template=vantage_template())
+
+    assert result.strategy is Strategy.STRUCTURED
+    assert result.fields == {"images": ["https://vantage-abrasives.test/img/rfd-115-060-share.jpg"]}
+    assert empty_extraction(fetched.http_status, result.fields) is True
+
+
+async def test_a_working_template_behind_a_stub_is_not_an_empty_extraction() -> None:
+    """1.11 B3 kept under ADR-0037's wider "empty": the template wins, and
+    the page it read is not empty."""
+    fetched = page(IMAGE_STUB, STUB_URL)
+
+    result = await chain("GBP").extract(fetched, template=vantage_template())
+
+    assert result.strategy is Strategy.SELECTOR
     assert empty_extraction(fetched.http_status, result.fields) is False
+
+
+async def test_a_404_still_names_the_rung_that_ran_though_it_resolved_nothing() -> None:
+    """ADR-0037 §Consequences: on a non-200 the chain still returns a rung's
+    blank result, so the observation (and spec 009 §1's page line) names the
+    strategy that ran. A dead link is not a reason to report "no strategy".
+    The same page at 200 is a different matter: nothing resolved, so no rung
+    answered."""
+    template = vantage_template()
+
+    gone = await chain("GBP").extract(
+        page("mertens/product-missing.html", STUB_URL, 404), template=template
+    )
+    soft = await chain("GBP").extract(
+        page("mertens/product-missing.html", STUB_URL, 200), template=template
+    )
+
+    assert gone.strategy is Strategy.SELECTOR
+    assert not is_substantive(gone.fields)
+    assert empty_extraction(404, gone.fields) is False
+    assert soft.strategy is None
+    assert empty_extraction(200, soft.fields) is True
 
 
 class _Fixed:

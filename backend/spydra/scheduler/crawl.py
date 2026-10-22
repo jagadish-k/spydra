@@ -50,7 +50,7 @@ from spydra.domain.enums import DomainEvent, RenderMode, UnknownReason
 from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchedPage, FetchRequest
 from spydra.extraction.chain import ChainResult, ExtractionChain
-from spydra.extraction.hashing import is_substantive
+from spydra.extraction.validation import empty_extraction
 from spydra.observations.writer import CrawledPage, ObservationWriter
 from spydra.ports.clock import Clock
 from spydra.ports.fetcher import Fetcher
@@ -169,15 +169,16 @@ class PageCrawler:
         template = matching(await self._repos.templates.active_for(domain.id), _path(item.url))
         result: ChainResult | None = None
         # Only a page a template was meant to extract. A listing or category
-        # page with no template is never substantive, and rendering every one
-        # would be a second request to the supplier per page for nothing.
+        # page with no template has no selector a render could feed, and
+        # rendering every one would be a second request to the supplier per
+        # page for nothing.
         if (
             domain.render_mode is RenderMode.AUTO
             and template is not None
             and fetched.http_status == 200
         ):
             result = await self._chain.extract(fetched, template)
-            if not is_substantive(result.fields):
+            if empty_extraction(fetched.http_status, result.fields):
                 fetched, result = await self._second_chance(request, fetched, template, result)
 
         decision = self._gate.for_status(state, fetched.http_status)
@@ -230,11 +231,10 @@ class PageCrawler:
         """Spec 012 §4: AUTO retries through the sidecar when the static page
         yielded nothing usable.
 
-        **"Nothing usable" is "not substantive"**, deliberately wider than
-        `empty_extraction`. A JS-dependent page whose server HTML carries an
-        image-only SEO stub is not empty, but it has nothing a render would
-        not improve on, and the narrower test would never send it to the
-        browser (`fix/1.11-review-findings`, open question 12).
+        **"Nothing usable" is `empty_extraction`**, the same function the
+        inbox reason and the threshold call (ADR-0027, ADR-0037). A
+        JS-dependent page whose server HTML carries an image-only SEO stub is
+        an empty extraction, so it gets its browser retry.
         """
         try:
             rendered = await self._fetchers.auto.fetch_rendered_or_fall_back(request, fetched)

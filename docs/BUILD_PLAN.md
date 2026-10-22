@@ -455,6 +455,16 @@ awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
       behind a profile (ADR-0036). **ADR-0023's sidecar path does not work
       on Linux Docker Engine**; raised in the task file.
 
+- [x] `2.0` **Phase 1's open decisions, closed before phase 2**
+      (`fix/2.0-phase1-decisions`).
+      **Done:** an image-only SEO stub over a broken template is an
+      `empty_extraction` (ADR-0037: the predicate is "nothing substantive",
+      one function for all three callers). The worker reaches the sidecar over
+      `render-link` on Linux and Docker Desktop alike, and the sidecar refuses
+      browser-shaped requests (ADR-0038; `docker/compose.linux.yaml` deleted).
+      Spec 009's line budget carves out operator overrides. **macOS isolation
+      is unmeasured**: raised in the task file.
+
 **Exit:** the local fixture site crawled politely end to end from a YAML
 template — a static page **and** a JavaScript-dependent page, both fetchers
 exercised by the same scheduler, data in Postgres, and asset rows enqueued

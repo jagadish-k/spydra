@@ -18,9 +18,10 @@ from decimal import Decimal
 
 import pytest
 
-from spydra.domain.entities import FieldRule, FieldValue, Rule
+from spydra.domain.entities import ExtractedFields, FieldRule, FieldValue, Rule
 from spydra.domain.enums import RuleName
-from spydra.extraction.validation import validate, validate_field
+from spydra.extraction import empty_extraction as exported_predicate
+from spydra.extraction.validation import empty_extraction, validate, validate_field
 
 
 def rule(name: RuleName, arg: str | int | None = None) -> tuple[Rule, ...]:
@@ -167,3 +168,47 @@ def test_a_long_value_is_truncated_in_the_record() -> None:
     assert failure.saw is not None
     assert len(failure.saw) <= 120
     assert failure.saw.endswith("...")
+
+
+# ---------------------------------------------------------------------------
+# empty_extraction — ADR-0027's predicate as ADR-0037 restates it
+# ---------------------------------------------------------------------------
+
+SHARE = "https://vantage-abrasives.test/img/share.jpg"
+
+
+@pytest.mark.parametrize(
+    ("status", "fields", "empty"),
+    [
+        pytest.param(200, {}, True, id="nothing-at-all"),
+        pytest.param(200, {"title": "  ", "images": []}, True, id="only-blanks"),
+        # ADR-0037: an asset URL is not substantive. Under ADR-0027's first
+        # wording this was "a field resolved" and so not empty.
+        pytest.param(200, {"images": [SHARE]}, True, id="only-an-image"),
+        pytest.param(200, {"image": SHARE, "images": [SHARE]}, True, id="only-asset-urls"),
+        # ADR-0037 §Consequences: a hollow price carries only `raw` evidence.
+        # The composite's shape (spec 003 §2), with nothing parsed out of it.
+        pytest.param(
+            200,
+            {"price": {"amount": None, "currency": None, "raw": "POA"}},
+            True,
+            id="only-a-hollow-price",
+        ),
+        pytest.param(200, {"title": "Disc", "images": [SHARE]}, False, id="a-title-and-an-image"),
+        pytest.param(200, {"sku": "VA-1"}, False, id="any-substantive-field"),
+        # The status is part of it: a non-200 is never an empty extraction.
+        pytest.param(404, {}, False, id="a-404-with-nothing"),
+        pytest.param(404, {"images": [SHARE]}, False, id="a-404-with-an-image"),
+        pytest.param(500, {}, False, id="a-500-with-nothing"),
+    ],
+)
+def test_empty_extraction_means_a_200_with_nothing_substantive(
+    status: int, fields: ExtractedFields, empty: bool
+) -> None:
+    assert empty_extraction(status, fields) is empty
+
+
+def test_the_package_exports_the_one_predicate() -> None:
+    """ADR-0027: one predicate, three callers. The package's name for it and
+    the module's are the same function, not a second definition."""
+    assert exported_predicate is empty_extraction

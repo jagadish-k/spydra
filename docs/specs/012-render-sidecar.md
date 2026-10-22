@@ -97,20 +97,35 @@ one user.
 | Permissions        | geolocation, camera, mic, notifications all denied |
 | Network            | **no access to the docker-internal network**       |
 
-The last one matters. Put `render` on an egress-only network with no route to
-`db`, `api` or `bff`. A page that fetches `http://db:5432` or
-`http://api:8000/api/crawler/domains` should not be able to reach anything.
-This is cheap to configure and the only real isolation boundary in the stack.
+The last one matters. `render` is on `egress` (its way out) and on
+`render-link`, an internal network shared only with the worker, which listens
+on nothing. It shares no network with `db`, `api` or `bff`, and on Linux
+Docker Engine has no route to them (measured, ADR-0038). **On Docker Desktop
+that is not yet established:** `host.docker.internal` resolves inside
+`render` and is forwarded to the host's loopback, where the dev ports are
+published. Unmeasured; until it is, treat the Mac as having that route. A page that fetches
+`http://db:5432` or `http://api:8000/api/crawler/domains` should not be able
+to reach anything. This is cheap to configure and the only real isolation
+boundary in the stack ([ADR-0038](../adr/0038-render-link-network.md),
+superseding ADR-0023's host-loopback path).
+
+The browser shares the sidecar's container, so a page can always reach
+`:3001`. The sidecar therefore refuses browser-shaped requests: `403` for
+any request carrying `Origin`, `Sec-Fetch-Site`, `Sec-Fetch-Dest`,
+`Sec-Fetch-User` or `Upgrade-Insecure-Requests`, and `415` for a
+`POST /render` that is not `application/json` (ADR-0038). A page cannot
+start a render or read the sidecar's answers; an opaque `<img>` GET of
+`/healthz` is still served, unreadable.
 
 ## 4. The Python side
 
 `RenderServiceFetcher` implements `Fetcher` (ADR-0008) and is selected by
 `domains.render_mode`:
 
-| Mode       | Behaviour                                                                                                                              |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `static`   | `HttpxFetcher` only                                                                                                                    |
-| `rendered` | `RenderServiceFetcher` only                                                                                                            |
+| Mode       | Behaviour                                                                                                                    |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `static`   | `HttpxFetcher` only                                                                                                          |
+| `rendered` | `RenderServiceFetcher` only                                                                                                  |
 | `auto`     | static first; if the extraction yields **nothing usable** on a 200, retry once through the sidecar and record which path won |
 
 `auto` is why the cost of a wrong onboarding guess is one wasted cheap fetch

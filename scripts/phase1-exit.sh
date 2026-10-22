@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Phase 1's exit criterion against the live stack (BUILD_PLAN 1.14, ADR-0036).
+# Phase 1's exit criterion against the live stack (BUILD_PLAN 1.14, ADR-0036,
+# ADR-0038).
 #
 #   1. db, render and the `fixtures` profile service up; the test database
 #      migrated and emptied (an exit run never touches the dev database).
@@ -11,30 +12,23 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-files=(-f compose.yaml)
-if [ "$(uname -s)" = Linux ]; then
-  # See docker/compose.linux.yaml: on Linux Docker Engine the worker cannot
-  # reach a sidecar published only on the host's loopback.
-  DOCKER_HOST_GATEWAY=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
-  export DOCKER_HOST_GATEWAY
-  files+=(-f docker/compose.linux.yaml)
-fi
-compose() { docker compose "${files[@]}" --profile phase1-exit "$@"; }
+# One compose file on every platform: the worker reaches render over
+# `render-link` (ADR-0038), so there is no per-OS override to add.
+compose() { docker compose --profile phase1-exit "$@"; }
 TEST_DB=postgresql+asyncpg://spydra_api:spydra@db:5432/spydra_test
 in_api() { compose run --rm -T -e DATABASE_URL="$TEST_DB" api "$@"; }
 
-# Restore render exactly as ADR-0023 has it: recreated from compose.yaml ALONE
-# (the Linux override's second publish must not outlive the run, or every
-# later crawl on this host inherits it), and only if it was running before.
-render_was_running=$(docker compose -f compose.yaml ps --status running -q render)
+# Run 2 stops render. Put it back as it was: running if it was running before,
+# absent if it was not.
+render_was_running=$(docker compose ps --status running -q render)
 worker=""
 cleanup() {
   [ -n "$worker" ] && docker stop -t 30 "$worker" >/dev/null 2>&1 || true
   compose stop fixtures >/dev/null 2>&1 || true
   if [ -n "$render_was_running" ]; then
-    docker compose -f compose.yaml up -d --force-recreate render >/dev/null 2>&1 || true
+    docker compose up -d render >/dev/null 2>&1 || true
   else
-    docker compose -f compose.yaml rm -sf render >/dev/null 2>&1 || true
+    docker compose rm -sf render >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
