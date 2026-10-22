@@ -52,6 +52,12 @@ how `develop` breaks. So the work is split by how long it takes:
 CI repeats pre-push deliberately. A hook can be skipped; CI cannot, and the
 hook exists to save you the round trip, not to be the authority.
 
+`make check` tests the working tree, so pre-push refuses any push it could not
+vouch for: a ref that is not `HEAD`, or a tree with uncommitted or untracked
+changes. Push each branch of a stack from its own checkout. Pushing a stacked
+branch from another checkout is how 1.9 shipped without its regenerated crawl
+mirror while the gate passed.
+
 ```sh
 make hooks            # git config core.hooksPath .githooks — run once per clone
 ```

@@ -486,6 +486,7 @@ are the same command in the same images.
 | A drizzle migration contains `crawl` DDL          | `schemaFilter` missing from `drizzle.config.ts`                                       | add it; delete and regenerate the migration                                                                  |
 | Pre-commit is slow                                | it is running the full suite                                                          | it should not — pre-commit is format + lint + typecheck; `make check` belongs on pre-push. See `WORKFLOW.md` |
 | A hook blocks a commit you believe is fine        | the gate is doing its job                                                             | fix it, or `--no-verify` **and say so in the PR**. Do not disable the hook                                   |
+| pre-push: “a tree you are not pushing”            | the pushed ref is not `HEAD`, or the tree has changes the commit lacks                | check out that branch; commit or `git stash -u`. Never `--no-verify` past it                                 |
 | An agent role change seems to have no effect      | you edited a generated copy                                                           | roles are edited in `docs/agents/`, then `make agents` (`WORKFLOW.md` §3)                                    |
 | `make check` fails on `.cursor/` or `.agents/`    | `docs/agents/` changed without regenerating                                           | `make agents` and commit the result                                                                          |
 

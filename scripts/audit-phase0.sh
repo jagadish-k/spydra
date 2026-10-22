@@ -217,6 +217,20 @@ if printf '%s' "$OUT" | grep -q 'is protected'; then gate_dev_b=OK
 elif printf '%s' "$OUT" | grep -q 'make check failed'; then gate_dev_b="FAIL (got past the branch guard; only make check stopped it)"
 else gate_dev_b=FAIL; fi
 log "  push HEAD:develop from '$cur' refused: $gate_dev_b"
+# 3c: make check only vouches for the checked-out tree, so pushing any other
+# commit from here must be refused before the gate runs (1.9 shipped without
+# its regenerated crawl mirror that way). HEAD~1 is never HEAD.
+run "git branch -f audit-not-head HEAD~1"
+defer "git branch -D audit-not-head 2>/dev/null"
+run "git push audit-tmp audit-not-head"
+printf '%s' "$OUT" | grep -q 'tree you are not pushing' && gate_not_head=OK || gate_not_head=FAIL
+log "  push of a branch that is not HEAD refused: $gate_not_head"
+# 3d: an untracked file is part of the tree make check tests, not of the commit
+touch audit-untracked.tmp; defer "rm -f '$REPO/audit-untracked.tmp'"
+run "git push audit-tmp HEAD:refs/heads/audit-dirty"
+printf '%s' "$OUT" | grep -q 'tree you are not pushing' && gate_dirty=OK || gate_dirty=FAIL
+run "rm -f audit-untracked.tmp"
+log "  push from a tree with an untracked file refused: $gate_dirty"
 
 head2 "gate 4 — a hand-edited .claude/agents file is rejected"
 victim=$(ls .claude/agents/*.md | head -1)
@@ -247,12 +261,15 @@ fi
 
 if [ "$hp" = ".githooks" ] && [ "$gate_subject" = OK ] && [ "$gate_env" = OK ] \
    && [ "$gate_gen" = OK ] && [ "$gate_gen2" = OK ] && [ "$gate_dev_b" = OK ] \
+   && [ "$gate_not_head" = OK ] && [ "$gate_dirty" = OK ] \
    && [ "$ms" -ge 0 ] && [ "$ms" -lt 10000 ]; then
   verdict 0.3 PROVEN "all four gate checks bite; pre-commit ${ms} ms"
 elif [ "$gate_dev_b" != OK ]; then
   verdict 0.3 BROKEN "pre-push guards the CHECKED-OUT branch name only: 'git push <remote> HEAD:develop' from a feature branch was NOT refused"
+elif [ "$gate_not_head" != OK ] || [ "$gate_dirty" != OK ]; then
+  verdict 0.3 BROKEN "pre-push runs make check on a tree it is not pushing: not-HEAD=$gate_not_head untracked=$gate_dirty"
 else
-  verdict 0.3 UNPROVEN "subject=$gate_subject env=$gate_env gen=$gate_gen gen+REGEN=$gate_gen2 develop-on=$gate_dev_a develop-refspec=$gate_dev_b timing=${ms}ms"
+  verdict 0.3 UNPROVEN "subject=$gate_subject env=$gate_env gen=$gate_gen gen+REGEN=$gate_gen2 develop-on=$gate_dev_a develop-refspec=$gate_dev_b not-head=$gate_not_head untracked=$gate_dirty timing=${ms}ms"
 fi
 fi
 
