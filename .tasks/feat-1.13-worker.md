@@ -151,6 +151,23 @@ One claim-loop iteration (spec 002 §1–§7):
 ## Handoff log
 
 - planner: contract above.
+- backend: as contracted, with these deviations:
+  - **`MAX_ATTEMPTS` moved to the port**, so the scheduler decides
+    retry-or-fail without importing an adapter. The adapter re-exports it.
+  - **`RobotsRules.can_fetch` compared a hostname with a host that may carry
+    a port**, so a domain at `127.0.0.1:PORT` had every URL refused as
+    foreign. It now compares hostname with hostname. Found running the
+    worker.
+  - **The `httpcore2` logger wrote raw response headers at `debug`**
+    (including `Set-Cookie`, a credential). It is now held at `warning`.
+    Found running the worker at `debug`.
+  - **Smoke run** (throwaway, not committed): the real worker as a
+    subprocess against `FixtureSite` and the test DB, with 5 URLs.
+    - All 5 rows `done`. The product gives selector, title and £14.75. The
+      listing gives `empty_extraction`, the two unmatched pages
+      `no_template`, the 404 an observation and no inbox row.
+    - Run `completed` with stats, `in_flight` back to 0, SIGTERM exit 0.
+    - 3 lines at `info`; at `debug`, one per page plus lifecycle.
 
 ## Open questions — for the human
 

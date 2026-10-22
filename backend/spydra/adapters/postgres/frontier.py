@@ -29,17 +29,16 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from spydra.domain.enums import RenderMode
 from spydra.domain.ids import DomainId, QueueItemId, RunId
-from spydra.ports.frontier import ClaimedUrl, Completion
+from spydra.ports.frontier import EVERY_RENDER_MODE, MAX_ATTEMPTS, ClaimedUrl, Completion
+
+__all__ = ["LEASE_SECONDS", "MAX_ATTEMPTS", "PostgresFrontier", "url_hash"]
 
 # Spec 002 §1. A lease long enough for a slow render (spec 012 §2 allows 30 s)
 # plus the politeness delay in front of it, short enough that a killed worker
 # does not strand a row for minutes.
 LEASE_SECONDS = 120
-
-# Spec 002 §3 / ADR-0004: three attempts, then the row is failed rather than
-# returned for a fourth.
-MAX_ATTEMPTS = 3
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +53,15 @@ WITH eligible AS (
     WHERE d.state = 'active'
       AND d.next_eligible_at <= now()
       AND d.in_flight < d.max_concurrency
+      AND d.render_mode = ANY(CAST(:render_modes AS text[]))
+      -- ADR-0034: only a domain with work. Without this, a domain whose
+      -- queue has drained is never fetched again, so its next_eligible_at
+      -- never advances, it stays the MOST eligible domain for good, and
+      -- every other domain's claim comes back empty for ever.
+      AND EXISTS (
+          SELECT 1 FROM crawl.crawl_queue q0
+          WHERE q0.domain_id = d.id AND q0.state = 'pending'
+      )
     ORDER BY d.next_eligible_at
     FOR UPDATE SKIP LOCKED          -- on domains: THE POLITENESS GATE.
                                     -- Serialises the eligibility DECISION.
@@ -226,7 +234,9 @@ class PostgresFrontier:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
 
-    async def claim(self) -> ClaimedUrl | None:
+    async def claim(
+        self, render_modes: frozenset[RenderMode] = EVERY_RENDER_MODE
+    ) -> ClaimedUrl | None:
         """Lease the next eligible URL, or None.
 
         None is the ordinary case, not an error: throughput is
@@ -235,7 +245,14 @@ class PostgresFrontier:
         """
         async with self._engine.begin() as conn:
             row = (
-                await conn.execute(_CLAIM, {"lease_seconds": LEASE_SECONDS})
+                await conn.execute(
+                    _CLAIM,
+                    {
+                        "lease_seconds": LEASE_SECONDS,
+                        # Sorted so the bound value is deterministic.
+                        "render_modes": sorted(m.value for m in render_modes),
+                    },
+                )
             ).scalar_one_or_none()
         if row is None:
             return None

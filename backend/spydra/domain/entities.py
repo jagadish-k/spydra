@@ -132,6 +132,10 @@ class Domain:
     next_eligible_at: datetime
     consecutive_failures: int
     user_agent: str | None = None
+    # ADR-0004's pause counter, kept apart from `consecutive_failures`
+    # (1.9), and the floor the decay may not go below (1.13).
+    consecutive_403s: int = 0
+    configured_crawl_delay_ms: int = 2000
     max_depth: int = 5
     deny_patterns: tuple[str, ...] = ()
 

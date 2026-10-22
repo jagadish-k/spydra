@@ -19,6 +19,9 @@ WITH eligible AS (
     WHERE d.state = 'active'
       AND d.next_eligible_at <= now()
       AND d.in_flight < d.max_concurrency
+      AND d.render_mode = ANY(:render_modes)   -- the claiming pool (§6)
+      AND EXISTS (SELECT 1 FROM crawl.crawl_queue q0   -- ADR-0034
+                  WHERE q0.domain_id = d.id AND q0.state = 'pending')
     ORDER BY d.next_eligible_at
     FOR UPDATE SKIP LOCKED          -- on domains: the politeness gate
     LIMIT 1
@@ -64,6 +67,12 @@ The domain lock lives for the claim transaction only — microseconds — and is
 **not** held across the fetch. The fetch is gated by `in_flight` and
 `next_eligible_at`, which are committed state; a lock held through a two
 second polite delay would idle a connection for the whole crawl.
+
+**Only a domain with work is eligible** (ADR-0034). Without the `EXISTS`, a
+domain whose queue has drained is never fetched again, so its
+`next_eligible_at` never advances and it stays the most eligible domain for
+good, and every other domain's claim comes back empty. The pool's
+`render_modes` filter is what keeps the rendered pool on rendered domains.
 
 **Order by `depth` first.** Listing pages fan out into product URLs, so
 draining them early keeps the frontier full and stops workers starving at the

@@ -34,6 +34,13 @@ CREATE TABLE domains (
   user_agent      TEXT,
   next_eligible_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   consecutive_failures INT NOT NULL DEFAULT 0,
+  -- ADR-0004 pauses on three CONSECUTIVE 403s; the shared counter above also
+  -- counts 429/503, so the refusals need their own (BUILD_PLAN 1.9).
+  consecutive_403s INT NOT NULL DEFAULT 0 CHECK (consecutive_403s >= 0),
+  -- What the operator configured. The x2 backoff overwrites crawl_delay_ms,
+  -- and spec 002 §4's decay stops here, never below (BUILD_PLAN 1.13).
+  configured_crawl_delay_ms INT NOT NULL DEFAULT 2000
+    CHECK (configured_crawl_delay_ms >= 0),
   notes           TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- ADR-0026: the counter gates claiming, so a negative one is impolite

@@ -1,6 +1,7 @@
 # 0026 — The claim query locks the domain row, not just the queue row
 
 **Status:** Accepted · 2026-10-17
+**Amended by:** [ADR-0034](0034-claim-only-a-domain-with-work.md) (only a domain with work, per pool)
 **Amends:** [ADR-0002](0002-postgres-as-queue.md) § Decision — see
 "What this means for ADR-0002" below
 **Relates to:** [ADR-0003](0003-three-pools-one-gate.md) (three pools, one
