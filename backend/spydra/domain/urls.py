@@ -15,7 +15,6 @@ back into `canonical_url`.
 
 import hashlib
 import posixpath
-import re
 from typing import Final
 from urllib.parse import unquote_plus, urlsplit, urlunsplit
 
@@ -26,8 +25,6 @@ _TRACKING: Final[frozenset[str]] = frozenset(
     {"gclid", "fbclid", "msclkid", "ref", "_ga", "mc_cid", "mc_eid"}
 )
 _TRACKING_PREFIX: Final[str] = "utm_"
-
-_SLASHES = re.compile(r"/{2,}")
 
 
 def canonical_url(url: str) -> str:
@@ -47,6 +44,9 @@ def canonical_url(url: str) -> str:
     # Rebuilt from host and port only, so `user:pass@` in a link is dropped:
     # credentials are never part of a page's identity, and keeping them would
     # write them into the queue and the logs.
+    if ":" in host:
+        # `hostname` drops an IPv6 literal's brackets; the URL needs them.
+        host = f"[{host}]"
     netloc = host if port is None or port == _DEFAULT_PORTS.get(scheme) else f"{host}:{port}"
     return urlunsplit((scheme, netloc, _path(parts.path), _query(parts.query), ""))
 
@@ -67,10 +67,9 @@ def _path(path: str) -> str:
     trailing slash stripped except at the root."""
     if not path:
         return "/"
-    collapsed = _SLASHES.sub("/", path)
-    resolved = posixpath.normpath(collapsed)
-    # normpath keeps a leading "//" (POSIX allows it) and turns "/" into "/".
-    resolved = "/" + resolved.lstrip("/")
+    # normpath resolves `.`/`..` and collapses `//`, except a leading `//`,
+    # which POSIX reserves and it keeps; lstrip takes that one.
+    resolved = "/" + posixpath.normpath(path).lstrip("/")
     return resolved if resolved == "/" else resolved.rstrip("/")
 
 

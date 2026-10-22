@@ -165,6 +165,17 @@ discs` (the unsorted pair → `?colour=red&per_page=25`, `?page=2` kept);
     The `/a//../b` ordering inside step 2 is also untested, because spec
     004 does not say whether `..` or `//` goes first.
 
+- backend (after test):
+  - **Fixed the defect the tests found:** an IPv6 host lost its brackets
+    (`hostname` drops them), so `http://[::1]:8080/x` canonicalised to an
+    invalid URL. Brackets restored; the red test is green.
+  - **The one survivor was equivalent, so its code is gone:** the `//`
+    regex ran before `posixpath.normpath`, which already collapses `//`.
+  - **pyRdfa's `utcnow()` DeprecationWarning** moved from a per-file mark
+    to `pyproject.toml`'s `filterwarnings`, scoped to that one message and
+    module: every page with a canonical (2.3 onwards, the exit) hits it.
+  - Suite: 908 passed, 2 skipped; lint clean.
+
 ## Open questions — for the human
 
 Carried from 2.1 and 2.0.

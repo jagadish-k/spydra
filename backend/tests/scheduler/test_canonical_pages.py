@@ -43,17 +43,7 @@ from spydra.scheduler.robots import RobotsCache
 from tests.adapters.postgres.seed import seed_domain, seed_run
 from tests.fixtures.server import FixtureSite
 
-pytestmark = [
-    pytest.mark.integration,
-    # `<link rel="canonical">` is read as RDFa by extruct's pyRdfa, whose
-    # warning path calls the deprecated `datetime.utcnow()`. Under the
-    # suite's `filterwarnings = ["error"]` that raises inside the structured
-    # rung, so every Halden page with a canonical would crash the crawl here
-    # for a reason unrelated to 2.2. Scoped to this file and this one
-    # message; reported in the 2.2 handoff for a pyproject decision. Remove
-    # when pyRdfa stops calling `utcnow()` or pyproject ignores it.
-    pytest.mark.filterwarnings("ignore:datetime.datetime.utcnow:DeprecationWarning:pyRdfa"),
-]
+pytestmark = pytest.mark.integration
 
 UA = "SpydraTest/1.0 (+https://spydra.test)"
 SKU = "HT-SB-001"

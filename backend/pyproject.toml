@@ -133,7 +133,15 @@ markers = [
 # When a new one appears the run fails and names it. That is the point. Add
 # an `ignore::` line here only with the reason and the condition for removing
 # it — never to quiet something unread.
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+    # extruct's RDFa parser (pyRdfa) reads `<link rel="canonical">` and its
+    # warning path calls the deprecated `datetime.utcnow()`. Third-party, one
+    # message, one module: every crawl of a page with a canonical (2.2
+    # onwards) would otherwise raise inside the structured rung under
+    # "error". Remove when pyRdfa stops calling it.
+    "ignore:datetime.datetime.utcnow:DeprecationWarning:pyRdfa",
+]
 
 [tool.mypy]
 strict = true
