@@ -118,6 +118,22 @@ OVERSIZED_MAX_MB = 32  # a bound, so a typo in a test cannot ask for 20 GB
 # logged, and a log test over a site that sends none passes against a worker
 # that dumps every response header; with this, it cannot.
 GENERATED_PREFIX = "/generated/"
+
+# /moved/… — redirects for 2.2's `rel=canonical` after a redirect. The
+# crawler follows redirects, so a relative canonical has to resolve against
+# the URL the body came from, and a canonical on the host a redirect went to
+# is not this domain's to honour.
+#
+#   /moved/listing      301 → /moved/listing/ (same host)
+#   /moved/listing/     200, `<link rel="canonical" href="p/1">`: resolved
+#                       from the final URL that is /moved/listing/p/1, from
+#                       the requested one /moved/p/1
+#   /moved/away         301 → http://localhost:<this port>/moved/landing,
+#                       another host name for the same loopback server
+#   /moved/landing      200, `<link rel="canonical" href="/moved/landing">`,
+#                       which names whatever host it was served as
+MOVED_PREFIX = "/moved/"
+MOVED_OFF_HOST = "localhost"
 GENERATED_TEMPLATE = PAGES / "vantage-abrasives/product.html"
 GENERATED_COOKIE_VALUE = "spydra-fixture-session-6f1d2c9a"
 GENERATED_SET_COOKIE = f"session={GENERATED_COOKIE_VALUE}; Path=/; HttpOnly"
@@ -224,6 +240,10 @@ class FixtureHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if path.startswith(MOVED_PREFIX):
+            self._moved(path)
+            return
+
         if path.startswith(TRAP_PREFIX):
             depth = path.count("/")
             body = (
@@ -248,6 +268,28 @@ class FixtureHandler(BaseHTTPRequestHandler):
             return
 
         self._send(target.read_bytes(), "text/html; charset=utf-8")
+
+    def _moved(self, path: str) -> None:
+        html = "text/html; charset=utf-8"
+        port = self.server.server_port  # type: ignore[attr-defined]  # BaseServer does not declare it; HTTPServer sets it
+        if path == f"{MOVED_PREFIX}listing":
+            self._send(b"", html, 301, (("location", f"{MOVED_PREFIX}listing/"),))
+        elif path == f"{MOVED_PREFIX}listing/":
+            self._send(
+                b'<!doctype html><title>moved listing</title><link rel="canonical" href="p/1">',
+                html,
+            )
+        elif path == f"{MOVED_PREFIX}away":
+            location = f"http://{MOVED_OFF_HOST}:{port}{MOVED_PREFIX}landing"
+            self._send(b"", html, 301, (("location", location),))
+        elif path == f"{MOVED_PREFIX}landing":
+            self._send(
+                b"<!doctype html><title>landing</title>"
+                b'<link rel="canonical" href="/moved/landing">',
+                html,
+            )
+        else:
+            self._send(b"<!doctype html><title>404</title>", html, 404)
 
 
 class FixtureSite:

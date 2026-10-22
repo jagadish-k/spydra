@@ -213,3 +213,33 @@ async def test_a_page_with_no_canonical_is_filed_under_its_canonical_queue_url(
     domain, _ = await crawl_all(clean_crawl, base, ["/shop/cutting/discs/?utm_source=n"])
 
     assert await pages(clean_crawl, domain) == {base + "/shop/cutting/discs": 1}
+
+
+# ---------------------------------------------------------------------------
+# After a redirect (2.2 review, finding 2)
+# ---------------------------------------------------------------------------
+
+
+async def test_a_relative_canonical_resolves_against_the_url_after_the_redirect(
+    clean_crawl: AsyncEngine, site: FixtureSite
+) -> None:
+    """`/moved/listing` 301s to `/moved/listing/`, whose `href="p/1"` is
+    `/moved/listing/p/1` from where the body came from. Resolved against the
+    queue URL it would be `/moved/p/1`, which is another page's row."""
+    base = site.base_url
+    domain, _ = await crawl_all(clean_crawl, base, ["/moved/listing"])
+
+    assert await pages(clean_crawl, domain) == {base + "/moved/listing/p/1": 1}
+
+
+async def test_a_canonical_on_the_host_a_redirect_went_to_is_ignored(
+    clean_crawl: AsyncEngine, site: FixtureSite
+) -> None:
+    """`/moved/away` 301s to `localhost:<port>`, another host name, whose page
+    names itself. Honoured, this domain would get a page row on a host it
+    does not own; the page stays under the queue URL."""
+    base = site.base_url
+    domain, _ = await crawl_all(clean_crawl, base, ["/moved/away"])
+
+    assert ("localhost", "/moved/landing") in site.requests, "the redirect was not followed"
+    assert await pages(clean_crawl, domain) == {base + "/moved/away": 1}

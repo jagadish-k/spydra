@@ -214,6 +214,44 @@ Object]/p`, `h:99999`, `[bad`) raised `ValueError` out of
   8. **Already raised** (open question 2).
   9. **Fixed with the PR**: BUILD_PLAN tick.
 
+- test (after review): pinned the amended contract. The 4 files now hold
+  306 tests (`test_canonical_url.py` 248, `test_canonical_link.py` 40,
+  `test_canonical_writes.py` 10, `test_canonical_pages.py` 8).
+  - `test_canonical_writes.py` was rewritten on purpose for finding 3.
+    `Frontier.enqueue` stores the first spelling's fetchable form (both
+    orders tested) under the canonical hash; the hash is asserted as
+    `sha256(<canonical>)` literally. Credentials and fragments are never
+    stored. The loader does the same, and dedupes seeds.
+    `PostgresPages.upsert` still stores the canonical URL.
+  - `canonical_url`: `ValueError` on no scheme or no host
+    (`example.com/a`, `mailto:x@y`, relative, `http:///x`, empty), and
+    `url_hash` with it. IDNA plus trailing dot: `BÜCHER.de.`, `bücher.de`
+    and `xn--bcher-kva.de` in any case give one host. Ties: `q=a+b`/`q=a%20b`,
+    `a`/`a=` and `%61`/`a` sort alike in either order, and both spellings
+    are kept.
+  - `fetchable_url`: path, query, case and port kept as written; fragment
+    and userinfo dropped (including an `@` inside the password); refuses
+    a URL that is not absolute; `url_hash(fetchable_url(x)) == url_hash(x)`
+    over every spelling.
+  - `canonical_link` returns `None` for `https://[object Object]/p`,
+    `h:abc`, `h:99999`, `http://[bad` and `http://[::1/x`.
+  - `PageCrawler` after a redirect, through a new fixture route family,
+    `/moved/…` in `tests/fixtures/server.py` (documented in the fixtures
+    README). `/moved/listing` 301s to `/moved/listing/`, whose `href="p/1"`
+    files under `/moved/listing/p/1`. `/moved/away` 301s to
+    `localhost:<port>`, whose self-canonical is ignored, so the page stays
+    under `/moved/away`. The test asserts the redirect was actually followed.
+  - **Mutation (new guards): 16 chosen, 16 red.** The mutants:
+    `canonical_link`'s `except ValueError`; the canonical resolved against
+    `item.url`; the same-host check removed; each absolute check
+    (`canonical_url`, `fetchable_url`); IDNA; the trailing dot; the
+    sort tie-breaker; `fetchable_url` keeping the fragment, keeping
+    credentials, or canonicalising; and the frontier and loader storing the
+    raw URL and the canonical URL (4). Also the IPv6 bracket fix.
+    `git diff -- backend/spydra` is empty afterwards.
+  - Full backend suite: **985 passed, 2 skipped**. `make lint-api` clean.
+  - No new defects.
+
 ## Open questions — for the human
 
 Carried from 2.1 and 2.0.

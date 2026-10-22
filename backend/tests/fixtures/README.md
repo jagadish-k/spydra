@@ -40,6 +40,15 @@ So `server.py` synthesizes them, with the shape as a URL parameter.
 | `/trap/…`          | unbounded link depth, for BUILD_PLAN `2.5`'s caps                                                                            |
 | `/generated/<n>`   | product `<n>` of an unbounded catalogue, with a `Set-Cookie` — for spec 009 §5's 1,000-page log budget (BUILD_PLAN `1.13`)   |
 | `/shop/…`          | Halden Tools, the discovery catalogue (`catalogue.py`, BUILD_PLAN `2.1`) — see below                                         |
+| `/moved/…`         | redirects with a relative canonical, same-host and off-host (to `localhost:<port>`), for BUILD_PLAN `2.2` — see below        |
+
+**`/moved/…` is two redirects for `2.2`.** The crawler follows redirects, so
+`rel="canonical"` must resolve against the URL the body came from.
+`/moved/listing` 301s to `/moved/listing/`, whose `href="p/1"` is
+`/moved/listing/p/1` from the final URL and `/moved/p/1` from the requested
+one. `/moved/away` 301s to the same server under another host name
+(`localhost:<port>`), whose `/moved/landing` names itself as canonical. That
+is a canonical on a host the domain does not own, so it must be ignored.
 
 **`/generated/<n>` is `vantage-abrasives/product.html` with `<n>` written
 into the title, SKU, price and image names**, so a thousand URLs are a

@@ -1,20 +1,24 @@
-"""Every URL write stores the canonical URL (BUILD_PLAN 2.2, spec 004 §2).
+"""Every URL write keys on the canonical URL (BUILD_PLAN 2.2, spec 004 §2).
 
 Committed rows, so `clean_crawl`: the frontier, the loader and the pages
 repository each open their own transaction.
 
-What is held, per write path:
+What is held, per write path (contract as amended by the 2.2 review):
 
-- `Frontier.enqueue`: two spellings of one URL are one queue row, and the
-  row's `url` is the canonical spelling, not whichever arrived first.
-- The YAML loader's seeds: the same, through `load()`.
+- `Frontier.enqueue` and the YAML loader's seeds: two spellings of one URL
+  are one queue row, because `url_hash` is the canonical URL's hash. The
+  row's `url` is the **fetchable** spelling of whichever arrived first: as
+  written, minus the fragment and any `user:pass@`. Spec 004 §2
+  canonicalises before hashing, not before fetching. A site that 301s `/x`
+  to `/x/` would otherwise cost a redirect per page.
 - `PostgresPages.upsert`: two spellings are one page row, under the
   canonical URL.
 
-`url` and `url_hash` are asserted together. A write that hashed the
-canonical URL but stored the raw one would dedupe correctly and still put a
-newsletter's `utm_source` in front of the operator for ever.
+Credentials and fragments are asserted absent from every stored URL: a
+`user:pass@` in the queue is logged with every line about the page.
 """
+
+import hashlib
 
 import pytest
 import sqlalchemy as sa
@@ -24,7 +28,6 @@ from spydra.adapters.postgres.configuration import PostgresConfiguration
 from spydra.adapters.postgres.frontier import PostgresFrontier
 from spydra.adapters.postgres.pages import PostgresPages
 from spydra.domain.ids import DomainId, RunId
-from spydra.domain.urls import canonical_url, url_hash
 from spydra.load import load
 from tests.adapters.postgres.seed import seed_domain, seed_run
 
@@ -34,8 +37,17 @@ HOST = "halden.test"
 CANONICAL = f"http://{HOST}/shop/cutting/discs?a=1&b=2"
 SPELLINGS = [
     f"http://{HOST}/shop/cutting/discs/?b=2&a=1&utm_source=newsletter#top",
-    "HTTP://HALDEN.TEST:80/shop/cutting/./discs//?a=1&b=2&gclid=abc",
+    f"http://{HOST}/shop/cutting/./discs//?a=1&b=2&gclid=abc",
 ]
+# What the queue fetches for each: as written, fragment gone.
+FETCHABLE = [
+    f"http://{HOST}/shop/cutting/discs/?b=2&a=1&utm_source=newsletter",
+    f"http://{HOST}/shop/cutting/./discs//?a=1&b=2&gclid=abc",
+]
+
+
+def sha(url: str) -> bytes:
+    return hashlib.sha256(url.encode("utf-8")).digest()
 
 
 async def _queue(engine: AsyncEngine, run: RunId) -> list[sa.Row[tuple[str, bytes]]]:
@@ -71,28 +83,35 @@ async def _pages(engine: AsyncEngine, domain: DomainId) -> list[sa.Row[tuple[int
 # ---------------------------------------------------------------------------
 
 
-async def test_enqueue_stores_the_canonical_url(clean_crawl: AsyncEngine) -> None:
+@pytest.mark.parametrize("which", [0, 1])
+async def test_enqueue_stores_the_fetchable_spelling_under_the_canonical_hash(
+    clean_crawl: AsyncEngine, which: int
+) -> None:
     domain = await seed_domain(clean_crawl, HOST)
     run = await seed_run(clean_crawl, [int(domain)])
 
-    await PostgresFrontier(clean_crawl).enqueue(run, domain, [(SPELLINGS[0], 1)])
+    await PostgresFrontier(clean_crawl).enqueue(run, domain, [(SPELLINGS[which], 1)])
 
     assert [(r.url, bytes(r.url_hash)) for r in await _queue(clean_crawl, run)] == [
-        (CANONICAL, url_hash(CANONICAL))
+        (FETCHABLE[which], sha(CANONICAL))
     ]
 
 
-async def test_two_spellings_of_one_url_enqueue_one_row(clean_crawl: AsyncEngine) -> None:
+@pytest.mark.parametrize("first", [0, 1])
+async def test_two_spellings_of_one_url_enqueue_one_row_holding_the_first(
+    clean_crawl: AsyncEngine, first: int
+) -> None:
     domain = await seed_domain(clean_crawl, HOST)
     run = await seed_run(clean_crawl, [int(domain)])
     frontier = PostgresFrontier(clean_crawl)
+    other = 1 - first
 
-    inserted = await frontier.enqueue(run, domain, [(SPELLINGS[0], 1), (SPELLINGS[1], 1)])
+    inserted = await frontier.enqueue(run, domain, [(SPELLINGS[first], 1), (SPELLINGS[other], 1)])
     # A second call, as a second worker discovering the same link would make.
     again = await frontier.enqueue(run, domain, [(f"{CANONICAL}#reviews", 2)])
 
     assert (inserted, again) == (1, 0)
-    assert [r.url for r in await _queue(clean_crawl, run)] == [CANONICAL]
+    assert [r.url for r in await _queue(clean_crawl, run)] == [FETCHABLE[first]]
 
 
 async def test_enqueue_keeps_two_different_pages_apart(clean_crawl: AsyncEngine) -> None:
@@ -102,22 +121,38 @@ async def test_enqueue_keeps_two_different_pages_apart(clean_crawl: AsyncEngine)
     base = f"http://{HOST}/shop/cutting/discs"
 
     inserted = await PostgresFrontier(clean_crawl).enqueue(
-        run, domain, [(f"{base}/", 1), (f"{base}?page=2&utm_source=x", 1)]
+        run, domain, [(f"{base}/", 1), (f"{base}?page=2", 1)]
     )
 
     assert inserted == 2
-    assert sorted(r.url for r in await _queue(clean_crawl, run)) == [base, f"{base}?page=2"]
+    assert {bytes(r.url_hash) for r in await _queue(clean_crawl, run)} == {
+        sha(base),
+        sha(f"{base}?page=2"),
+    }
 
 
-async def test_enqueue_never_stores_credentials(clean_crawl: AsyncEngine) -> None:
+@pytest.mark.parametrize(
+    ("url", "stored"),
+    [
+        (f"http://user:secret@{HOST}/shop/p/HT-SB-001", f"http://{HOST}/shop/p/HT-SB-001"),
+        (f"http://user@{HOST}/shop/p/HT-SB-001#specs", f"http://{HOST}/shop/p/HT-SB-001"),
+        (
+            f"http://u:p@{HOST}:8080/shop/p/HT-SB-001/?ref=x#top",
+            f"http://{HOST}:8080/shop/p/HT-SB-001/?ref=x",
+        ),
+    ],
+)
+async def test_enqueue_never_stores_credentials_or_a_fragment(
+    clean_crawl: AsyncEngine, url: str, stored: str
+) -> None:
     domain = await seed_domain(clean_crawl, HOST)
     run = await seed_run(clean_crawl, [int(domain)])
 
-    await PostgresFrontier(clean_crawl).enqueue(
-        run, domain, [(f"http://user:secret@{HOST}/shop/p/HT-SB-001", 1)]
-    )
+    await PostgresFrontier(clean_crawl).enqueue(run, domain, [(url, 1)])
 
-    assert [r.url for r in await _queue(clean_crawl, run)] == [f"http://{HOST}/shop/p/HT-SB-001"]
+    (row,) = await _queue(clean_crawl, run)
+    assert row.url == stored
+    assert "secret" not in row.url and "@" not in row.url and "#" not in row.url
 
 
 # ---------------------------------------------------------------------------
@@ -138,20 +173,26 @@ domains:
     seeds:
       - "/shop/cutting/discs/?b=2&a=1&utm_source=newsletter#top"
       - "HTTP://HALDEN.TEST/shop/cutting/./discs//?a=1&b=2&gclid=abc"
-      - "/shop//finishing/../grinding/"
+      - "/shop//finishing/../grinding/#x"
 """
 
 
-async def test_the_loader_stores_canonical_seed_urls_and_dedupes_spellings(
+async def test_the_loader_dedupes_seed_spellings_and_stores_the_fetchable_one(
     clean_crawl: AsyncEngine,
 ) -> None:
     run = await load(PostgresConfiguration(clean_crawl), _YAML)
 
     rows = await _queue(clean_crawl, run)
-    grinding = f"http://{HOST}/shop/grinding"
-    assert sorted(r.url for r in rows) == sorted([CANONICAL, grinding])
-    assert all(bytes(r.url_hash) == url_hash(r.url) for r in rows)
-    assert all(canonical_url(r.url) == r.url for r in rows)
+    assert sorted((r.url, bytes(r.url_hash)) for r in rows) == sorted(
+        [
+            (FETCHABLE[0], sha(CANONICAL)),
+            (
+                f"http://{HOST}/shop//finishing/../grinding/",
+                sha(f"http://{HOST}/shop/grinding"),
+            ),
+        ]
+    )
+    assert all("#" not in r.url for r in rows)
 
 
 # ---------------------------------------------------------------------------
@@ -170,5 +211,5 @@ async def test_two_spellings_of_one_page_upsert_one_row_under_the_canonical_url(
 
     assert first == second
     assert [(r.url, bytes(r.url_hash)) for r in await _pages(clean_crawl, domain)] == [
-        (CANONICAL, url_hash(CANONICAL))
+        (CANONICAL, sha(CANONICAL))
     ]

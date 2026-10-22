@@ -156,6 +156,24 @@ def test_an_empty_canonical_is_none(href: str) -> None:
     assert canonical_link(html, PAGE) is None
 
 
+@pytest.mark.parametrize(
+    "href",
+    [
+        "https://[object Object]/p",  # a templating bug, seen in the wild
+        "http://halden.test:abc/x",
+        "http://halden.test:99999/x",
+        "http://[bad",
+        "http://[::1/x",
+    ],
+)
+def test_an_unparseable_canonical_is_none_not_a_crash(href: str) -> None:
+    """A supplier's markup can say anything. Raising here crashes the page's
+    crawl, which is then refetched until it fails with no observation; an
+    unparseable canonical is no canonical."""
+    html = head(f'<link rel="canonical" href="{href}">')
+    assert canonical_link(html, PAGE) is None
+
+
 def test_a_canonical_with_no_href_is_none() -> None:
     assert canonical_link(head('<link rel="canonical">'), PAGE) is None
 

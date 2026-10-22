@@ -15,7 +15,7 @@ import hashlib
 
 import pytest
 
-from spydra.domain.urls import canonical_url, url_hash
+from spydra.domain.urls import canonical_url, fetchable_url, url_hash
 
 H = "http://halden.test"
 
@@ -414,3 +414,153 @@ def test_url_hash_is_a_sha256_digest() -> None:
     digest = url_hash(f"{H}/shop")
     assert isinstance(digest, bytes)
     assert len(digest) == hashlib.sha256().digest_size
+
+
+# ---------------------------------------------------------------------------
+# Absolute URLs only (2.2 review, finding 5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "example.com/a",
+        "halden.test/shop",
+        "/shop/cutting/discs",
+        "shop/cutting/discs",
+        "?page=2",
+        "mailto:x@y",
+        "http:///shop",
+        "",
+    ],
+)
+def test_a_url_with_no_scheme_or_no_host_is_refused(url: str) -> None:
+    """Accepted, `example.com/a` becomes `/example.com/a` and `mailto:x@y`
+    becomes `mailto:/x@y`: paths that look valid and hash as pages."""
+    with pytest.raises(ValueError):
+        canonical_url(url)
+
+
+def test_url_hash_refuses_what_canonical_url_refuses() -> None:
+    with pytest.raises(ValueError):
+        url_hash("example.com/a")
+
+
+# ---------------------------------------------------------------------------
+# Hosts: IDNA and the trailing dot (2.2 review, finding 6)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://BÜCHER.de./shop",
+        "http://bücher.de/shop",
+        "http://xn--bcher-kva.de/shop",
+        "http://XN--BCHER-KVA.DE./shop",
+        "http://xn--bcher-kva.de.:80/shop",
+    ],
+)
+def test_an_idn_host_in_any_spelling_is_one_ascii_host(url: str) -> None:
+    assert canonical_url(url) == "http://xn--bcher-kva.de/shop"
+
+
+def test_a_trailing_dot_on_the_host_is_dropped() -> None:
+    assert canonical_url("http://halden.test./shop") == f"{H}/shop"
+
+
+def test_an_idn_canonical_is_idempotent() -> None:
+    once = canonical_url("http://BÜCHER.de./shop/")
+    assert canonical_url(once) == once
+
+
+# ---------------------------------------------------------------------------
+# Deterministic ties in the sort (2.2 review, finding 4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("one", "other"),
+    [
+        # Decode alike, spelled differently: the order written must not
+        # decide the canonical.
+        ("q=a+b&q=a%20b", "q=a%20b&q=a+b"),
+        ("a&a=", "a=&a"),
+        ("%61=1&a=1", "a=1&%61=1"),
+        ("x=1&q=a+b&q=a%20b", "q=a%20b&x=1&q=a+b"),
+    ],
+)
+def test_a_tie_between_spellings_sorts_the_same_either_way(one: str, other: str) -> None:
+    assert canonical_url(f"{H}/shop?{one}") == canonical_url(f"{H}/shop?{other}")
+    assert url_hash(f"{H}/shop?{one}") == url_hash(f"{H}/shop?{other}")
+
+
+def test_a_tie_keeps_both_spellings_as_written() -> None:
+    canonical = canonical_url(f"{H}/shop?q=a%20b&q=a+b")
+    assert sorted(canonical.split("?", 1)[1].split("&")) == ["q=a%20b", "q=a+b"]
+
+
+# ---------------------------------------------------------------------------
+# fetchable_url: what the queue requests (2.2 review, finding 3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"{H}/shop/cutting/discs/",
+        f"{H}/Shop/Discs",
+        f"{H}/shop/./cutting//discs/../discs/",
+        f"{H}/shop?b=2&a=1",
+        f"{H}/shop?utm_source=newsletter&ref=home&gclid=1",
+        f"{H}/shop?path=%2Fx&q=a+b&blank=",
+        "http://halden.test:8080/shop",
+        "http://HALDEN.TEST/shop",
+        "https://halden.test:443/shop",
+        f"{H}/",
+    ],
+)
+def test_fetchable_url_keeps_path_query_case_and_port_as_written(url: str) -> None:
+    """Canonicalisation is for the hash; the request goes out as the site
+    wrote the link, or a site that 301s `/x` to `/x/` costs a redirect per
+    page and one that 404s `/x` is unreachable."""
+    assert fetchable_url(url) == url
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (f"{H}/shop#top", f"{H}/shop"),
+        (f"{H}/shop/?b=2&a=1#reviews", f"{H}/shop/?b=2&a=1"),
+        (f"{H}/shop#", f"{H}/shop"),
+    ],
+)
+def test_fetchable_url_drops_the_fragment(url: str, expected: str) -> None:
+    assert fetchable_url(url) == expected
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("http://user:secret@halden.test/shop/", f"{H}/shop/"),
+        ("http://user@halden.test/shop", f"{H}/shop"),
+        ("http://u:p@halden.test:8080/Shop?b=1#x", "http://halden.test:8080/Shop?b=1"),
+        # An `@` in the password is still the password.
+        ("http://u:p@ss@halden.test/shop", f"{H}/shop"),
+    ],
+)
+def test_fetchable_url_drops_credentials(url: str, expected: str) -> None:
+    assert fetchable_url(url) == expected
+
+
+@pytest.mark.parametrize("url", SPELLINGS)
+def test_fetchable_url_hashes_the_same_as_the_url_it_came_from(url: str) -> None:
+    """The queue stores the fetchable spelling under the original's hash; the
+    two must agree or a re-enqueue of the stored URL is a second row."""
+    assert url_hash(fetchable_url(url)) == url_hash(url)
+
+
+@pytest.mark.parametrize("url", ["example.com/a", "/shop", "mailto:x@y"])
+def test_fetchable_url_refuses_a_url_with_no_scheme_or_host(url: str) -> None:
+    with pytest.raises(ValueError):
+        fetchable_url(url)
