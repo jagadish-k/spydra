@@ -23,7 +23,6 @@ opinion about politeness, which is how two components disagree about when a
 domain may be fetched.
 """
 
-import hashlib
 from collections.abc import Sequence
 from datetime import datetime
 
@@ -32,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from spydra.domain.enums import RenderMode
 from spydra.domain.ids import DomainId, QueueItemId, RunId
+from spydra.domain.urls import fetchable_url, url_hash
 from spydra.ports.frontier import EVERY_RENDER_MODE, MAX_ATTEMPTS, ClaimedUrl, Completion
 
 __all__ = ["LEASE_SECONDS", "MAX_ATTEMPTS", "PostgresFrontier", "url_hash"]
@@ -234,17 +234,6 @@ RETURNING id
 )
 
 
-def url_hash(url: str) -> bytes:
-    """The dedupe key for `UNIQUE (run_id, url_hash)` (spec 001 §1).
-
-    A hash rather than the URL itself because the unique index has to stay
-    small and a supplier URL can be long. SHA-256 and not a cheaper digest
-    because a collision here means a page silently never crawled, which is
-    indistinguishable from a page that had nothing on it.
-    """
-    return hashlib.sha256(url.encode("utf-8")).digest()
-
-
 class PostgresFrontier:
     """`Frontier` over the `crawl` schema.
 
@@ -390,7 +379,7 @@ class PostgresFrontier:
                         {
                             "run_id": int(run_id),
                             "domain_id": int(domain_id),
-                            "url": url,
+                            "url": fetchable_url(url),
                             "url_hash": url_hash(url),
                             "depth": depth,
                         },

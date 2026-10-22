@@ -18,11 +18,11 @@ from typing import TYPE_CHECKING
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from spydra.adapters.postgres.frontier import url_hash
 from spydra.domain.enums import DomainEvent, DomainState
 from spydra.domain.errors import RefusedConfiguration
 from spydra.domain.ids import RunId
 from spydra.domain.lifecycle import transition
+from spydra.domain.urls import fetchable_url, url_hash
 
 if TYPE_CHECKING:
     from spydra.load import DomainConfig
@@ -141,7 +141,7 @@ class PostgresConfiguration:
                     {
                         "run_id": int(run_id),
                         "domain_id": domain_id,
-                        "url": url,
+                        "url": fetchable_url(url),
                         "url_hash": url_hash(url),
                     },
                 )

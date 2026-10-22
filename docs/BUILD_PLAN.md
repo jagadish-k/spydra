@@ -507,13 +507,18 @@ from the task above it.
       and the exit's seed and rules named (`EXIT_SEED`, `EXIT_DISCOVERY`).
       Three more unbounded traps: facets, a relative-link loop, a calendar.
 
-- [ ] `2.2` **URL canonicalisation and `url_hash`** (spec 004 §2): query
+- [x] `2.2` **URL canonicalisation and `url_hash`** (spec 004 §2): query
       parameters sorted, tracking parameters stripped, meaningful ones kept,
       `rel="canonical"` honoured within the host.
       **Done when:** `?b=2&a=1` and `?a=1&b=2` hash identically, `utm_source`
       is stripped while `?page=2` survives, and a `rel="canonical"` pointing
       elsewhere on the same host collapses two URLs into one page row
       (spec 004 §5).
+      **Done:** `domain/urls.py` (`canonical_url`, `url_hash` over it,
+      `fetchable_url`) and `discovery/canonical.py`. The queue fetches the
+      discovered spelling and dedupes on the canonical hash; `pages.url` is
+      canonical, and a same-host `rel=canonical` (resolved after redirects)
+      names the page row.
 
 - [ ] `2.3` **Link extraction from discovery rules** (spec 004 §1) —
       `product_links`, `next_page`, `subcategory_links`, the per-domain

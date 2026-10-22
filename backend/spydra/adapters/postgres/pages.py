@@ -9,9 +9,9 @@ and the observation records the version that produced it (AGENTS.md rule 12).
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from spydra.adapters.postgres.frontier import url_hash
 from spydra.domain.enums import PageKind
 from spydra.domain.ids import DomainId, PageId, TemplateId
+from spydra.domain.urls import canonical_url, url_hash
 
 # `DO UPDATE`, not `DO NOTHING`: the template and kind can change between
 # runs, and `RETURNING` only returns a row the statement touched, so DO NOTHING
@@ -48,7 +48,7 @@ class PostgresPages:
                         _UPSERT,
                         {
                             "domain_id": int(domain_id),
-                            "url": url,
+                            "url": canonical_url(url),
                             "url_hash": url_hash(url),
                             "page_kind": page_kind.value if page_kind else None,
                             "template_id": int(template_id) if template_id else None,
