@@ -13,6 +13,7 @@ that relies on it; that test just passes for the wrong reason. These are what
 fail instead.
 """
 
+import re
 import urllib.error
 import urllib.request
 import urllib.robotparser
@@ -24,11 +25,19 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 import pytest
 from selectolax.lexbor import LexborHTMLParser
 
-from tests.fixtures.catalogue import PRODUCTS
+from tests.fixtures.catalogue import (
+    EXIT_DISCOVERY,
+    EXIT_PRODUCTS,
+    EXIT_SEED,
+    PARTNER_CARDS,
+    PRODUCTS,
+    products_under,
+)
 from tests.fixtures.server import FixtureSite
 
 HOST = "halden.test"
 ROOT = "/shop/"
+DEEP = f"{ROOT}deep/"
 
 # Spec 004 §3's default per-run URL cap. The facet space has to beat it on
 # its own, or the cap is not what a facet-trap test is exercising.
@@ -136,6 +145,8 @@ def scoped(get: Callable[[str], Page]) -> ScopedCrawl:
         ]
         for href, is_product in found:
             target = _resolve(url, href)
+            if not target.startswith("/"):
+                continue  # off-host: never fetched, and not this site's product
             if is_product:
                 product_urls.add(target)
             if target not in depth:
@@ -151,13 +162,16 @@ def _categories(scoped: ScopedCrawl) -> set[str]:
     for url, page in scoped.pages.items():
         for href in _hrefs(page, SCOPED_TILES):
             target = _resolve(url, href)
-            if not target.startswith(f"{ROOT}deep/"):
+            if not target.startswith(DEEP):
                 nodes.add(target)
     return nodes
 
 
 def _children(get: Callable[[str], Page], path: str) -> list[str]:
-    return [_resolve(path, h) for h in _hrefs(get(path), SCOPED_TILES)]
+    """Scoped-tile targets of `path`, less the depth chain: `/shop/cutting/`
+    carries the archive tile on purpose, and it is not a subcategory."""
+    tiles = [_resolve(path, h) for h in _hrefs(get(path), SCOPED_TILES)]
+    return [t for t in tiles if not t.startswith(DEEP)]
 
 
 # ---------------------------------------------------------------------------
@@ -171,14 +185,22 @@ def test_the_scoped_crawl_reaches_exactly_the_product_set(scoped: ScopedCrawl) -
     yields every SKU in `PRODUCTS` and nothing else."""
     assert len(PRODUCTS) == len(set(PRODUCTS)), "PRODUCTS repeats a SKU"
 
-    skus = []
+    urls_by_sku: dict[str, list[str]] = {}
     for url in scoped.product_urls:
-        page = scoped.pages[url]
-        sku = page.tree.css_first(".product__sku")
-        assert sku is not None, f"{url} has no .product__sku"
-        skus.append(sku.text(strip=True))
+        node = scoped.pages[url].tree.css_first(".product__sku")
+        assert node is not None, f"{url} has no .product__sku"
+        urls_by_sku.setdefault(node.text(strip=True), []).append(url)
 
-    assert len(skus) == len(set(skus)), "two product URLs in the tree serve one SKU"
+    # One SKU at two URLs is allowed only as a canonical pair: every URL
+    # names the same canonical.
+    for sku, urls in urls_by_sku.items():
+        if len(urls) > 1:
+            canonicals = {_canonical(scoped.pages[u]) for u in urls}
+            assert len(canonicals) == 1 and None not in canonicals, (
+                f"{sku} is served at {urls}, which do not share a canonical"
+            )
+
+    skus = set(urls_by_sku)
     missing = set(PRODUCTS) - set(skus)
     extra = set(skus) - set(PRODUCTS)
     assert not missing, f"PRODUCTS not reachable from /shop/: {sorted(missing)}"
@@ -209,7 +231,7 @@ def test_the_canonical_product_url_is_shop_p_sku(get: Callable[[str], Page]) -> 
 def test_the_tree_is_three_categories_of_two_with_one_nest(
     get: Callable[[str], Page],
 ) -> None:
-    categories = [c for c in _children(get, ROOT) if not c.startswith(f"{ROOT}deep/")]
+    categories = _children(get, ROOT)
     assert len(categories) == 3, categories
 
     nests = []
@@ -221,6 +243,127 @@ def test_the_tree_is_three_categories_of_two_with_one_nest(
     for grandchild in _children(get, nests[0]):
         assert not _children(get, grandchild), "the nest goes deeper than depth 3"
         assert get(grandchild).tree.css(PRODUCT_LINKS), f"{grandchild} is a leaf with no products"
+
+
+# ---------------------------------------------------------------------------
+# The phase-2 exit: a category seed under the operator's rules
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ExitCrawl:
+    """What `EXIT_DISCOVERY` from `EXIT_SEED` reaches, applied by the letter."""
+
+    depth: dict[str, int]  # every fetched URL → hop count from the seed
+    pages: dict[str, Page]
+    skus: set[str]
+    offhost_products: set[str]  # product-rule hrefs on another host
+    denied: list[str]  # same-host hrefs a deny pattern refused
+
+
+@pytest.fixture(scope="module")
+def exit_crawl(get: Callable[[str], Page]) -> ExitCrawl:
+    """A deliberately literal reading of spec 004 §1's rules: the three
+    selectors, `deny_patterns` searched against path+query, the host compared
+    for equality (not suffix), and `max_depth` as a hop count from the seed.
+    It stands in for 2.3's crawler so the fixture is proved *able* to give
+    the exit its answer before that crawler exists."""
+    rules = EXIT_DISCOVERY
+    product_rule = str(rules["product_links"])
+    selectors = [product_rule, str(rules["next_page"]), str(rules["subcategory_links"])]
+    patterns, max_depth = rules["deny_patterns"], rules["max_depth"]
+    assert isinstance(patterns, list) and isinstance(max_depth, int)
+    deny = [re.compile(str(p)) for p in patterns]
+
+    depth = {EXIT_SEED: 0}
+    pages: dict[str, Page] = {}
+    skus: set[str] = set()
+    offhost: set[str] = set()
+    denied: list[str] = []
+    queue = deque([EXIT_SEED])
+    while queue:
+        url = queue.popleft()
+        page = get(url)
+        pages[url] = page
+        assert page.status == 200, f"{url} is linked by an exit rule and serves {page.status}"
+        # Without the deny pattern the facet space is in reach; fail, don't hang.
+        assert len(pages) < 500, "the exit crawl is exploding: the deny pattern is not holding"
+        sku = page.tree.css_first(".product__sku")
+        if sku is not None:
+            skus.add(sku.text(strip=True))
+        for selector in selectors:
+            for href in _hrefs(page, selector):
+                absolute = urlsplit(urljoin(f"http://{HOST}{url}", href))
+                if absolute.hostname != HOST or absolute.port not in (None, 80):
+                    if selector == product_rule:
+                        offhost.add(urlunsplit(absolute))
+                    continue
+                target = urlunsplit(("", "", absolute.path, absolute.query, ""))
+                if any(p.search(target) for p in deny):
+                    denied.append(target)
+                    continue
+                if target not in depth and depth[url] + 1 <= max_depth:
+                    depth[target] = depth[url] + 1
+                    queue.append(target)
+    return ExitCrawl(depth, pages, skus, offhost, denied)
+
+
+def test_the_exit_seed_yields_exactly_the_exit_products(exit_crawl: ExitCrawl) -> None:
+    assert EXIT_PRODUCTS == products_under(EXIT_SEED)
+    assert len(EXIT_PRODUCTS) == len(set(EXIT_PRODUCTS))
+    missing = set(EXIT_PRODUCTS) - exit_crawl.skus
+    extra = exit_crawl.skus - set(EXIT_PRODUCTS)
+    assert not missing, f"the exit seed cannot reach {sorted(missing)}"
+    assert not extra, f"the exit seed reaches products outside its subtree: {sorted(extra)}"
+
+
+def test_the_exit_crawl_meets_every_partner_card_off_host(exit_crawl: ExitCrawl) -> None:
+    """The exit's "without leaving the host" is only tested if leaving is on offer, in
+    the container the product rule matches, including the look-alikes a
+    suffix check would keep."""
+    for card in PARTNER_CARDS:
+        assert urlsplit(card).hostname != HOST, f"{card} is on-host"
+    missing = set(PARTNER_CARDS) - exit_crawl.offhost_products
+    assert not missing, f"the exit crawl never meets {sorted(missing)}"
+    hosts = [urlsplit(c).hostname or "" for c in PARTNER_CARDS]
+    assert any(h.endswith(HOST) and not h.endswith(f".{HOST}") for h in hosts), (
+        "no look-alike a bare endswith(host) check would keep"
+    )
+    assert any(h.startswith(f"{HOST}.") for h in hosts), "no look-alike that starts with the host"
+    assert any(h.endswith(f".{HOST}") for h in hosts), "no subdomain card"
+
+
+def test_the_exit_rules_reach_a_facet_and_only_the_deny_pattern_stops_it(
+    exit_crawl: ExitCrawl,
+) -> None:
+    facet_keys = {"colour", "grit", "sort", "per_page"}
+    denied_facets = [
+        u for u in exit_crawl.denied if facet_keys & {k for k, _ in parse_qsl(urlsplit(u).query)}
+    ]
+    assert denied_facets, "the exit rules never met a facet link, so the deny pattern is untested"
+    fetched_facets = [
+        u for u in exit_crawl.pages if facet_keys & {k for k, _ in parse_qsl(urlsplit(u).query)}
+    ]
+    assert not fetched_facets, f"faceted pages got past the deny pattern: {fetched_facets[:3]}"
+
+
+def test_the_exit_depth_cap_reaches_deep_5_and_never_deep_6(exit_crawl: ExitCrawl) -> None:
+    assert f"{DEEP}5/" in exit_crawl.pages, "max_depth 5 does not reach /shop/deep/5/"
+    assert f"{DEEP}6/" not in exit_crawl.pages, "max_depth 5 reached /shop/deep/6/"
+    assert f"{DEEP}6/" in _hrefs(exit_crawl.pages[f"{DEEP}5/"], SCOPED_TILES), (
+        "/shop/deep/6/ is not linked from /5/, so the cap is not what stops it"
+    )
+
+
+def test_the_exit_crawl_discovers_both_urls_of_a_canonical_pair(exit_crawl: ExitCrawl) -> None:
+    pairs = [
+        (url, canonical)
+        for url, page in exit_crawl.pages.items()
+        if (canonical := _canonical(page)) is not None
+        and canonical != url
+        and canonical in exit_crawl.pages
+    ]
+    assert pairs, "no page in the exit crawl names a canonical the crawl also discovered"
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +541,7 @@ def test_exactly_one_category_hides_its_tiles_with_display_none(
     """Spec 004 §3a case A: the links are in the static HTML, inside a
     `display:none` container. No JavaScript involved."""
     hidden = []
-    for category in [c for c in _children(get, ROOT) if not c.startswith(f"{ROOT}deep/")]:
+    for category in _children(get, ROOT):
         page = get(category)
         for section in page.tree.css("section.subcategories"):
             style = (section.attributes.get("style") or "").replace(" ", "").lower()
@@ -498,6 +641,20 @@ def test_the_footer_carries_every_reject(get: Callable[[str], Page]) -> None:
     assert any(urlsplit(h).path.startswith(f"{ROOT}loop/") for h in hrefs), "no loop"
 
 
+def test_the_rejects_footer_is_on_a_leaf_listing_too(
+    scoped: ScopedCrawl, get: Callable[[str], Page]
+) -> None:
+    """A category seed never sees the root, so the rejects must be on the
+    pages it does see."""
+    leaf = _first_leaf(scoped)
+    hrefs = _hrefs(get(leaf), "footer.site-footer a")
+    schemes = {urlsplit(h).scheme.lower() for h in hrefs}
+    assert {"mailto", "tel", "javascript"} <= schemes, f"{leaf}'s footer has {schemes}"
+    assert any(urlsplit(h).hostname not in (None, HOST) for h in hrefs), (
+        f"{leaf}'s footer has no off-host link"
+    )
+
+
 def test_halden_answers_with_the_permissive_robots_file(get: Callable[[str], Page]) -> None:
     page = get("/robots.txt")
     assert page.status == 200
@@ -546,6 +703,25 @@ def test_the_repeating_relative_link_never_ends(get: Callable[[str], Page]) -> N
     assert chain[-1].count("loop/x/") > TRAP_DEPTH
 
 
+def test_the_loop_repeats_even_when_the_base_loses_its_trailing_slash(
+    get: Callable[[str], Page],
+) -> None:
+    """2.2 strips trailing slashes before the base is used to resolve a
+    relative link. The trap must survive that, or 2.5 is testing nothing."""
+    footer = _hrefs(get(ROOT), "footer.site-footer a")
+    url = next(_resolve(ROOT, h) for h in footer if urlsplit(h).path.startswith(f"{ROOT}loop/"))
+    for hop in range(TRAP_DEPTH):
+        page = get(url)
+        assert page.status == 200, f"{url} at hop {hop} serves {page.status}"
+        hrefs = _hrefs(page, SCOPED_TILES)
+        assert hrefs, f"the loop ended at {url}"
+        following = _resolve(url.rstrip("/"), hrefs[0])
+        assert following.count("loop/x/") == url.count("loop/x/") + 1, (
+            f"{url} → {following} does not add a loop/x/ pair"
+        )
+        url = following
+
+
 def test_the_news_calendar_never_ends(get: Callable[[str], Page]) -> None:
     footer = _hrefs(get(ROOT), "footer.site-footer a")
     start = next(_resolve(ROOT, h) for h in footer if urlsplit(h).path.startswith(f"{ROOT}news/"))
@@ -566,7 +742,7 @@ def test_every_page_is_byte_identical_across_fetches(
 ) -> None:
     leaf = _first_leaf(scoped)
     faceted = _resolve(leaf, _hrefs(scoped.pages[leaf], FACETS)[0])
-    urls = [*scoped.pages, faceted, f"{ROOT}loop/x/loop/x/", f"{ROOT}news/2026/10/"]
+    urls = [*scoped.pages, faceted, f"{ROOT}loop/x/loop/x/page", f"{ROOT}news/2026/10/"]
     for url in urls:
         first, second = get(url), get(url)
         assert first.status == 200, url
@@ -593,6 +769,7 @@ def test_a_path_with_and_without_its_trailing_slash_is_one_page(
         "/shop/p/HT-NOPE-001",
         "/shop/deep/nope/",
         "/shop/news/2026/13/",
+        "/shop/cutting/blades/p/HT-CD-001",
     ],
 )
 def test_an_unknown_shop_path_is_a_404(get: Callable[[str], Page], path: str) -> None:

@@ -180,6 +180,48 @@ its fixtures) unless trivially useful.
   8. **Fixed.** BUILD_PLAN 2.1 ticked.
      Tests now pin the old contract in places (root archive tile, loop path):
      back to the test-writer.
+- spydra-test (after review): `backend/tests/test_catalogue.py` moved to
+  the new contract, now 37 tests. Changes to existing tests: the
+  root-scoped crawl skips off-host product cards, and a SKU seen at two
+  URLs is allowed only when every URL names the same canonical (the
+  featured HT-SB-001 now appears at both). The tree-shape, scoped-tile and
+  hidden-tile tests leave the depth chain out of "children", because
+  `/shop/cutting/` now carries the archive tile on purpose. The determinism
+  test fetches `loop/x/loop/x/page`. New tests:
+  - An `exit_crawl` fixture applies `EXIT_DISCOVERY` from `EXIT_SEED`
+    exactly as written: the three selectors, `deny_patterns` searched on
+    path+query, an exact host match, and `max_depth` as hop count. It
+    guards against blow-up at 500 pages.
+  - That crawl yields exactly `EXIT_PRODUCTS`, which equals
+    `products_under(EXIT_SEED)`.
+  - It sees all four `PARTNER_CARDS` off-host. The cards include one
+    subdomain, one look-alike that a bare endswith check would keep, and
+    one look-alike that starts with the host.
+  - At least one facet link is denied, and no faceted URL is fetched.
+  - `/shop/deep/5/` is reached and `/6/` is not, while `/5/` still links
+    to `/6/`.
+  - Both URLs of a canonical pair are discovered in that crawl.
+  - The loop adds one `loop/x/` pair per hop for 50 hops when the base's
+    trailing slash is stripped.
+  - `/shop/cutting/blades/p/HT-CD-001` returns 404.
+  - The rejects footer is on a leaf listing.
+
+  Mutation on the new guards: 12 chosen, 12 red:
+  - deny pattern neutered (the fixture's 500-page guard turns all 5 exit
+    tests red)
+  - partner cards cut to 2, and removed entirely
+  - archive tile taken off cutting
+  - `DEEP_LEVELS = 5`
+  - chain starting at `/deep/2/`
+  - featured product removed, and swapped for one outside the subtree
+  - loop reverted to the old `loop/x/` shape
+  - context route serving any SKU
+  - leaf footer removed
+  - product dropped
+
+  I re-ran the earlier 18: all still red. `catalogue.py` and `server.py`
+  are restored, and `git diff` on both is empty. `make lint-api` is clean.
+  The full backend suite gives 676 passed, 2 skipped. No fixture defect.
 
 ## Open questions — for the human
 
