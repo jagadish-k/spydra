@@ -26,7 +26,9 @@ operator starts themselves.
 `egress` (its way out) and `render-link`, an internal network whose only
 other member is `worker`, which reaches it at `http://render:3001`. The same
 topology runs on Linux Docker Engine and Docker Desktop
-([ADR-0038](../adr/0038-render-link-network.md)). Adding a service to
+([ADR-0038](../adr/0038-render-link-network.md)). On Docker Desktop,
+`host.docker.internal` is a second way from `render` to the host's
+loopback-published dev ports; that route is unmeasured and open. Adding a service to
 `egress` or `render-link` gives a crawled page a route to it.
 
 **Only `edge` publishes a port to the host in production.** In development

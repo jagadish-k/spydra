@@ -93,12 +93,12 @@ def normalise(fields: ExtractedFields) -> dict[str, Normalised]:
 def is_substantive(fields: ExtractedFields) -> bool:
     """Does anything survive normalisation, i.e. is there content to compare?
 
-    Not the same question as `empty_extraction`, and the difference is the
-    asset URLs. A page whose only field is an image URL is **not** empty
-    (ADR-0027: a field resolved), but nothing of it survives the hash, so it
-    is not *substantive*: there is no content against which "unchanged" could
-    mean anything. The chain uses this to keep looking for a better rung, and
-    `content_hash` to refuse a hash of nothing. Defined over `normalise`, so
+    `empty_extraction` is defined over this (ADR-0037): a 200 with nothing
+    substantive is empty. Asset URLs do not survive the hash, so a page whose
+    only field is an image URL has no content against which "unchanged"
+    could mean anything, and is an empty extraction. The chain uses this to
+    keep looking for a better rung, and `content_hash` to refuse a hash of
+    nothing. Defined over `normalise`, so
     the two cannot disagree about what counts.
     """
     return bool(normalise(fields))

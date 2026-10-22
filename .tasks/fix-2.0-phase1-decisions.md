@@ -311,6 +311,37 @@ still_yields_its_images` → `..._yields_its_images_as_an_empty_extraction`;
   - **Observation:** `robots_override` carries `host` and `run_id` but no
     `url`, so spec 009 §1's "each request should be attributable" is per
     host per run, not per request. Left as is; raise if it matters.
+- backend (after test): the guard comment and ADR-0038 corrected per the
+  test-writer's measurement. **The `robots_override` observation is wrong:**
+  measured with the real `logs.configure` and the claim loop's contextvars
+  bound, the line carries `url`, `attempt`, `domain` and `run_id` (stdlib
+  records go through `merge_contextvars`). No change.
+- reviewer (fresh context; did not write the code): 1 blocking, 6
+  non-blocking. Ran the full backend suite (639 passed, 2 skipped), the render
+  suite (55/55), `make phase1-exit` (green, no override), lint, and
+  reachability from inside `render` on Linux. Reviewed against 6fd20ef: the
+  local `develop` ref was stale at #12, now refetched.
+  1. **Blocking, fixed by wording; the hole is open.** On Docker Desktop a
+     page very likely reaches the host's loopback publishes through
+     `host.docker.internal`, by the same mechanism ADR-0023's own fetch path
+     used. The specs said "no route" unqualified. Spec 012 §3, spec 010, the
+     compose comments and ADR-0038 now say: shares no network; no route on
+     Linux (measured); on Docker Desktop presume a route until measured.
+     Open question 2 sharpened: it is the human's to measure or accept.
+  2. **Fixed.** A page could navigate itself (or be redirected) to
+     `render:3001/healthz` and read it: a navigation on plain http to a
+     non-loopback host carries no `Origin` and no `Sec-Fetch-*`. The guard
+     now also refuses `Upgrade-Insecure-Requests`, which Chromium sends on
+     every navigation and neither httpx nor Node's fetch sends. The
+     reviewer's probe, re-run: both `/nav` and `/redir` now come back as the
+     403 body. One row added to `guard.test.js`'s header table; removing the
+     header from the list turns 2 cases red. An opaque `<img>` GET of
+     `/healthz` is still served and unreadable; spec 012 §3 says so.
+  3. **Fixed.** `is_substantive`'s docstring still stated the old predicate.
+  4. **Fixed.** `.env.example` documented the host-loopback path.
+  5. **Fixed.** `compose.yaml`'s "render is ALONE on egress" comment.
+  6. **Fixed.** BUILD_PLAN gets a `2.0` entry under phase 1.
+  7. **Fixed.** ADR-0037 now states the AUTO-with-render-down widening.
 
 ## Open questions — for the human
 
@@ -326,9 +357,13 @@ New:
    built. Putting `api` on `render-link` gives the browser a route to
    `api:8000`. Phase 3 needs a decision (the worker serves inspect through the
    queue, or a second guarded link).
-2. **macOS is unmeasured.** Docker Desktop resolves `host.docker.internal` in
-   every container, `render` included, and forwards it to the host's
-   loopback, where `db`, `api`, `bff`, `edge` and `web` publish. ADR-0023
-   claimed loopback binding stops that; on Docker Desktop that claim is
-   doubtful, and it is unchanged by this slice. Needs one measurement on the
-   Mac (from inside `render`: `host.docker.internal:5432/8000`).
+2. **macOS: presume a page can reach the dev ports until measured** (review
+   finding 1). Docker Desktop resolves `host.docker.internal` in every
+   container, `render` included, and forwards it to the host's loopback, where
+   `db`, `api`, `bff`, `edge` and `web` publish. That is the mechanism
+   ADR-0023's own fetch path depended on. One measurement on the Mac settles
+   it: `docker compose exec render node -e "fetch('http://host.docker.internal:8000/').then(r=>console.log(r.status),e=>console.log(e.cause?.code))"`
+   (and `:5432` with `node:net`). If it connects, candidates are
+   `extra_hosts: ["host.docker.internal:127.0.0.1"]` on `render` (closes the
+   name, not the gateway IP) or not publishing `db`/`api` outside a
+   `dev-inspect` profile. Your call; nothing here changes it.

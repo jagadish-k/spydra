@@ -8,7 +8,15 @@
 // worker's httpx client sends none of them:
 //
 //   - `Origin` on every POST, same-origin or not, and on every CORS request;
-//   - `Sec-Fetch-Site`, `-Dest`, `-User` to trustworthy origins (localhost).
+//   - `Sec-Fetch-Site`, `-Dest`, `-User` to trustworthy origins (localhost);
+//   - `Upgrade-Insecure-Requests` on every navigation. A page that navigates
+//     itself to `http://render:3001/healthz` sends no `Origin` and, on plain
+//     http to a non-loopback host, no `Sec-Fetch-*`; without this header the
+//     sidecar answered and its state became the crawled page (2.0 review).
+//
+// What is still served to a page: an opaque subresource GET (`<img
+// src=…/healthz>`). It carries none of these, and the page cannot read the
+// response. No such request can start a render: every POST carries `Origin`.
 //
 // `Sec-Fetch-Mode` is NOT on the list: Node's own fetch sends it (measured:
 // `sec-fetch-mode: cors`), and the healthcheck and the acceptance suite are
@@ -23,7 +31,13 @@
 // sends no `Sec-Fetch-*` either, so `Origin` is the check that holds there.
 // Do not remove it on the strength of the content-type check.
 
-const BROWSER_HEADERS = ['origin', 'sec-fetch-site', 'sec-fetch-dest', 'sec-fetch-user'];
+const BROWSER_HEADERS = [
+  'origin',
+  'sec-fetch-site',
+  'sec-fetch-dest',
+  'sec-fetch-user',
+  'upgrade-insecure-requests',
+];
 
 /**
  * Why this request is refused, or null if it may proceed.

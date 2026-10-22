@@ -1,6 +1,7 @@
 # Spydra — dev topology per docs/DEVELOPMENT.md § Compose topology.
 #
-# render shares no network with db, api, bff, edge or web. It is on `egress`
+# render shares no network with db, api, bff, edge or web (on Docker Desktop
+# see the note on inspection ports below: the host's loopback is another way). It is on `egress`
 # (its way out) and on `render-link`, an internal network whose only other
 # member is the worker, which listens on nothing (ADR-0038). Every inspection
 # port binds 127.0.0.1 (ADR-0023 §3). Do not add a service to `render-link`
@@ -21,10 +22,12 @@ x-py-env: &py-env
   HTML_CACHE_ROOT: /data/html
   LOG_LEVEL: ${LOG_LEVEL:-info}
 
-# Every inspection port binds to 127.0.0.1 only. On Docker Desktop a
-# container can probe the host's published ports via host.docker.internal;
-# loopback-only binding is what keeps the render sidecar's isolation real
-# (ADR-0023). Binding any of these to 0.0.0.0 reopens the boundary.
+# Every inspection port binds to 127.0.0.1 only (ADR-0023 §3). On Linux
+# Docker Engine that keeps them out of render's reach (measured, ADR-0038).
+# On Docker Desktop, host.docker.internal resolves in every container and is
+# forwarded to the host's loopback, so a crawled page may still reach these
+# ports there: unmeasured, and open (.tasks/fix-2.0-phase1-decisions.md).
+# Binding any of these to 0.0.0.0 reopens the boundary on every platform.
 
 services:
   edge:
@@ -130,8 +133,8 @@ services:
       #     writes to /app.
       - ./render/src:/app/src:ro
       - ./render/tests:/app/tests:ro
-      # 1.4's fixture site, read-only. render is ALONE on egress (ADR-0023),
-      # so the api container's fixture server is unreachable by design — the
+      # 1.4's fixture site, read-only. render shares no network with the api
+      # (ADR-0038), so the api container's fixture server is unreachable — the
       # suite runs 1.4's own stdlib server on this container's loopback
       # instead of owning a second copy of the route table.
       - ./backend/tests/fixtures:/fixtures:ro

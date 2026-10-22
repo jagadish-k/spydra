@@ -106,6 +106,11 @@ It does not need to be:
 - **Cost: a page whose only resolved field is a hollow price (`raw` only,
   e.g. "POA")** is also empty now. It always was non-substantive, and it was
   already hashed as nothing (ADR-0033).
+- **An AUTO page with an image-only stub, crawled with `render` down,** now
+  records `static_fallback` with `empty_extraction = true`, and once it has a
+  hashed prior it counts as a regression. Before, the stub made such pages
+  immune. A JS page with no stub was already in that position, so this
+  widens a known exposure rather than creating one.
 - **Pages with a non-200 status are unchanged.** There the chain still
   returns a rung's blank result, so the observation keeps naming the rung
   that ran.

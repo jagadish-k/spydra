@@ -99,7 +99,11 @@ one user.
 
 The last one matters. `render` is on `egress` (its way out) and on
 `render-link`, an internal network shared only with the worker, which listens
-on nothing. It has no route to `db`, `api` or `bff`. A page that fetches
+on nothing. It shares no network with `db`, `api` or `bff`, and on Linux
+Docker Engine has no route to them (measured, ADR-0038). **On Docker Desktop
+that is not yet established:** `host.docker.internal` resolves inside
+`render` and is forwarded to the host's loopback, where the dev ports are
+published. Unmeasured; until it is, treat the Mac as having that route. A page that fetches
 `http://db:5432` or `http://api:8000/api/crawler/domains` should not be able
 to reach anything. This is cheap to configure and the only real isolation
 boundary in the stack ([ADR-0038](../adr/0038-render-link-network.md),
@@ -107,9 +111,11 @@ superseding ADR-0023's host-loopback path).
 
 The browser shares the sidecar's container, so a page can always reach
 `:3001`. The sidecar therefore refuses browser-shaped requests: `403` for
-any request carrying `Origin`, `Sec-Fetch-Site`, `Sec-Fetch-Dest` or
-`Sec-Fetch-User`, and `415` for a `POST /render` that is not
-`application/json` (ADR-0038).
+any request carrying `Origin`, `Sec-Fetch-Site`, `Sec-Fetch-Dest`,
+`Sec-Fetch-User` or `Upgrade-Insecure-Requests`, and `415` for a
+`POST /render` that is not `application/json` (ADR-0038). A page cannot
+start a render or read the sidecar's answers; an opaque `<img>` GET of
+`/healthz` is still served, unreadable.
 
 ## 4. The Python side
 

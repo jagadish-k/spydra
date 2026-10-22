@@ -25,6 +25,7 @@ describe('ADR-0038 — headers only a browser sends are refused with 403', () =>
     ['sec-fetch-site', 'same-site'],
     ['sec-fetch-dest', 'empty'],
     ['sec-fetch-user', '?1'],
+    ['upgrade-insecure-requests', '1'], // every navigation (2.0 review finding 2)
   ]) {
     test(`${name}: ${value} on POST /render`, () => {
       const r = refusal(request('POST', '/render', { ...JSON_POST, [name]: value }));

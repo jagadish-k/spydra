@@ -55,7 +55,9 @@ separate the two clients, but request shape can. `render/src/guard.js`
 handles this before routing and before the body is read:
 
 - **`403`** for any request that carries `Origin`, `Sec-Fetch-Site`,
-  `Sec-Fetch-Dest` or `Sec-Fetch-User`. Chromium sets these, a page can
+  `Sec-Fetch-Dest`, `Sec-Fetch-User` or `Upgrade-Insecure-Requests` (the last
+  is on every navigation: without it a page could navigate itself to
+  `/healthz` and read the answer, found in review). Chromium sets these, a page can
   neither remove nor forge them, and the worker's httpx client sends none of
   them.
   - `Sec-Fetch-Mode` is deliberately not on the list. Node's own `fetch`
@@ -98,12 +100,15 @@ handles this before routing and before the body is read:
   Putting `api` on `render-link` would give a page a route to `api:8000`, so
   that is a phase-3 decision. It is raised in the task file.
 
-- **macOS is not re-measured here.** No Docker Desktop was in reach. This ADR
-  removes the host hop, which is the one path that depended on Docker
-  Desktop. Docker Desktop also resolves `host.docker.internal` in every
-  container, `render` included. Whether a page can use that name to reach the
-  host's loopback-published dev ports is ADR-0023 §3's claim, and it is
-  unchanged and unmeasured. Raised.
+- **macOS is not measured, and the likely answer is a hole.** No Docker
+  Desktop was in reach. Docker Desktop resolves `host.docker.internal` in
+  every container, `render` included, and forwards it to the host's
+  loopback. That is exactly the mechanism ADR-0023's own fetch path relied
+  on (the worker reaching render's `127.0.0.1:3001`), so a page reaching
+  db's `127.0.0.1:5432` or the api's `127.0.0.1:8000` the same way should be
+  presumed until measured. This ADR neither opens nor closes it; it states
+  it instead of ADR-0023 §3's claim. Measuring it on the Mac, and closing it
+  if it holds, is open in `.tasks/fix-2.0-phase1-decisions.md`.
 - The guard is a request-shape check, so it is defence of the API surface,
   not of the network. The network boundary is `render-link`'s membership.
   What the guard prevents is a page making the sidecar render on its behalf
