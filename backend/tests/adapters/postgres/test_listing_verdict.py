@@ -355,3 +355,46 @@ async def test_a_listing_write_is_not_itself_a_verdict(clean_crawl: AsyncEngine)
     _, outcome = await record_listing(engine, domain_id, run_id, listing, "/shop/cutting/")
 
     assert (outcome.event, outcome.halted) == (None, False)
+
+
+async def test_a_run_after_one_that_only_saw_listings_is_still_a_first_run(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """2.3 review, finding 3. Run 1 crawled the category pages and never
+    reached a product. Run 2's product pages are all empty and none ever
+    worked: the product template has never been tried, so this is ADR-0030's
+    first run and the domain goes back to review. Read as a second run, no
+    page has a prior, nothing can regress, and a template that never
+    matched crawls on as healthy."""
+    engine = clean_crawl
+    domain_id, _, product = await a_domain_with_a_template(engine, host=HOST)
+    listing = await seed_listing_template(engine, domain_id)
+    first = await seed_run(engine, [int(domain_id)])
+    for path in LISTINGS[:3]:
+        await record_listing(engine, domain_id, first, listing, path)
+    second = await seed_run(engine, [int(domain_id)])
+
+    outcomes = [
+        await record_product(engine, domain_id, second, product, n, fixture=REDESIGNED)
+        for n in range(5)
+    ]
+
+    health = await PostgresObservations(engine).health(second, domain_id)
+    assert health.first_run is True
+    assert outcomes[-1].event is DomainEvent.NEVER_MATCHED
+    assert await domain_state(engine, domain_id) == "awaiting_approval"
+
+
+async def test_a_run_after_one_that_saw_products_is_not_a_first_run(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The control: the exclusion is listings only. A product observation in
+    an earlier run makes the next run a second one."""
+    engine = clean_crawl
+    domain_id, _, product = await a_domain_with_a_template(engine, host=HOST)
+    first = await seed_run(engine, [int(domain_id)])
+    await record_product(engine, domain_id, first, product, 99, fixture=GOOD)
+    second = await seed_run(engine, [int(domain_id)])
+    await record_product(engine, domain_id, second, product, 0, fixture=REDESIGNED)
+
+    assert (await PostgresObservations(engine).health(second, domain_id)).first_run is False

@@ -479,3 +479,53 @@ def test_discover_requests_nothing_and_gives_the_same_answer_twice(
 
     assert len(site.requests) == before, "discover fetched something"
     assert first == second
+
+
+# ---------------------------------------------------------------------------
+# 2.3 review
+# ---------------------------------------------------------------------------
+
+
+def test_a_facet_that_is_not_first_in_the_sorted_query_is_denied(
+    get: Callable[[str], str],
+) -> None:
+    """Finding 2. On a faceted page the next link is `?sort=price&page=2`,
+    whose canonical query sorts to `page=2&sort=price`: the facet is not
+    after the `?`. The exit's deny pattern must still catch it, or every
+    facet page's pagination walks into the trap."""
+    found = run(get, f"{DISCS}?sort=price", exit_rules())
+
+    assert found.accepted.get("next_page", ()) == ()
+    (pattern,) = exit_rules().deny_patterns
+    tally = [r for r in found.rejected.values() if r.pattern == pattern]
+    assert tally, found.rejected
+    assert any(
+        "page=2" in s and "sort=price" in s and urlsplit(s).query.startswith("page=")
+        for s in tally[0].samples
+    ), tally[0].samples
+
+
+LOOP = "/shop/loop/x/page"
+
+
+@pytest.mark.parametrize("base", ["/shop/", "../../", f"{BASE}/shop/"])
+def test_relative_links_resolve_against_base_href(get: Callable[[str], str], base: str) -> None:
+    """Finding 7. The loop page links `loop/x/page`, relative. Against the
+    page that is `/shop/loop/x/loop/x/page`; a `<base href>` naming
+    `/shop/` (absolute, root-relative, or relative to the page) makes it
+    `/shop/loop/x/page`, as a browser resolves it."""
+    html = get(LOOP).replace("<head>", f'<head><base href="{base}" />', 1)
+    assert "<base " in html, "the page's head changed; the splice missed"
+
+    found = run(get, LOOP, DiscoveryRules(subcategory_links="section.subcategories a"), html=html)
+
+    assert found.links() == [(f"{BASE}{LOOP}", 1)]
+
+
+def test_without_base_href_relative_links_resolve_against_the_page(
+    get: Callable[[str], str],
+) -> None:
+    """The control: the page as served."""
+    found = run(get, LOOP, DiscoveryRules(subcategory_links="section.subcategories a"))
+
+    assert found.links() == [(f"{BASE}/shop/loop/x/loop/x/page", 1)]

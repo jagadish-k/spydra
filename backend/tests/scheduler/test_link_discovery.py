@@ -33,9 +33,12 @@ from spydra.adapters.clock import SystemClock
 from spydra.adapters.http.httpx_fetcher import HttpxFetcher
 from spydra.adapters.postgres.frontier import PostgresFrontier, url_hash
 from spydra.adapters.postgres.templates import extraction_to_json
+from spydra.domain.enums import FetchPath
+from spydra.domain.fetch import FetchRequest
 from spydra.domain.ids import DomainId, RunId
 from spydra.domain.urls import canonical_url
 from tests.extraction.pages import vantage_template
+from tests.fixtures import catalogue
 from tests.fixtures.catalogue import (
     DEEP_PREFIX,
     EXIT_DISCOVERY,
@@ -45,6 +48,8 @@ from tests.fixtures.catalogue import (
 )
 from tests.fixtures.server import FixtureSite
 from tests.scheduler.test_canonical_pages import build, make_due
+from tests.scheduler.test_page_crawler import STUB_ONLY, ScriptedFetcher
+from tests.scheduler.test_page_crawler import build as build_with
 from tests.scheduler.test_worker_process import rows, run_state, wait_until, worker
 
 pytestmark = pytest.mark.integration
@@ -378,3 +383,58 @@ async def test_the_domains_deny_patterns_apply_to_the_crawl(clean_crawl: AsyncEn
     queued = await queued_paths(engine, run)
     assert "/shop/cutting/discs" in queued, "the seed discovered nothing at all"
     assert f"{DEEP_PREFIX}1" not in queued
+
+
+# ---------------------------------------------------------------------------
+# AUTO and listings (2.3 review, finding 4)
+# ---------------------------------------------------------------------------
+
+
+def halden_page(request: FetchRequest) -> tuple[int, str]:
+    parts = urlsplit(request.url)
+    rendered = catalogue.render(parts.path, parts.query, catalogue.HOST)
+    assert rendered is not None, request.url
+    return rendered[0], rendered[1].decode()
+
+
+def server_html(request: FetchRequest) -> tuple[int, str]:
+    """A JS-dependent product page's server HTML: an image-only stub. A
+    listing is served as itself."""
+    if "/p/" in urlsplit(request.url).path:
+        return 200, STUB_ONLY
+    return halden_page(request)
+
+
+@pytest.mark.parametrize(
+    ("seed", "renders"),
+    [(EXIT_SEED, False), ("/shop/p/HT-CD-001", True)],
+    ids=["listing", "product"],
+)
+async def test_auto_gives_a_product_page_a_second_chance_and_a_listing_none(
+    clean_crawl: AsyncEngine, seed: str, renders: bool
+) -> None:
+    """A field-less listing is always "empty", so on an AUTO domain every
+    listing was rendered after its static fetch: a second request to the
+    supplier per page for nothing (ADR-0039). A product page whose static
+    HTML is only a stub still gets its render."""
+    engine = clean_crawl
+    base = f"https://{catalogue.HOST}"
+    domain, run, _ = await seed_halden(engine, base, seed=seed)
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE crawl.domains SET render_mode = 'auto' WHERE id = :d"),
+            {"d": int(domain)},
+        )
+    static = ScriptedFetcher(FetchPath.STATIC, server_html)
+    rendered = ScriptedFetcher(FetchPath.RENDERED, halden_page)
+
+    await make_due(engine, domain)
+    item = await PostgresFrontier(engine).claim()
+    assert item is not None
+    await build_with(engine, static, rendered).crawl(item)
+
+    assert static.calls == [base + seed]
+    assert rendered.calls == ([base + seed] if renders else [])
+    if not renders:
+        # The listing still discovered from its static HTML.
+        assert "/shop/cutting/discs" in await queued_paths(engine, run)

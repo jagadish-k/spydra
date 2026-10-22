@@ -519,3 +519,19 @@ async def test_the_cli_loads_a_valid_file_and_reports_the_run(
     async with clean_crawl.connect() as conn:
         (run_id,) = (await conn.execute(sa.text("SELECT id FROM crawl.runs"))).scalars().all()
     assert f"run {run_id} started" in done.stdout
+
+
+async def test_a_template_max_depth_is_refused_and_nothing_is_written(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """2.3 review, finding 10: `max_depth` is the domain's (spec 001 §1)."""
+    text = _VALID.replace(
+        "        page_kind: listing\n",
+        "        page_kind: listing\n        discovery: { max_depth: 2 }\n",
+    )
+    assert "max_depth" in text
+
+    with pytest.raises(RefusedConfiguration, match="max_depth"):
+        await load(PostgresConfiguration(clean_crawl), text)
+
+    assert await _counts(clean_crawl) == _NOTHING

@@ -233,6 +233,44 @@ event=outcome.event, ...)`; `event` is structlog's positional, so every
       Suite after: 1023 passed, 2 skipped. A first attempt at 3 also excluded
       no-template priors and turned 14 existing ADR-0030 tests red; narrowed to
       listing-template rows only.
+- test (spydra-test), review fixes pinned (22 new tests):
+  - Finding 1, `tests/adapters/postgres/test_enqueue_guard.py`:
+    - enqueue into a `paused`, `broken` or `awaiting_approval` domain adds
+      nothing, and neither does enqueue into a `completed`, `stopped` or
+      `paused` run; an active/running control inserts;
+    - three spellings of one page in one call, plus a page already in the
+      run, give 2 new rows and a return of 2;
+    - the race on two real engines: A updates the domain to `broken` and
+      abandons its rows, uncommitted. B's enqueue is seen waiting on a lock
+      in `pg_stat_activity` (polled, not timed), then inserts nothing once
+      A commits. 5 of 5 repeats green;
+    - the reviewer's reproduction through `PageCrawler`: claim, halt and
+      abandon, crawl the seed. Only the seed row is left (`done`) and
+      `finish_drained` completes the run.
+  - Finding 2, in `test_links.py`: on `/shop/cutting/discs/?sort=price`,
+    the next link sorts to `page=2&sort=price`, and the exit pattern
+    denies it.
+  - Finding 3, in `test_listing_verdict.py`: run 1 saw only listings and
+    run 2's five empty products give `first_run` and `NEVER_MATCHED`, so the
+    domain goes to `awaiting_approval`. Control: an earlier product
+    observation makes the run a second one.
+  - Finding 4, in `test_link_discovery.py`: on AUTO with counting scripted
+    fetchers, a listing gets no render and still discovers. A product page
+    whose static HTML is the image-only stub is rendered once.
+  - Finding 7, in `test_links.py`: `<base href>` given as absolute,
+    root-relative or page-relative, spliced into the served loop page,
+    resolves `loop/x/page` to `/shop/loop/x/page`. Control: without it,
+    the link resolves against the page.
+  - Finding 10: `parse` refuses `discovery.max_depth` naming the key,
+    discovery without it is read (`test_load.py`), and `load` writes
+    nothing (`test_load_configuration.py`).
+  - **Mutation: 8 chosen, 8 red.** The domain `active` condition, the run
+    `running` condition, `FOR SHARE`, `[?&]` → `\?` in `EXIT_DISCOVERY`,
+    the listing filter in `_FIRST_RUN`, the PRODUCT condition on AUTO,
+    `_base`, and the loader refusal. Restored with `git checkout`; `git diff
+-- backend/spydra backend/tests/fixtures/catalogue.py` empty after.
+  - Full backend suite: 1045 passed, 2 skipped. `make lint-api` clean. The
+    two tests left red in my first pass are green after `297a29a`.
 
 ## Open questions — for the human
 
