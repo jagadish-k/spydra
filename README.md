@@ -10,13 +10,15 @@ The model proposes once per template. It never runs during a crawl.
 
 ## Status
 
-**Design complete, implementation not started.** This repository holds the
-architecture, the design system, all ten screens drawn in Figma across 56
-state frames, static mockups of the same screens, and a full development
-handoff: specs, ADRs and a phased build plan. No application code yet.
+**Phase 1 done; phase 2 (discovery) in progress.** The crawler runs end to
+end from a YAML file against a local fixture site: static and JS-rendered
+pages, observations in Postgres, assets queued. There is no API or UI yet
+(phase 3), so you verify it with `make` targets and SQL.
 
-**Starting development?** Read [`AGENTS.md`](AGENTS.md), then
-[`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md). Phase 0 is scaffolding.
+**To run and verify it locally:**
+[`docs/DEVELOPMENT.md` § Verify what is built](docs/DEVELOPMENT.md#verify-what-is-built).
+Progress per task: [`docs/BUILD_PLAN.md`](docs/BUILD_PLAN.md).
+**Starting development?** Read [`AGENTS.md`](AGENTS.md) first.
 
 ---
 
