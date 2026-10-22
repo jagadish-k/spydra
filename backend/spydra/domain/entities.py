@@ -22,7 +22,20 @@ from .ids import DomainId, PageId, RunId, TemplateId
 
 # A field's extracted value before it reaches a column or JSONB. `many` rules
 # yield a sequence; `pairs` yields a mapping (spec 003 §2).
-FieldValue = str | Decimal | int | Sequence[str] | Mapping[str, str] | None
+#
+# `PriceValue` is the one composite, and it is composite because spec 003 §2
+# makes the currency a first-class part of a price: "a price without a
+# determinable currency is a validation failure, not a guess". Amount and
+# code therefore have to travel together so one rule can check both, and
+# `raw` travels with them so a failure can report what it SAW — spec 003 §3's
+# example record is `{"rule": "currency", "ok": false, "saw": "POA"}`, and
+# "POA" is the only part of that which explains anything.
+#
+# `1.11` splits it into `page_observations.price_amount` and `price_currency`
+# (spec 001 §1). Widened here in BUILD_PLAN 1.10 rather than invented in an
+# adapter, so both extraction rungs emit one shape.
+PriceValue = Mapping[str, "str | Decimal | None"]
+FieldValue = str | Decimal | int | Sequence[str] | Mapping[str, str] | PriceValue | None
 ExtractedFields = Mapping[str, FieldValue]
 
 

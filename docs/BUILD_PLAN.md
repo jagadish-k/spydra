@@ -321,7 +321,7 @@ choosing or reaching one.
       referent. The gate takes the floor as an argument; the schema needs a
       decision.
 
-- [ ] `1.10` **Extraction chain** with the `structured` and `selector` rungs,
+- [x] `1.10` **Extraction chain** with the `structured` and `selector` rungs,
       the transform table and validation (spec 003 §1–3). Validation records
       and never routes: no field is required (ADR-0027). This is where
       `empty_extraction` is implemented — one predicate in
@@ -336,6 +336,18 @@ choosing or reaching one.
       and the _threshold_ is what excludes a page with no prior observation.
       `1.11` implements that; `1.10` only has to make the predicate a
       function with one definition.
+      **Done:** 64 tests, 34 mutations, all red but one equivalent mutant.
+      **`selectolax` and `extruct` were declared and installed nowhere**
+      despite being named in AGENTS.md § Stack and spec 003 §1–2 — ADR-0017's
+      readiness gate was run before adding them rather than discovered in a
+      failing build. The first mutation pass left **six** green, the most of
+      any slice, and two of those were vacuous tests: the chain-ordering test
+      used a page whose selectors matched nothing, so reversing the chain
+      changed nothing, and a `"POA" in saw` assertion passed against a `saw`
+      holding the whole dict repr. Both rungs now emit **one** price
+      composite — they emitted two different shapes, which mypy caught and
+      which would have made `1.11` handle both while the currency rule
+      checked only one of them.
 
 - [ ] `1.11` **Observation writes** with `content_hash` over the **normalised
       extracted fields**, never the raw markup (spec 003 §4, ADR-0007).
