@@ -95,6 +95,75 @@ discs` (the unsorted pair → `?colour=red&per_page=25`, `?page=2` kept);
     its history stays on the old row. No data migration: it would need this
     function inside a migration, which the repo forbids (old migrations
     freeze their SQL). Raised.
+- test (spydra-test): 229 tests in 4 new files, written from Contract and
+  Acceptance. **228 pass, 1 red on purpose (a defect, below).**
+  - `tests/domain/test_canonical_url.py` (182, mostly parametrised). Each
+    of steps 1–6 is pinned on its own, in both directions: what a step must
+    remove and what it must leave alone. Covers look-alike names (`reference`,
+    `utm`, `xutm_source`, `gclid_id`), dots inside a segment, and `//` inside
+    a query value. Tracking: every name plus the `utm_*` prefix, blank
+    values, and escaped keys (`utm%5Fsource`, `%67clid`, `%5Fga`). Sort: by
+    key then value; repeats kept; `%2F`, `+`, `%20` and `%C3%A9` kept as
+    written; blank values kept. Root keeps its slash. Credentials dropped.
+    Idempotence and `url_hash(x) == sha256(canonical_url(x))` are checked
+    over every spelling. Also the two spec 004 §5 hash criteria, and seven
+    pairs that must hash _differently_.
+  - `tests/discovery/test_canonical_link.py` (35). Unit cases cover same
+    host, root- and path-relative hrefs, the canonical itself canonicalised,
+    off-host (other host, subdomain, both look-alikes, scheme-relative),
+    another scheme, missing, empty or blank href, no href, several and mixed-case
+    `rel` tokens, `noncanonical`/`canonicalish`, and first-wins (including
+    an off-host first). Halden cases go through `FixtureSite`'s HTML: every
+    `section.promo` spelling → `http://halden.test/shop/cutting/discs`,
+    except the unsorted pair (→ `?colour=red&per_page=25`) and `?page=2`.
+    Blades → `/shop/p/HT-SB-001`; polish → `None`.
+  - `tests/adapters/postgres/test_canonical_writes.py` (6, real Postgres).
+    `Frontier.enqueue`: two spellings → one row, canonical `url` and
+    `url_hash`; `?page=2` stays apart; credentials are never stored. The
+    loader (`load()`) stores canonical seeds and dedupes them.
+    `PostgresPages.upsert`: two spellings → one row.
+  - `tests/scheduler/test_canonical_pages.py` (6, real Postgres, real
+    `PageCrawler` + `HttpxFetcher` against `FixtureSite`). Blades-context
+    and canonical URLs crawled in one run → both rows `done`, ONE `pages`
+    row under `/shop/p/HT-SB-001` with 2 observations, in either order.
+    The context URL alone files under the canonical. The polish's off-host
+    canonical leaves it under its own URL. A listing with no canonical files
+    under the canonical queue URL.
+  - **Mutation: 25 chosen, 24 red.** One mutant per step of
+    `canonical_url`, plus finer ones (prefix, escaped key, key-only sort,
+    re-encoding, blank drop, root slash). Also `url_hash` over the raw URL;
+    five `canonical_link` mutants (host check removed, scheme ignored,
+    off-host skipped to the next link, empty href, rel substring); and each
+    write path's `canonical_url(...)`: frontier, loader, pages, and
+    `PageCrawler`'s `canonical_link`. The survivor is "drop
+    `_SLASHES.sub`". It is **equivalent**: `posixpath.normpath` already
+    collapses `//`, and the leading `//` is handled by the `lstrip`, so no
+    input tells them apart. `git diff -- backend/spydra` is empty afterwards.
+  - Full backend suite: **1 failed, 907 passed, 2 skipped**. The failure is
+    the defect below. `make lint-api` clean.
+  - **Defect (left red):**
+    `test_a_bracketed_ipv6_host_keeps_its_brackets`.
+    `canonical_url("http://[::1]:8080/shop")` returns
+    `http://::1:8080/shop`. The netloc is rebuilt from `parts.hostname`,
+    which drops the brackets, so the result is not a parseable URL.
+    Canonicalising it again raises in `urlsplit(...).port`. Low exposure on
+    supplier sites, but it is a step-1 bug. The fix is to re-bracket when the
+    host contains `:`.
+  - **Finding (not a 2.2 code defect, needs an owner):** any page with
+    `<link rel="canonical">` makes extruct's pyRdfa call the deprecated
+    `datetime.utcnow()`. Verified in the api image:
+    `extruct.extract(<link rel=canonical>, syntaxes=['rdfa'])` under
+    `-W error::DeprecationWarning`. Under the suite's
+    `filterwarnings = ["error"]`, that raises inside the structured rung,
+    so `PageCrawler` cannot crawl any Halden product page in a test. Production only
+    gets an ignored DeprecationWarning. `test_canonical_pages.py` carries a
+    module-scoped `filterwarnings` ignore for that one message from
+    `pyRdfa`, with the reason and a removal condition. The phase-2 exit and
+    2.3+ will hit the same thing, so this probably belongs in
+    `pyproject.toml` (not a test-writer file). It needs a backend/ops decision.
+  - Not tested: the per-domain tracking list (not built, open question 1).
+    The `/a//../b` ordering inside step 2 is also untested, because spec
+    004 does not say whether `..` or `//` goes first.
 
 ## Open questions — for the human
 
