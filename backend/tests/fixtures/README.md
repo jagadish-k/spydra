@@ -37,6 +37,15 @@ So `server.py` synthesizes them, with the shape as a URL parameter.
 | `/img/slow/<name>` | a 1x1 PNG behind a 150 ms delay — the delay is the whole mechanism behind "`block_resources` measurably reduces render time" |
 | `/oversized/<mb>`  | `<mb>` MB of HTML as one text node, bounded at 32 MB so a typo cannot ask for 20 GB                                          |
 | `/trap/…`          | unbounded link depth, for BUILD_PLAN `2.5`'s caps                                                                            |
+| `/generated/<n>`   | product `<n>` of an unbounded catalogue, with a `Set-Cookie` — for spec 009 §5's 1,000-page log budget (BUILD_PLAN `1.13`)   |
+
+**`/generated/<n>` is `vantage-abrasives/product.html` with `<n>` written
+into the title, SKU, price and image names**, so a thousand URLs are a
+thousand distinct products that the one approved template extracts. A
+thousand committed files would be one shape copied a thousand times. It sets
+a session cookie on purpose: spec 009 §1 forbids logging credentials, and a
+log test over a site that sends none would pass against a worker that dumps
+every response header.
 
 **The delay on the images is not incidental.** Served instantly, a 24-image
 gallery renders at the same speed whether images are blocked or not, and

@@ -89,6 +89,17 @@ domains = sa.Table(
     # reading the pause off the shared one pauses a domain that refused us
     # once and was busy twice (BUILD_PLAN 1.9).
     sa.Column("consecutive_403s", sa.Integer, nullable=False, server_default=sa.text("0")),
+    # What the operator set, which `crawl_delay_ms` cannot remember: the ×2
+    # backoff (spec 002 §4) overwrites that column, and the 10% decay has to
+    # stop somewhere ("never below it"). Without this the floor was a
+    # constant in the gate and an operator's 5 s was gone after one 429
+    # (BUILD_PLAN 1.9 open question 1, closed in 1.13).
+    sa.Column(
+        "configured_crawl_delay_ms",
+        sa.Integer,
+        nullable=False,
+        server_default=sa.text("2000"),
+    ),
     sa.Column("notes", sa.Text),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=_NOW),
     # ADR-0026: the counter gates claiming, so a NEGATIVE one lets two workers
@@ -99,6 +110,9 @@ domains = sa.Table(
     # loud rather than silent.
     sa.CheckConstraint("in_flight >= 0", name="in_flight_non_negative"),
     sa.CheckConstraint("consecutive_403s >= 0", name="consecutive_403s_non_negative"),
+    sa.CheckConstraint(
+        "configured_crawl_delay_ms >= 0", name="configured_crawl_delay_ms_non_negative"
+    ),
     # The claim query's driving index (spec 002 §1). Partial, because only
     # active domains are ever eligible.
     sa.Index(

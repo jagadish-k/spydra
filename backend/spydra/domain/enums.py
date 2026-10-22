@@ -157,3 +157,8 @@ class UnknownReason(StrEnum):
     NO_TEMPLATE = "no_template"
     VALIDATION_FAILED = "validation_failed"
     EMPTY_EXTRACTION = "empty_extraction"
+    # Spec 001 §1: "non-2xx or timeout". Written only when a row has run out
+    # of attempts on a response that never came, or on a 5xx: a 404 is a
+    # dead link, which an observation records, and putting every dead link
+    # in the inbox would bury the pages that need a human (1.11).
+    FETCH_ERROR = "fetch_error"

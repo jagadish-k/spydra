@@ -32,6 +32,10 @@ dependencies = [
     # open question. Nothing imports it; the crawl path is httpx2 only.
     "extruct",
     "sqlalchemy[asyncio]", # Core only, asyncpg driver — ADR-0014
+    # Spec 009 §1 names it, and AGENTS.md § Stack lists it; declared at
+    # BUILD_PLAN 1.13, the first code that logs a crawl. Pure Python, so
+    # ADR-0017's wheel gate has nothing to fail on.
+    "structlog",
     "uvicorn",
 ]
 

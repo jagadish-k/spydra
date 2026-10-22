@@ -76,10 +76,12 @@ services:
 
   worker:
     build: { context: ., dockerfile: docker/worker.Dockerfile }
-    # PLACEHOLDER until the worker loop arrives. Replaced by (task 1.13):
-    #   python -m spydra.worker
-    command: python -c "print('worker placeholder — task 1.13'); import time; time.sleep(1e9)"
+    command: python -m spydra.worker
     environment: *py-env
+    # Longer than the worker's SHUTDOWN_GRACE_S (20 s): Docker SIGKILLs at
+    # the end of this, and a SIGKILL strands every in-flight row until its
+    # two-minute lease expires instead of releasing it (spec 002 §3).
+    stop_grace_period: 30s
     depends_on:
       db: { condition: service_healthy }
     volumes:

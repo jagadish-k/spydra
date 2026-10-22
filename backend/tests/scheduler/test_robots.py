@@ -303,3 +303,17 @@ async def test_the_fail_closed_verdict_refuses_every_host() -> None:
     rules = await RobotsCache(FakeFetcher(500, "")).rules_for(RUN, "x.test", UA)
     assert rules.can_fetch("https://x.test/a") is False
     assert rules.can_fetch("https://other.test/a") is False
+
+
+async def test_rules_for_a_host_with_a_port_allow_that_host_and_port() -> None:
+    """A domain row's host may carry a port (`127.0.0.1:8099` is how the
+    fixture site is crawled). The rules fetched for it must answer for its
+    own URLs: refusing them as foreign stops every page of the domain."""
+    fetcher = FakeFetcher(200, fixture("crawl-delay"))
+    rules = await RobotsCache(fetcher).rules_for(RUN, "127.0.0.1:8099", UA, scheme="http")
+
+    assert fetcher.urls == ["http://127.0.0.1:8099/robots.txt"]
+    assert rules.can_fetch("http://127.0.0.1:8099/x") is True
+    # Its Disallow still applies, and another host is still foreign.
+    assert rules.can_fetch("http://127.0.0.1:8099/cart/x") is False
+    assert rules.can_fetch("http://10.0.0.9:8099/x") is False

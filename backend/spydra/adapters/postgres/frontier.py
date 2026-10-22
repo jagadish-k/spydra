@@ -25,21 +25,21 @@ domain may be fetched.
 
 import hashlib
 from collections.abc import Sequence
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from spydra.domain.enums import RenderMode
 from spydra.domain.ids import DomainId, QueueItemId, RunId
-from spydra.ports.frontier import ClaimedUrl, Completion
+from spydra.ports.frontier import EVERY_RENDER_MODE, MAX_ATTEMPTS, ClaimedUrl, Completion
+
+__all__ = ["LEASE_SECONDS", "MAX_ATTEMPTS", "PostgresFrontier", "url_hash"]
 
 # Spec 002 §1. A lease long enough for a slow render (spec 012 §2 allows 30 s)
 # plus the politeness delay in front of it, short enough that a killed worker
 # does not strand a row for minutes.
 LEASE_SECONDS = 120
-
-# Spec 002 §3 / ADR-0004: three attempts, then the row is failed rather than
-# returned for a fourth.
-MAX_ATTEMPTS = 3
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +54,15 @@ WITH eligible AS (
     WHERE d.state = 'active'
       AND d.next_eligible_at <= now()
       AND d.in_flight < d.max_concurrency
+      AND d.render_mode = ANY(CAST(:render_modes AS text[]))
+      -- ADR-0034: only a domain with work. Without this, a domain whose
+      -- queue has drained is never fetched again, so its next_eligible_at
+      -- never advances, it stays the MOST eligible domain for good, and
+      -- every other domain's claim comes back empty for ever.
+      AND EXISTS (
+          SELECT 1 FROM crawl.crawl_queue q0
+          WHERE q0.domain_id = d.id AND q0.state = 'pending'
+      )
     ORDER BY d.next_eligible_at
     FOR UPDATE SKIP LOCKED          -- on domains: THE POLITENESS GATE.
                                     -- Serialises the eligibility DECISION.
@@ -92,11 +101,31 @@ RETURNING (SELECT row_to_json(c) FROM claimed c) AS claimed
 )
 
 # Completion: the queue row and the domain row, one transaction (spec 002 §2).
+#
+# **Fenced on the lease.** The row is closed only if it is still `in_flight`
+# under the `locked_until` this claim set. Without that, two things closed a
+# row twice. A worker whose crawl raised after `complete` had committed went
+# on to `abort`, which reopened a 403 for retry (a retry through a block,
+# AGENTS.md rule 8). And a lease that expired mid-crawl had its row swept and
+# re-claimed, after which the first owner closed the second owner's lease.
+# Each extra close also took `in_flight` down again.
 _COMPLETE_QUEUE = sa.text(
     """
 UPDATE crawl.crawl_queue
 SET state = :state, locked_until = NULL
-WHERE id = :id
+WHERE id = :id AND state = 'in_flight' AND locked_until = :lease
+RETURNING id
+"""
+)
+
+# A completion whose lease was lost still reports a request the host really
+# received, so the gate is pushed forward, never back. Nothing else is
+# touched: the counters and `in_flight` belong to whoever holds the row now.
+_STALE_COMPLETION = sa.text(
+    """
+UPDATE crawl.domains
+SET next_eligible_at = GREATEST(next_eligible_at, :next_eligible_at)
+WHERE id = :domain_id
 """
 )
 
@@ -132,7 +161,8 @@ SET state = 'pending',
     -- consecutive_failures, no backoff AND no attempt charged — otherwise
     -- three busy moments at our own sidecar would retire a healthy row.
     attempts = GREATEST(attempts - 1, 0)
-WHERE id = :id
+WHERE id = :id AND state = 'in_flight' AND locked_until = :lease
+RETURNING id
 """
 )
 
@@ -226,7 +256,9 @@ class PostgresFrontier:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
 
-    async def claim(self) -> ClaimedUrl | None:
+    async def claim(
+        self, render_modes: frozenset[RenderMode] = EVERY_RENDER_MODE
+    ) -> ClaimedUrl | None:
         """Lease the next eligible URL, or None.
 
         None is the ordinary case, not an error: throughput is
@@ -235,7 +267,14 @@ class PostgresFrontier:
         """
         async with self._engine.begin() as conn:
             row = (
-                await conn.execute(_CLAIM, {"lease_seconds": LEASE_SECONDS})
+                await conn.execute(
+                    _CLAIM,
+                    {
+                        "lease_seconds": LEASE_SECONDS,
+                        # Sorted so the bound value is deterministic.
+                        "render_modes": sorted(m.value for m in render_modes),
+                    },
+                )
             ).scalar_one_or_none()
         if row is None:
             return None
@@ -246,19 +285,38 @@ class PostgresFrontier:
             url=row["url"],
             depth=row["depth"],
             attempts=row["attempts"],
-            locked_until=row["locked_until"],
+            # `row_to_json` renders it as text, so it arrived as a `str` that
+            # the annotation called a `datetime`. Harmless until 1.13 sent it
+            # back as the lease fence, where asyncpg refused it.
+            locked_until=datetime.fromisoformat(row["locked_until"]),
         )
 
-    async def complete(self, item: ClaimedUrl, completion: Completion) -> None:
+    async def complete(self, item: ClaimedUrl, completion: Completion) -> bool:
         """Close the row and advance the domain. One transaction.
 
         Both statements or neither: the port's docstring is explicit that
         splitting them is the dual-write problem ADR-0002 chose Postgres to
         avoid, and a completion that closed the row without giving the gate
         back would stall the domain until the sweep.
+
+        `False` when this lease no longer holds the row (see `_COMPLETE_QUEUE`).
         """
         async with self._engine.begin() as conn:
-            await conn.execute(_COMPLETE_QUEUE, {"id": int(item.id), "state": completion.state})
+            closed = (
+                await conn.execute(
+                    _COMPLETE_QUEUE,
+                    {"id": int(item.id), "state": completion.state, "lease": item.locked_until},
+                )
+            ).scalar_one_or_none()
+            if closed is None:
+                await conn.execute(
+                    _STALE_COMPLETION,
+                    {
+                        "domain_id": int(item.domain_id),
+                        "next_eligible_at": completion.next_eligible_at,
+                    },
+                )
+                return False
             await conn.execute(
                 _COMPLETE_DOMAIN,
                 {
@@ -269,12 +327,22 @@ class PostgresFrontier:
                     "consecutive_403s": completion.consecutive_403s,
                 },
             )
+        return True
 
-    async def release(self, item: ClaimedUrl) -> None:
-        """Back to PENDING with no penalty — and the gate given back."""
+    async def release(self, item: ClaimedUrl) -> bool:
+        """Back to PENDING with no penalty — and the gate given back.
+
+        Fenced like `complete`: a row this lease already closed, or lost, is
+        left alone, so a release on shutdown cannot reopen a finished page.
+        """
         async with self._engine.begin() as conn:
-            await conn.execute(_RELEASE_QUEUE, {"id": int(item.id)})
+            released = (
+                await conn.execute(_RELEASE_QUEUE, {"id": int(item.id), "lease": item.locked_until})
+            ).scalar_one_or_none()
+            if released is None:
+                return False
             await conn.execute(_RELEASE_DOMAIN, {"domain_id": int(item.domain_id)})
+        return True
 
     async def sweep_expired_leases(self) -> int:
         """Recover expired leases and make `in_flight` true again.

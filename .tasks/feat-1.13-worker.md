@@ -1,0 +1,311 @@
+# feat/1.13-worker
+
+**Task:** BUILD_PLAN 1.13 · **Spec:** 002 §1–§7, 009 §1/§5, 012 §4
+**ADRs that constrain this:** 0002, 0003, 0004, 0016, 0023, 0026 (amended by
+0034, written here), 0027, 0030, 0033
+
+Stacked on `fix/1.11-review-findings`, which is stacked on #17.
+
+## Contract
+
+`python -m spydra.worker` is the worker service. It runs:
+
+- the **static pool**: 12 claim loops (`WORKER_STATIC`). These claim
+  domains whose `render_mode` is `static` or `auto`.
+- the **rendered pool**: 3 claim loops (`WORKER_RENDERED`). These claim
+  `rendered` domains only.
+- both pools in **one `asyncio.TaskGroup` over one engine** (one connection
+  pool, ADR-0003). Every call to the sidecar takes a slot in one shared
+  `RenderBudget` semaphore, sized like the rendered pool, so an AUTO second
+  chance issued from the static pool cannot oversubscribe the sidecar
+  (1.7 open question 4).
+- **no asset pool.** Nothing drains `asset_queue` until 5.2 (BUILD_PLAN 1.12
+  says building it now is building it for no consumer). The third pool
+  arrives with its consumer. Raised below.
+
+One claim-loop iteration (spec 002 §1–§7):
+
+1. `sweep_expired_leases()`. This is load-bearing since ADR-0026.
+2. `AssetPressure.before_claim(pending)`.
+3. `claim(render_modes)`.
+   - `None` means **nothing is claimable right now, not "the frontier is
+     empty"**. The loop idles (0.5 s) and goes round again; the worker runs
+     until SIGTERM.
+4. Crawl the claimed URL (`PageCrawler`):
+   - **domain:** load the domain row (politeness state, render mode, user
+     agent, robots flag, configured delay).
+   - **robots:** check `robots.txt`, cached per run. A disallowed URL closes
+     the row as `failed`, with no fetch and no politeness change.
+   - **fetch** by render mode:
+     - `rendered`: through the sidecar.
+     - `auto`: static first. On a 200 whose chain result is **not
+       substantive**, `fetch_rendered_or_fall_back` with the page already in
+       hand, under the `RenderBudget`. "Not substantive" is spec 012 §4's
+       "nothing usable", and it is deliberately wider than
+       `empty_extraction`: a server-HTML SEO stub carrying only an image
+       must not stop a JS-dependent page from getting its browser retry
+       (`fix/1.11-review-findings` open question 12).
+   - **outcome:**
+
+     | Outcome                          | Action                                                                                                                    |
+     | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+     | `Backpressure`                   | `release` the row (no penalty)                                                                                            |
+     | `FetchFailed`                    | `on_fetch_error`; retried until 3 attempts, then `failed` plus `unknown_pages(fetch_error)` (closes 1.11 non-blocking 6e) |
+     | HTTP response                    | `gate.for_status`; see the next row                                                                                       |
+     | 2xx, or a 4xx other than 403/429 | upsert `pages`, match the template, run the chain, `ObservationWriter.record`, row `done`                                 |
+     | 429/503/5xx                      | retried until 3 attempts, then `failed`; no observation                                                                   |
+     | 403                              | row `failed`, never retried; three in a row pause the domain via `BLOCK` and abandon its queue (ADR-0004)                 |
+
+   - **halt:** when the writer halts the domain (`BREAK`/`NEVER_MATCHED`),
+     abandon its remaining rows so the run can finish.
+   - **finish:** if the run has no `pending`/`in_flight` rows left, mark it
+     `completed` with `finished_at` and `stats` (spec 009 §5: stats on
+     completion). The statement is one guarded `UPDATE`, so a run finishes
+     once.
+5. On SIGTERM:
+   - stop claiming;
+   - give in-flight pages `SHUTDOWN_GRACE_S` (20 s) to finish;
+   - cancel what remains and `release` its rows (no penalty, `in_flight`
+     given back);
+   - close both fetchers and the engine;
+   - exit 0.
+
+   `compose.yaml` gets `stop_grace_period: 30s` so Docker does not SIGKILL
+   inside the grace.
+
+### Two defects this slice has to fix to work at all
+
+- **The claim starves.** ADR-0026's `eligible` CTE picks the most eligible
+  `active` domain without asking whether it has a pending row.
+  - A domain whose queue is drained is never fetched again, so its
+    `next_eligible_at` never advances and it stays the most eligible domain
+    for good.
+  - Every other domain then gets `None` for ever. That is permanent
+    starvation, not "occasionally a wasted claim" as 1.12 described it.
+  - Fix: `AND EXISTS (pending row of d)` plus the pool's `render_mode`
+    filter, both inside `eligible`.
+  - Both locks are unchanged. **ADR-0034** records the amendment, and spec
+    002 §1's SQL is updated.
+- **Spec 002 §4's decay has no floor** (1.9 open question 1).
+  - Add `domains.configured_crawl_delay_ms` (default 2000).
+  - The worker passes `floor_ms = max(configured, robots Crawl-delay)`.
+  - Without it, the backoff permanently replaces what the operator set.
+    Without it the acceptance run could not go faster than 2 s per page
+    either.
+
+### Logging (spec 009 §1, §5)
+
+- `structlog`, JSON to stdout. It is named in AGENTS.md § Stack and spec 009
+  §1, and is pure Python, so it is not a new decision and there is no wheel
+  risk.
+- Stdlib `logging` records (politeness, robots) go through the same
+  renderer.
+- Every crawl-path line carries `run_id`, `domain`, `url`, `strategy`,
+  `attempt`.
+- Levels:
+
+  | Level     | Events                                                        |
+  | --------- | ------------------------------------------------------------- |
+  | `info`    | worker started and stopped, run finished, domain state change |
+  | `warning` | backoff, 403, a retry that ran out, robots override           |
+  | `debug`   | per page                                                      |
+
+- No body, header or credential is ever passed to a log call.
+
+## Files this slice owns
+
+- backend/spydra/worker.py (new; the entry point)
+- backend/spydra/scheduler/{crawl,pools}.py (new)
+- backend/spydra/logs.py (new; structlog configuration)
+- backend/spydra/adapters/postgres/{domains,pages,templates,runs}.py (new)
+- backend/spydra/adapters/postgres/frontier.py, ports/frontier.py (claim filter)
+- backend/spydra/adapters/postgres/tables.py + one migration (`configured_crawl_delay_ms`)
+- backend/spydra/domain/enums.py (`UnknownReason.FETCH_ERROR`)
+- backend/pyproject.toml, backend/uv.lock (structlog)
+- backend/tests/fixtures/server.py (a generated 1,000-product catalogue route)
+- compose.yaml (worker command, stop grace)
+- docs/specs/002-scheduler.md §1, docs/specs/001-domain-model.md §1,
+  docs/adr/0034-*.md
+- backend/tests/** (test-writer)
+- bff/src/db/schema/crawl.generated.ts (regenerated)
+
+## Acceptance
+
+- [ ] The worker crawls the fixture site's seeded URLs to completion against
+      real Postgres and real fetchers: rows `done`, observations written,
+      assets enqueued, run `completed` with `stats`.
+- [ ] A second `active` domain with an empty queue does not starve the
+      first (fails on the 1.12 claim).
+- [ ] A static-pool loop never claims a `rendered` domain, and vice versa.
+- [ ] SIGTERM mid-run: the process exits 0 within the grace, and no row is
+      left `in_flight` with `in_flight` counters at 0.
+- [ ] A 1,000-page run at `info` writes fewer than 100 lines, and no line
+      contains an HTML body, a `<` tag or a credential (spec 009 §5).
+- [ ] `FetchFailed` three times gives `failed` plus an
+      `unknown_pages(fetch_error)` row.
+- [ ] Three 403s pause the domain and abandon its rows.
+- [ ] A 503 from the sidecar releases the row with no attempt charged.
+- [ ] The decay never goes below `configured_crawl_delay_ms`.
+- [ ] `make check` green; migration up/down/up; mutation run, each guard red.
+
+## Handoff log
+
+- planner: contract above.
+- backend: as contracted, with these deviations:
+  - **`MAX_ATTEMPTS` moved to the port**, so the scheduler decides
+    retry-or-fail without importing an adapter. The adapter re-exports it.
+  - **`RobotsRules.can_fetch` compared a hostname with a host that may carry
+    a port**, so a domain at `127.0.0.1:PORT` had every URL refused as
+    foreign. It now compares hostname with hostname. Found running the
+    worker.
+  - **The `httpcore2` logger wrote raw response headers at `debug`**
+    (including `Set-Cookie`, a credential). It is now held at `warning`.
+    Found running the worker at `debug`.
+  - **Smoke run** (throwaway, not committed): the real worker as a
+    subprocess against `FixtureSite` and the test DB, with 5 URLs.
+    - All 5 rows `done`. The product gives selector, title and £14.75. The
+      listing gives `empty_extraction`, the two unmatched pages
+      `no_template`, the 404 an observation and no inbox row.
+    - Run `completed` with stats, `in_flight` back to 0, SIGTERM exit 0.
+    - 3 lines at `info`; at `debug`, one per page plus lifecycle.
+- test — 34 new tests (suite 540 passed, 2 skipped; `make lint-api` clean).
+  No production code touched.
+  - **Files:** `tests/scheduler/test_worker_process.py` (the real
+    `python -m spydra.worker` as a subprocess: end to end, SIGTERM inside
+    the grace, SIGTERM past the grace, 1,000 pages at `info`, a run at
+    `debug`); `tests/scheduler/test_page_crawler.py` (every outcome row,
+    real Postgres and fake `Fetcher`s, with the sidecar 503 going through the
+    real `RenderServiceFetcher` over `MockTransport`);
+    `tests/adapters/postgres/test_frontier_claim_filter.py` (ADR-0034);
+    `tests/adapters/postgres/test_templates_codec.py`;
+    `tests/scheduler/test_render_budget.py`; one robots test for a host with
+    a port. Fixture: `/generated/<n>` in `server.py`, the vantage product
+    with `<n>` substituted plus a `Set-Cookie`, documented in the fixtures
+    README.
+  - **Red against the old code:** all five claim-filter tests fail against
+    `fix/1.11-review-findings`'s `frontier.py` (starvation as an
+    `AssertionError`, the pool tests as a `TypeError`). I made 21 small
+    mutations of `crawl.py`, `frontier.py`, `pools.py`, `logs.py`,
+    `robots.py`, `render_budget.py` and `templates.py`, and 20 of them turn
+    their guarding test red. The exception: dropping the `== 200` from AUTO's
+    second-chance condition in `crawl.py` stays green, because
+    `AutoFetcher` checks for a 200 too. That mutation is equivalent, not a
+    gap in the tests.
+  - **Not tested:** that `worker.py` wires the AUTO second chance through
+    the same `RenderBudget` as the rendered pool. `RenderBudget` is tested
+    on its own, but the wiring is only reachable through a running sidecar.
+    Also not tested: halt-then-abandon (`BREAK`/`NEVER_MATCHED`), which is
+    not on the Acceptance list.
+  - **For review:** `runs.stats` is
+    `{queue, observations, empty_extractions, unchanged, assets_enqueued}`,
+    not spec 009 §2's shape (`pages_crawled`, `by_strategy`, `by_domain`,
+    …). The tests assert only that `stats` is non-empty. At `debug`,
+    `page_crawled` carries `strategy: null` on an empty extraction. The
+    tests accept that and require a non-null `strategy` only where
+    something was extracted.
+
+- backend (after test): `runs.stats` now follows spec 009 §2's shape for
+  the keys phase 1 can know:
+  - `pages_crawled`, `pages_failed`, `pages_abandoned`, `pages_changed`,
+    `by_strategy`, `by_domain`, `duration_s`;
+  - plus `empty_extractions` and `assets_enqueued`, which stands in for
+    `assets_downloaded` until 5.2.
+
+  `assets_downloaded`, `asset_bytes`, `dedupe_rate` and
+  `validation_pass_rate` come with 5.2 and 5.7. The test-writer flagged the
+  mismatch; the e2e test now asserts the keys. `strategy` is `null` on a line
+  for a page that extracted nothing, and that is still "carrying" it in
+  spec 009 §1's sense.
+
+- reviewer (fresh context; did not write the code): 2 blocking findings,
+  8 non-blocking. Both blocking ones were confirmed with a throwaway test.
+  1. **Blocking, fixed.** The rendered pool spun at ~100 claim/release
+     cycles a second while `render` was down, with nothing logged above
+     `debug`.
+     - `crawl()` now returns "back off", and the loop sleeps
+       `BACKPRESSURE_S`.
+     - A `render_unavailable` warning (with an action) fires at most once a
+       minute, which is spec 012 §4's "reported stalled".
+  2. **Blocking, fixed.** A row could be closed twice.
+     - A crash after a committed 403 made `abort()` reopen it as `pending`,
+       a retry through a block.
+     - A lost lease let the first owner close the second owner's lease.
+     - `complete`/`release` are now **fenced on the lease** (`state =
+'in_flight' AND locked_until = :lease`, `RETURNING id`). A stale
+       completion only pushes `next_eligible_at` forward, and only a
+       completion that matched decrements `in_flight`.
+     - Fencing exposed a latent 1.8 bug: `ClaimedUrl.locked_until` was a
+       `str` (`row_to_json`) despite its annotation. It is now parsed.
+  3. **Fixed.** When the sweep retires a run's last row, it now finishes the
+     run (`PostgresRuns.finish_drained`, only for runs that have rows).
+  4. **Fixed.** The `RenderBudget` wait is bounded (`max_wait_s=30`, then
+     `Backpressure`), so a queue of second chances cannot outlive the lease.
+  5. **Fixed in part.** A crash no longer files `fetch_error`.
+     - A template that cannot be decoded still fails each page with a
+       traceback. 1.14's loader writes templates through the same codec, so
+       only a hand-edited row can reach that path. Raised below.
+  6. **Fixed in part.**
+     - `claim_failed` logs a traceback once and then every 30 failures, and
+       every `error` line names an action.
+     - 429 backoff now logs at `warning`.
+     - The loop binds `domain_id` and the crawler binds `domain` (the host),
+       so the type no longer changes between lines.
+     - `robots_override` every page vs the 100-line budget is a conflict
+       between two specs. Raised below.
+  7. **Fixed.** The stale docstrings (politeness `floor_ms`, `auto_fetcher`,
+     `logs.py`); the `tables.py` CHECK mirror; spec 005 now says the API's
+     `crawl_delay_ms` is `configured_crawl_delay_ms`; and a claim that raced
+     SIGTERM is released unfetched.
+  8. **Fixed.** A cancellation that lands inside `abort()` now releases the
+     row too.
+  9. **Deferred.** `by_domain` 403/429 counts. Raised below.
+  10. **Tests added** for the review's cases: a crash after a 403, release
+      after completion, a lost lease, robots disallow, loop backoff, sweep
+      finishes the run, the bounded budget wait. Halt-then-abandon is still
+      untested and is raised below.
+
+  **On the contract:** AUTO now renders only pages a template matched, since
+  untemplated pages are never substantive and every one would be a second
+  request.
+
+  **Writing the review tests found one more defect:** an empty body (a bare
+  404, a 204) made lxml raise `Document is empty` inside `extruct`, which
+  crashed the crawl of the page. It is caught now, and a test pins it.
+
+  **Mutation:** 7 chosen mutations on the fixes, 6 red. The survivor was a
+  redundant empty-body pre-check that duplicated the `ParserError` catch. It
+  was removed, and the remaining catch was shown red when broken.
+  Suite: 550 passed, 2 skipped.
+
+## Open questions — for the human
+
+Carried: the eleven from `fix/1.11-review-findings` and earlier.
+
+New:
+
+1. **No asset pool until 5.2.** ADR-0003 and spec 002 §6 say three pools;
+   this ships two and leaves the third to arrive with its consumer.
+2. **The robots fetch is still outside the gate** (1.9 open question 2). The
+   first page of a domain follows its `robots.txt` back to back. Unchanged
+   here.
+3. **Which template wins when several active templates match** is
+   unspecified. This takes the lowest id. Spec 001 §1 only forbids two
+   active templates with the same pattern.
+4. **Observations are written for 4xx (404, 410) but not for 403/429/5xx.**
+   A dead link is a fact about the page. A refusal or an outage is a fact
+   about the request.
+5. **`robots_override` vs the line budget.** Spec 002 §5 logs the override
+   "every time it takes effect", which is a `warning` per page of a
+   `respect_robots = false` domain. Spec 009 §5 caps a 1,000-page run at 100
+   lines. One of the two specs has to give. Unchanged here.
+6. **`stats.by_domain` has no 403/429 counts.** Spec 009 §2 shows them, but
+   nothing records a refusal per row today (no observation is written for
+   one, by decision 4 above). That wants either a column on `crawl_queue` or
+   `run_events` (2.8).
+7. **A template the codec cannot decode fails every page of its domain**,
+   with an error and a traceback each time, and the run still completes.
+   1.14's loader decodes before it writes, so only a hand-edited row reaches
+   this. A better answer is a domain event for "misconfigured", which the
+   lifecycle does not have.
+8. **Halt-then-abandon has no test.** The writer's halt is tested in 1.11,
+   and the abandon is one call. The composition of the two is not tested.

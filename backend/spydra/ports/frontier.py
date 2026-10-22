@@ -17,7 +17,16 @@ from datetime import datetime
 from enum import StrEnum, unique
 from typing import Protocol
 
+from spydra.domain.enums import RenderMode
 from spydra.domain.ids import DomainId, QueueItemId, RunId
+
+# Spec 002 §3 / ADR-0004: three attempts, then the row is failed rather than
+# returned for a fourth. In the port because both sides need it: the sweep
+# retires a row on it, and the worker decides retry-or-fail on it.
+MAX_ATTEMPTS = 3
+
+# Every mode. The default for a claim that does not belong to a pool.
+EVERY_RENDER_MODE: frozenset[RenderMode] = frozenset(RenderMode)
 
 
 @unique
@@ -59,7 +68,11 @@ class Completion:
     decay, and this carries the results.
     """
 
-    state: QueueItemState  # DONE | FAILED
+    # DONE | FAILED, or PENDING to retry: spec 002 §4 retries a 5xx (and a
+    # 429/503, and a request that got no response) "up to 3 attempts", and
+    # the attempt was already charged by the claim, so PENDING is what makes
+    # the next claim the next attempt.
+    state: QueueItemState
     next_eligible_at: datetime
     crawl_delay_ms: int
     consecutive_failures: int
@@ -77,8 +90,14 @@ class Completion:
 
 
 class Frontier(Protocol):
-    async def claim(self) -> ClaimedUrl | None:
+    async def claim(
+        self, render_modes: frozenset[RenderMode] = EVERY_RENDER_MODE
+    ) -> ClaimedUrl | None:
         """Lease the next eligible URL, or None if nothing is eligible.
+
+        `render_modes` is the pool asking (spec 002 §6): the rendered pool
+        claims only `rendered` domains, so a static fetch never waits behind
+        a browser and the sidecar is never asked for more than its pool.
 
         One transaction. The per-domain concurrency limit is enforced in SQL,
         not in this process, because it has to hold across worker replicas
@@ -90,12 +109,18 @@ class Frontier(Protocol):
         """
         ...
 
-    async def complete(self, item: ClaimedUrl, completion: Completion) -> None:
+    async def complete(self, item: ClaimedUrl, completion: Completion) -> bool:
         """Close the row, advance the domain, decrement `in_flight`. One
-        transaction."""
+        transaction.
+
+        Fenced on the lease: `False`, and nothing closed, if this claim no
+        longer holds the row (it was already closed, or its lease expired and
+        another worker took it). The gate is still pushed forward, since the
+        host did receive the request.
+        """
         ...
 
-    async def release(self, item: ClaimedUrl) -> None:
+    async def release(self, item: ClaimedUrl) -> bool:
         """Return a leased row to PENDING with no penalty.
 
         For `Backpressure` only (spec 002 §6): the sidecar's queue was full,

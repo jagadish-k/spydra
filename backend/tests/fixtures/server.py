@@ -100,6 +100,21 @@ SLOW_IMAGE_DELAY_S = 0.15
 OVERSIZED_PREFIX = "/oversized/"
 OVERSIZED_MAX_MB = 32  # a bound, so a typo in a test cannot ask for 20 GB
 
+# /generated/<n> — product <n> of an unbounded catalogue, for spec 009 §5's
+# "a 1,000-page run at `info` writes fewer than 100 lines" (BUILD_PLAN 1.13).
+# A thousand committed files would be a thousand copies of one shape, so the
+# page is `vantage-abrasives/product.html` with <n> written into the title,
+# the SKU, the price and the image names: every page is a distinct product,
+# extracted by the same approved template.
+#
+# It also sets a session cookie. Spec 009 §1 says no credential is ever
+# logged, and a log test over a site that sends none passes against a worker
+# that dumps every response header; with this, it cannot.
+GENERATED_PREFIX = "/generated/"
+GENERATED_TEMPLATE = PAGES / "vantage-abrasives/product.html"
+GENERATED_COOKIE_VALUE = "spydra-fixture-session-6f1d2c9a"
+GENERATED_SET_COOKIE = f"session={GENERATED_COOKIE_VALUE}; Path=/; HttpOnly"
+
 # Deliberately tiny: the bytes are irrelevant, the delay in front of them is
 # the point. 1x1 transparent PNG.
 # Split across two literals only so the line is under 100 columns without
@@ -123,6 +138,18 @@ def _int_segment(path: str, prefix: str, default: int) -> int:
         return default
 
 
+def generated_product(n: int) -> bytes:
+    """Product <n> of the generated catalogue (see GENERATED_PREFIX)."""
+    html = GENERATED_TEMPLATE.read_text()
+    html = (
+        html.replace("Resin Fibre Disc 115mm P60", f"Resin Fibre Disc 115mm P60 No. {n}")
+        .replace("VA-RFD-115-060", f"VA-RFD-115-060-{n}")
+        .replace("£14.75", f"£{10 + n % 90}.{n % 100:02d}")
+        .replace("/img/rfd-115-060-", f"/img/rfd-115-060-{n}-")
+    )
+    return html.encode()
+
+
 class FixtureHandler(BaseHTTPRequestHandler):
     """One handler, no routing framework, no logging to stderr."""
 
@@ -133,10 +160,18 @@ class FixtureHandler(BaseHTTPRequestHandler):
         a test that needs to know what was requested should assert on the
         server's `requests` list rather than read the console."""
 
-    def _send(self, body: bytes, content_type: str, status: int = 200) -> None:
+    def _send(
+        self,
+        body: bytes,
+        content_type: str,
+        status: int = 200,
+        extra_headers: tuple[tuple[str, str], ...] = (),
+    ) -> None:
         self.send_response(status)
         self.send_header("content-type", content_type)
         self.send_header("content-length", str(len(body)))
+        for name, value in extra_headers:
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
@@ -171,6 +206,15 @@ class FixtureHandler(BaseHTTPRequestHandler):
             tail = b"</p>"
             filler = b"x" * (mb * 1024 * 1024 - len(head) - len(tail))
             self._send(head + filler + tail, "text/html; charset=utf-8")
+            return
+
+        if path.startswith(GENERATED_PREFIX):
+            n = _int_segment(path, GENERATED_PREFIX, 0)
+            self._send(
+                generated_product(n),
+                "text/html; charset=utf-8",
+                extra_headers=(("set-cookie", GENERATED_SET_COOKIE),),
+            )
             return
 
         if path.startswith(TRAP_PREFIX):

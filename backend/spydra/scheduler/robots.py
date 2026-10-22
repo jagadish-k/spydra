@@ -65,7 +65,11 @@ class RobotsRules:
             return False
         if self.host is not None:
             asked = urlparse(url).hostname
-            if asked is not None and asked != self.host:
+            # Hostname against hostname. `host` is the domain row's, which
+            # may carry a port (`127.0.0.1:8099`), and `.hostname` never
+            # does, so comparing it raw refused every URL of such a domain
+            # as foreign (found running the 1.13 worker).
+            if asked is not None and asked != urlparse(f"//{self.host}").hostname:
                 log.warning(
                     "robots_host_mismatch",
                     extra={"rules_for": self.host, "asked_about": asked},

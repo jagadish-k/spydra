@@ -410,7 +410,7 @@ awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
       two halves against each other, because a URL excluded from the hash but
       not enqueued is an image invisible to both.
 
-- [ ] `1.13` **Worker process** — the three `asyncio.TaskGroup` pools over one
+- [x] `1.13` **Worker process** — the three `asyncio.TaskGroup` pools over one
       connection pool (ADR-0003), the sweep at the start of every claim-loop
       iteration. Replaces the placeholder `command` in `compose.yaml`. It
       emits no `run_events` yet — that is `2.8`, which adds emission to the
@@ -423,6 +423,18 @@ awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
       to completion and stops cleanly on SIGTERM mid-run, and a 1,000-page
       run at `info` stays under spec 009 §5's line budget with no HTML body
       or credential in any line.
+      **Done:** the real worker, as a subprocess, crawls the fixture site to
+      completion, and SIGTERM exits 0 inside the grace and past it, with
+      rows released. A 1,000-page run at `info` is ~3 lines. 28 chosen
+      mutations across two passes, 26 red; the 2 survivors are equivalent.
+      **Building the loop found the claim starving** (ADR-0034): a drained
+      domain stayed the most eligible one for good, so the first domain to
+      finish stopped every other. **Review found two blocking defects**: the
+      rendered pool spun against a stopped sidecar, and a row could be
+      closed twice, which reopened a 403 for retry. Both are fixed, the
+      second by fencing every completion on its lease. Also added:
+      `configured_crawl_delay_ms` (the decay's floor) and structlog JSON
+      logging.
 
 - [ ] `1.14` A YAML template loader so a domain can be configured without a
       UI. **This is scaffolding with a known end date** — it is deleted in
