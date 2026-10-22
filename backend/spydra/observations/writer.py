@@ -7,10 +7,12 @@ The order below is the slice (BUILD_PLAN `1.11`):
    `unchanged` row, with the **predecessor's emptiness verdict carried
    forward**;
 3. write the observation (append-only, ADR-0007);
-4. an `empty_extraction` on a 200, or a page with no template, goes to
+4. the asset URLs the extraction produced are enqueued — one `INSERT`, never
+   a download (ADR-0003, spec 008 §1 step 1, `1.12`);
+5. an `empty_extraction` on a 200, or a page with no template, goes to
    `unknown_pages` — every one of them, whether or not it counts as evidence
    (ADR-0027, ADR-0030);
-5. re-read the domain's health and apply the event it calls for: `BREAK`
+6. re-read the domain's health and apply the event it calls for: `BREAK`
    past 20% of regressions, `NEVER_MATCHED` on a first run past 20% of
    empties.
 
@@ -22,6 +24,16 @@ a perfectly stable catalogue would halt itself as a redesign on its second
 run. The verdict is therefore computed from the real extraction *before* the
 fields are dropped, and never re-derived from the row.
 
+**The assets are enqueued even when the page is unchanged.** `asset_queue`
+rows hang off an observation and `5.2` links them into
+`observation_assets`, so skipping the enqueue on a lightweight row would
+leave the newest observation of an unchanged product with no images — and
+`page_current` is what the UI reads (ADR-0007). The cost is that every run
+re-fetches the gallery of every unchanged page; spec 008 §4's
+hash-before-decode makes that cheap but not free, and the better fix is for
+`5.2` to copy the previous observation's links rather than re-download.
+Raised in the task file.
+
 **No politeness and no queue state here.** The frontier closes the queue row
 (`1.8`) and the politeness gate computes the delay (`1.9`); this writes what
 was extracted. `1.13` calls both.
@@ -30,6 +42,7 @@ was extracted. `1.13` calls both.
 from dataclasses import dataclass
 from datetime import datetime
 
+from spydra.adapters.postgres.assets import PostgresAssets
 from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.domain.entities import Observation, Template
 from spydra.domain.enums import DomainEvent, Strategy, UnknownReason
@@ -37,6 +50,7 @@ from spydra.domain.fetch import FetchedPage
 from spydra.domain.health import assess
 from spydra.domain.ids import DomainId, ObservationId, PageId, RunId
 from spydra.domain.lifecycle import can, transition
+from spydra.extraction.assets import asset_urls
 from spydra.extraction.chain import ChainResult
 from spydra.extraction.hashing import content_hash
 from spydra.extraction.validation import empty_extraction, validate
@@ -66,6 +80,10 @@ class WriteOutcome:
 
     observation_id: ObservationId
     observation: Observation
+    # How many `asset_queue` rows this page added. The INSERTED count, not
+    # the URL count: a re-crawl conflicts on UNIQUE (observation_id,
+    # source_url) and adds nothing.
+    assets_enqueued: int
     unknown_reason: UnknownReason | None
     event: DomainEvent | None
     halted: bool
@@ -74,8 +92,14 @@ class WriteOutcome:
 class ObservationWriter:
     """Writes observations and moves the domain when the run says to."""
 
-    def __init__(self, observations: PostgresObservations) -> None:
+    def __init__(self, observations: PostgresObservations, assets: PostgresAssets) -> None:
         self._observations = observations
+        # Taken as a collaborator rather than left to `1.13` to call: the
+        # rows are children of the observation, so the page path is one unit
+        # of work. Surfacing the URLs for the caller to insert leaves a
+        # silent failure mode where a refactor drops the second call and the
+        # only symptom is an empty asset queue noticed months later.
+        self._assets = assets
 
     async def record(
         self,
@@ -137,6 +161,9 @@ class ObservationWriter:
             extraction_rung=result.strategy,
         )
         observation_id = await self._observations.insert(observation)
+        # The extraction's URLs, not the lightweight row's: `fields` is empty
+        # on an unchanged page and its gallery still has to be linked.
+        enqueued = await self._assets.enqueue(run_id, observation_id, asset_urls(result.fields))
 
         reason = _reason(fetched.http_status, template, empty)
         if reason is not None:
@@ -146,6 +173,7 @@ class ObservationWriter:
         return WriteOutcome(
             observation_id=observation_id,
             observation=observation,
+            assets_enqueued=enqueued,
             unknown_reason=reason,
             event=event,
             halted=halted,
