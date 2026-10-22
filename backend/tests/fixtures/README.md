@@ -113,23 +113,31 @@ invented host, `halden.test`, rendered by `catalogue.py` from two
 hand-written templates (`pages/halden/{listing,product}.html`). Every page is
 a pure function of path, query and `Host`.
 
-| Shape                     | Where                                                                                                  | For          |
-| ------------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
-| exact product set         | `catalogue.PRODUCTS` (64 SKUs) at `/shop/p/<sku>`                                                      | phase-2 exit |
-| pagination                | leaves, 10 per page, `?page=N`, `a[rel=next]`; discs spans 3 pages                                     | 2.3          |
-| subcategory nest          | `/shop/grinding/belts/{narrow,wide}/`                                                                  | 2.3          |
-| scoped tiles vs mega-menu | `section.subcategories` (children only) vs `nav.mega` (whole tree, on every page)                      | 2.6          |
-| hidden tiles (§3a case A) | `/shop/finishing/`: tiles inside `display:none`                                                        | 2.6          |
-| facet explosion           | `form.facets a`: each link adds one value; every subset is reachable, far past 20,000                  | 2.3, 2.5     |
-| canonical pair            | `/shop/cutting/blades/p/<sku>` names `/shop/p/<sku>`; polishes name an off-host canonical              | 2.2          |
-| canonicalisation material | `section.promo` on `/shop/`: tracking params, fragment, unsorted query, `./..`, `//`, case             | 2.2          |
-| rejects                   | `footer.site-footer` on `/shop/`: off-host, subdomain, `mailto:`, `tel:`, `javascript:`, > 2,000 chars | 2.3, 2.5     |
-| depth chain               | `/shop/deep/1/` … `/8/`, one tile each, linked from the root's tiles                                   | 2.3          |
-| calendar trap             | `/shop/news/<yyyy>/<mm>/` links the next month for ever                                                | 2.5          |
-| relative-link trap        | `/shop/loop/x/` links `loop/x/` relative to itself for ever                                            | 2.5          |
+| Shape                     | Where                                                                                                                                                             | For          |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| exact product sets        | `PRODUCTS` (64, root only); `products_under(path)`; `EXIT_PRODUCTS` (33, from `EXIT_SEED`)                                                                        | phase-2 exit |
+| the exit's rules          | `EXIT_SEED = /shop/cutting/`, `EXIT_DISCOVERY`: scoped rules, facets in reach, spec 004's deny                                                                    | phase-2 exit |
+| off-host product cards    | discs page 1: `elsewhere.test`, `cdn.halden.test`, look-alikes `xhalden.test`, `halden.test.elsewhere.test`                                                       | 2.3, exit    |
+| pagination                | leaves, 10 per page, `?page=N`, `a[rel=next]`; discs spans 3 pages                                                                                                | 2.3          |
+| subcategory nest          | `/shop/grinding/belts/{narrow,wide}/`                                                                                                                             | 2.3          |
+| scoped tiles vs mega-menu | `section.subcategories` (children only) vs `nav.mega` (whole tree, on every page)                                                                                 | 2.6          |
+| hidden tiles (§3a case A) | `/shop/finishing/`: tiles inside `display:none`                                                                                                                   | 2.6          |
+| facet explosion           | `form.facets a`: each link adds one value; every subset is reachable, far past 20,000                                                                             | 2.3, 2.5     |
+| canonical pair            | `/shop/cutting/blades/p/<sku>` names `/shop/p/<sku>`; `/shop/cutting/` features `/shop/p/HT-SB-001`, so one crawl meets both; polishes name an off-host canonical | 2.2          |
+| canonicalisation material | `section.promo` on `/shop/`: tracking params, fragment, unsorted query, `./..`, `//`, case                                                                        | 2.2          |
+| rejects                   | `footer.site-footer` on every listing page: off-host, subdomain, `mailto:`, `tel:`, `javascript:`, > 2,000 chars                                                  | 2.3, 2.5     |
+| depth chain               | `/shop/deep/1/` … `/8/`, one tile each, off `/shop/cutting/`'s tiles: depth N from the exit seed                                                                  | 2.3          |
+| calendar trap             | `/shop/news/<yyyy>/<mm>/` links the next month for ever                                                                                                           | 2.5          |
+| relative-link trap        | `/shop/loop/x/page` links `loop/x/page` relative to itself for ever; the file-name segment keeps the pair under slash-stripping                                   | 2.5          |
 
 A path with or without its trailing slash is the same page, because `2.2`
 strips trailing slashes and the canonical form must be fetchable. Faceted
 pages list the same products as the unfiltered page: a filter that changes
 nothing is the real-world shape, and it is what makes a facet trap read as a
 working crawl.
+
+**Depths.** From the exit seed `/shop/cutting/` the deepest product is at
+depth 4 (seed → discs → page 2 → page 3 → product), one level inside
+`max_depth = 5`, and `/shop/deep/6/` is the first URL the cap must refuse.
+From the root, the last five discs sit at exactly depth 5, which is why the
+exit seeds a category.

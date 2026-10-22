@@ -153,6 +153,34 @@ its fixtures) unless trivially useful.
   fetched un-normalised; only its canonical form is fetchable, which the
   contract allows.
 
+- reviewer (fresh context; did not write it): 1 blocking, 7 non-blocking,
+  all probed with a stdlib BFS over `catalogue.render`.
+  1. **Blocking, fixed.** No category seed yielded `PRODUCTS` and none could
+     see an off-host link (the rejects footer was root-only), so the exit's
+     "without leaving the host" from a category seed would pass with the
+     host filter deleted, and scoped rules never met a facet. Now:
+     `products_under(path)`, `EXIT_SEED = /shop/cutting/`, `EXIT_DISCOVERY`
+     (scoped rules plus `form.facets a`, so the trap is in reach and only
+     spec 004's deny pattern keeps it out), `EXIT_PRODUCTS` (33). Four
+     off-host product cards on discs page 1, and the rejects footer on every
+     listing page. Probe from the exit seed with those rules (main session,
+     scratchpad): exactly the 33 SKUs, all 4 cards seen as off-host, 64 facet
+     links denied, 44 URLs.
+  2. **Fixed by seed choice.** From the root the last discs are at depth 5;
+     from the exit seed the deepest product is at 4. Recorded in the README.
+     Spec 004 §1 vs §5 depth off-by-one: open question 2.
+  3. **Fixed.** The depth chain hangs off `/shop/cutting/`: the probe reaches
+     `/shop/deep/5/` at depth 5 and never `/6/`.
+  4. **Fixed.** `/shop/cutting/` features `/shop/p/HT-SB-001`, so one crawl
+     meets both URLs of the canonical pair (probe: both discovered).
+  5. **Fixed.** The loop is `…/loop/x/page` → `loop/x/page`: the file-name
+     segment keeps the pair repeating whatever 2.2 does to trailing slashes.
+  6. **Fixed** with 1: `xhalden.test`, `halden.test.elsewhere.test`.
+  7. **Fixed.** The category-context route serves only that leaf's SKUs.
+  8. **Fixed.** BUILD_PLAN 2.1 ticked.
+     Tests now pin the old contract in places (root archive tile, loop path):
+     back to the test-writer.
+
 ## Open questions — for the human
 
 Carried from `fix/2.0-phase1-decisions` (see that file).
@@ -162,3 +190,7 @@ New:
 1. **`DiscoveryRules` has no `max_depth`** (it lives on `Domain`), while
    spec 004 §1's JSON puts it on the template's discovery rules. 2.3 decides;
    noted here because the fixture's depth chain assumes the domain's 5.
+2. **Spec 004 §1 vs §5 disagree by one on depth.** §1 keeps a link at
+   "depth below `max_depth`"; §5 says "depth 6 links are not enqueued when
+   `max_depth` is 5" (so depth 5 is). The fixture's exit is inside both
+   readings; 2.3 picks one and edits the other.
