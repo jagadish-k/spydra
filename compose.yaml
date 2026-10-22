@@ -172,9 +172,11 @@ services:
       - ./backend/tests:/app/tests:ro
     networks:
       default:
-        aliases: [vantage.fixtures, mertens.fixtures, orbis.fixtures]
+        aliases:
+          [vantage.fixtures, mertens.fixtures, orbis.fixtures, halden.fixtures]
       egress:
-        aliases: [vantage.fixtures, mertens.fixtures, orbis.fixtures]
+        aliases:
+          [vantage.fixtures, mertens.fixtures, orbis.fixtures, halden.fixtures]
 
   bff:
     build: { context: ., dockerfile: docker/bff.Dockerfile }

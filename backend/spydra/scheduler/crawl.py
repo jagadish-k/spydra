@@ -46,6 +46,7 @@ from spydra.adapters.postgres.pages import PostgresPages
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates, matching
 from spydra.discovery.canonical import canonical_link
+from spydra.discovery.links import discover
 from spydra.domain.entities import Domain, Template
 from spydra.domain.enums import DomainEvent, RenderMode, UnknownReason
 from spydra.domain.errors import Backpressure, FetchFailed
@@ -302,6 +303,37 @@ class PageCrawler:
                 abandoned=abandoned,
                 action="review the domain's template against its current pages",
             )
+            return
+        await self._discover(item, domain, fetched, template)
+
+    async def _discover(
+        self, item: ClaimedUrl, domain: Domain, fetched: FetchedPage, template: Template | None
+    ) -> None:
+        """Spec 004 §1: enqueue what the template's discovery rules select.
+
+        Before the row is closed, so the run cannot look drained between this
+        page completing and its links arriving. Never on a halted domain: its
+        new rows would never be claimed and the run would never finish.
+        """
+        if template is None or fetched.http_status != 200:
+            return
+        found = discover(
+            fetched.body,
+            fetched.final_url,
+            template.discovery,
+            host=domain.host,
+            depth=item.depth,
+            max_depth=domain.max_depth,
+            domain_deny=domain.deny_patterns,
+        )
+        links = found.links()
+        added = await self._frontier.enqueue(item.run_id, domain.id, links) if links else 0
+        log.debug(
+            "links_discovered",
+            accepted=len(links),
+            enqueued=added,
+            rejected={key: r.count for key, r in found.rejected.items()},
+        )
 
     async def _retry_or_fail(
         self,
@@ -405,9 +437,11 @@ def _completion(state: QueueItemState, source: Decision | Completion) -> Complet
 
 
 def _path(url: str) -> str:
-    """Path plus query: what `templates.url_pattern` is matched against
-    (spec 001 §1)."""
-    parts = urlsplit(url)
+    """Path plus query of the **canonical** URL: what `templates.url_pattern`
+    is matched against (spec 001 §1). The queue fetches the URL as written
+    (2.2), so `/shop/cutting/` and `/shop/cutting` are one page, and a
+    pattern written for one must match the other."""
+    parts = urlsplit(canonical_url(url))
     return f"{parts.path}?{parts.query}" if parts.query else parts.path
 
 
