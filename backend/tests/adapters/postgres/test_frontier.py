@@ -204,6 +204,78 @@ async def test_completion_writes_the_politeness_state_it_was_handed(
     assert dom.in_flight == 0, "completion must give the gate back"
 
 
+async def test_completion_persists_the_consecutive_403_count(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """ADR-0004's pause is only real if this count survives the queue row.
+
+    Added in `1.9` after review found the gate computing `consecutive_403s`
+    with nowhere to put it: no column, and no field on `Completion`. The
+    count was discarded the moment `complete()` ran, so a domain that 403s
+    twice and is then picked up by a restarted worker — or by another replica
+    — came back with zero and refused for ever without ever reaching three.
+    That is the outcome ADR-0004 exists to prevent, and it passed every unit
+    test in the gate's own suite.
+
+    In-process politeness state is also what ADR-0003 and ADR-0026 rejected,
+    for this reason.
+    """
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    await seed_queue_row(engine, run, domain, "https://v.test/a")
+
+    f = frontier(engine)
+    claimed = await f.claim()
+    assert claimed is not None
+
+    await f.complete(
+        claimed,
+        Completion(
+            state=QueueItemState.FAILED,
+            next_eligible_at=datetime.now(UTC),
+            crawl_delay_ms=2000,
+            consecutive_failures=2,
+            consecutive_403s=2,
+        ),
+    )
+
+    row = await domain_row(engine, domain)
+    assert row.consecutive_403s == 2, (
+        "the refusal count was not persisted, so ADR-0004's pause cannot survive a worker restart"
+    )
+    # ...and it is distinct from the shared counter, which is the whole point.
+    assert row.consecutive_failures == 2
+
+
+async def test_the_403_count_defaults_to_zero_and_can_be_cleared(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """A success resets it, and the reset has to reach the database too —
+    otherwise a domain that recovers stays two refusals from a pause for
+    ever."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    await seed_queue_row(engine, run, domain, "https://v.test/a")
+    assert (await domain_row(engine, domain)).consecutive_403s == 0
+
+    f = frontier(engine)
+    claimed = await f.claim()
+    assert claimed is not None
+    await f.complete(
+        claimed,
+        Completion(
+            state=QueueItemState.DONE,
+            next_eligible_at=datetime.now(UTC),
+            crawl_delay_ms=2000,
+            consecutive_failures=0,
+            consecutive_403s=0,
+        ),
+    )
+    assert (await domain_row(engine, domain)).consecutive_403s == 0
+
+
 async def test_release_gives_the_gate_back_and_charges_nothing(
     clean_crawl: AsyncEngine,
 ) -> None:

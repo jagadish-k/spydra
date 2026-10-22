@@ -83,6 +83,12 @@ domains = sa.Table(
     sa.Column("user_agent", sa.Text),
     sa.Column("next_eligible_at", sa.DateTime(timezone=True), nullable=False, server_default=_NOW),
     sa.Column("consecutive_failures", sa.Integer, nullable=False, server_default=sa.text("0")),
+    # Separate from `consecutive_failures` on purpose. Spec 002 §4 increments
+    # that one for 403, 429 and 503 alike, while ADR-0004 pauses on three
+    # consecutive **403s** — one counter cannot answer both questions, and
+    # reading the pause off the shared one pauses a domain that refused us
+    # once and was busy twice (BUILD_PLAN 1.9).
+    sa.Column("consecutive_403s", sa.Integer, nullable=False, server_default=sa.text("0")),
     sa.Column("notes", sa.Text),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=_NOW),
     # ADR-0026: the counter gates claiming, so a NEGATIVE one lets two workers
@@ -92,6 +98,7 @@ domains = sa.Table(
     # double-decrement. This is a backstop, not the gate: it makes that bug
     # loud rather than silent.
     sa.CheckConstraint("in_flight >= 0", name="in_flight_non_negative"),
+    sa.CheckConstraint("consecutive_403s >= 0", name="consecutive_403s_non_negative"),
     # The claim query's driving index (spec 002 §1). Partial, because only
     # active domains are ever eligible.
     sa.Index(

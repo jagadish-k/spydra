@@ -101,6 +101,17 @@ class AutoFetcher:
         `fell_back_from = RENDERED`, which `1.11` writes as
         `strategy = static_fallback`.
         """
+        # Spec 012 §4 says AUTO retries through the sidecar "if the
+        # extraction yields nothing usable **on a 200**", and the status
+        # qualifier is load-bearing rather than decorative. A 403 body
+        # ("Access denied") extracts nothing, so without this guard the
+        # obvious `1.13` loop would issue a SECOND request for a URL that had
+        # just been refused — inside the same claim, so with no politeness
+        # gap — which is a retry through a block and the one thing ADR-0004
+        # forbids outright.
+        if static_page.http_status != 200:
+            return static_page
+
         try:
             return await self._rendered.fetch(request)
         except Backpressure:

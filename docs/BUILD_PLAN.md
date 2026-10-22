@@ -292,7 +292,7 @@ choosing or reaching one.
       even when `max_concurrency` is 2 — the loser skips a domain it was
       entitled to use, and wins on retry.
 
-- [ ] `1.9` **Politeness gate**: `robots.txt` once per domain per run with
+- [x] `1.9` **Politeness gate**: `robots.txt` once per domain per run with
       `Crawl-delay` as a floor and 5xx failing closed, jitter in [0.7, 1.3],
       the ×2 backoff capped at 15 min, the 10% decay on success, and three
       consecutive 403s pausing the domain and abandoning its queue rows
@@ -300,6 +300,26 @@ choosing or reaching one.
       **Done when:** `TESTING.md` §2's politeness list passes against
       `1.4`'s robots fixtures, inter-request gaps show jitter rather than a
       constant, and no test retries through a 403.
+      **Done:** 38 tests, 25 chosen mutations, all red. The jitter is proven
+      twice — seeded for the arithmetic, and against **observed elapsed
+      time** for the gaps a supplier actually sees, because
+      `ports/clock.py` says in terms that a test which substitutes a Clock
+      and asserts the gate _would have_ waited "passes while the crawler is
+      rude to a real supplier".
+      **The 403 count is tracked separately from `consecutive_failures`**,
+      and that is not a tidiness choice: spec 002 §4 increments the shared
+      counter for 403, 429 and 503 alike while ADR-0004 pauses on three
+      consecutive **403s**, so one counter cannot answer both. Mutation found
+      the test that proves it was missing — reading the pause off the shared
+      counter passed everything, including "one 403 and two 429s", because
+      there the 403 comes first and the counters happen to agree. Put the
+      403 **last** and two busy responses followed by a single refusal pause
+      the domain on the spot.
+      One open question raised: **spec 002 §4's decay has nothing to decay
+      toward.** `domains` carries one `crawl_delay_ms`, so the ×2 backoff
+      destroys whatever the operator configured and "never below it" has no
+      referent. The gate takes the floor as an argument; the schema needs a
+      decision.
 
 - [ ] `1.10` **Extraction chain** with the `structured` and `selector` rungs,
       the transform table and validation (spec 003 §1–3). Validation records
