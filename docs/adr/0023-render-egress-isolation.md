@@ -1,6 +1,7 @@
 # ADR-0023 — The render sidecar is reached through the host, not a shared network
 
 **Status:** Accepted · 2026-10-15
+**Amended by:** [ADR-0036](0036-fixture-site-on-egress-for-the-exit.md) (a test-only fixture service, behind a profile)
 **Context:** phase 0 · affects `docs/specs/010-service-topology.md`,
 `docs/specs/012-render-sidecar.md`, `docs/DEVELOPMENT.md`, `compose.yaml`
 
@@ -38,7 +39,7 @@ host loopback, not through a shared docker network.**
    not `bff`. That is the isolation the spec asks for.
 2. `RENDER_BASE_URL=http://host.docker.internal:3001`. The `api` and
    `worker` services already carry `extra_hosts:
-   ["host.docker.internal:host-gateway"]` (added for `llama-server`,
+["host.docker.internal:host-gateway"]` (added for `llama-server`,
    ADR-0009), so this resolves on every platform this project runs on —
    Docker Desktop on macOS is both the dev and the target environment.
 3. **Every dev inspection port is bound to `127.0.0.1`** —
@@ -72,9 +73,9 @@ host loopback, not through a shared docker network.**
 
 ## Alternatives rejected
 
-| Option | Why not |
-| --- | --- |
-| `api`/`worker` join `egress` with `render` | Shares a network between the browser and the API; the page reaches `http://api:8000` and spec 012 §6 fails by construction |
-| A tiny forwarding proxy on both networks | A seventh service whose only job is to not be Caddy; and if the edge does it, the page can reach the edge and everything behind it |
+| Option                                                    | Why not                                                                                                                                           |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`/`worker` join `egress` with `render`                | Shares a network between the browser and the API; the page reaches `http://api:8000` and spec 012 §6 fails by construction                        |
+| A tiny forwarding proxy on both networks                  | A seventh service whose only job is to not be Caddy; and if the edge does it, the page can reach the edge and everything behind it                |
 | Playwright route interception blocking internal hostnames | Defense in depth at best — the page's `fetch()` still resolves DNS and connects at the OS level; the spec asks for the network to be the boundary |
-| Firewall rules inside the `render` container | Not expressible in plain compose; a second mechanism to maintain and test |
+| Firewall rules inside the `render` container              | Not expressible in plain compose; a second mechanism to maintain and test                                                                         |
