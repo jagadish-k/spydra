@@ -299,7 +299,7 @@ class PageCrawler:
             abandoned = await self._frontier.abandon_domain(item.run_id, domain.id)
             log.error(
                 "domain_halted",
-                event=outcome.event,
+                verdict=outcome.event,
                 abandoned=abandoned,
                 action="review the domain's template against its current pages",
             )

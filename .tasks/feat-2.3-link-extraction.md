@@ -185,6 +185,18 @@ event=outcome.event, ...)`; `event` is structlog's positional, so every
     "politely" is the real gate at one connection and a 20 ms delay, not
     an assertion on request timing; `test_politeness_observed.py` owns that.
 
+- backend (after test): both defects fixed, both red tests green.
+  1. Rejects are deduplicated before they are tallied: an http(s) link by
+     canonical hash, anything else (`mailto:`, unparseable) by its resolved
+     spelling. A link two rules match is counted once, under the first.
+     An href `urljoin`/`urlsplit` cannot parse is `unparseable`, never raised.
+  2. `log.error("domain_halted", event=…)` collided with structlog's own
+     `event` argument, so every mid-run halt raised `TypeError` after
+     abandoning the domain's rows and before closing the row (since 1.13,
+     untested until now). The key is `verdict`. No other call passes
+     `event=` (grep).
+     Suite: 1023 passed, 2 skipped; lint clean.
+
 ## Open questions — for the human
 
 Carried from 2.2.

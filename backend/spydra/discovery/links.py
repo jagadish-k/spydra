@@ -85,26 +85,35 @@ def discover(
     own_host = _host_of(host)
     tally = _Tally()
     accepted: dict[str, list[tuple[str, int]]] = {}
-    seen: set[bytes] = set()
+    # Keyed by canonical hash for an http(s) link, by the resolved spelling
+    # for anything else (it has no canonical form). Checked before any
+    # tally, so a link two rules match is counted once, under the first.
+    seen: set[bytes | str] = set()
     doc = LexborHTMLParser(html) if html else None
 
     for rule, href in _hrefs(doc, rules):
-        try:
-            absolute = urljoin(page_url, href)
-            if urlsplit(absolute).scheme.lower() not in _SCHEMES:
-                # `mailto:`, `tel:`, `javascript:` — rule 2, checked before
-                # canonicalising, which refuses anything without a host.
+        absolute = urljoin(page_url, href) if _resolvable(page_url, href) else href
+        scheme = _scheme(absolute)
+        if scheme is None:
+            if _first(seen, absolute):
+                tally.add(RejectReason.UNPARSEABLE, href)
+            continue
+        if scheme not in _SCHEMES:
+            # `mailto:`, `tel:`, `javascript:`: rule 2, checked before
+            # canonicalising, which refuses anything without a host.
+            if _first(seen, absolute):
                 tally.add(RejectReason.SCHEME, href)
-                continue
+            continue
+        try:
             canonical = canonical_url(absolute)
             digest = url_hash(absolute)
             fetchable = fetchable_url(absolute)
         except ValueError:
-            tally.add(RejectReason.UNPARSEABLE, href)
+            if _first(seen, absolute):
+                tally.add(RejectReason.UNPARSEABLE, href)
             continue
-        if digest in seen:
+        if not _first(seen, digest):
             continue
-        seen.add(digest)
         parts = urlsplit(canonical)
         target = parts.path + (f"?{parts.query}" if parts.query else "")
 
@@ -123,6 +132,32 @@ def discover(
         accepted={rule: tuple(links) for rule, links in accepted.items()},
         rejected=tally.result(),
     )
+
+
+def _first(seen: set[bytes | str], key: bytes | str) -> bool:
+    """True the first time `key` is seen on this page."""
+    if key in seen:
+        return False
+    seen.add(key)
+    return True
+
+
+def _scheme(url: str) -> str | None:
+    """The lowercased scheme, or `None` when `urlsplit` cannot parse it."""
+    try:
+        return urlsplit(url).scheme.lower()
+    except ValueError:
+        return None
+
+
+def _resolvable(page_url: str, href: str) -> bool:
+    """`urljoin` raises on some malformed hrefs (`http://[bad`); those are
+    resolved as written and rejected as unparseable below."""
+    try:
+        urljoin(page_url, href)
+    except ValueError:
+        return False
+    return True
 
 
 def _hrefs(doc: LexborHTMLParser | None, rules: DiscoveryRules) -> Iterable[tuple[str, str]]:
