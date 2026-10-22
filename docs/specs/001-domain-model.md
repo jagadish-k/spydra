@@ -113,6 +113,10 @@ CREATE TABLE page_observations (
   http_status   INT,
   content_hash  BYTEA,          -- skip the write when nothing changed
   strategy      TEXT,           -- 'structured' | 'selector' | 'llm'
+                                -- | 'static_fallback' (spec 012 §4): an AUTO
+                                -- domain that wanted a rendered fetch and
+                                -- could not have one. TEXT, so adding a value
+                                -- needs no migration.
   -- typed core fields
   title         TEXT,
   price_amount  NUMERIC(14,4),
@@ -338,7 +342,7 @@ class Observation:
     template_id: TemplateId | None
     observed_at: datetime
     http_status: int
-    strategy: Strategy               # STRUCTURED | SELECTOR | LLM
+    strategy: Strategy               # STRUCTURED | SELECTOR | LLM | STATIC_FALLBACK
     content_hash: bytes
     fields: ExtractedFields
     validation: Mapping[str, ValidationResult]

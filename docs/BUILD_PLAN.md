@@ -222,7 +222,7 @@ choosing or reaching one.
       four timeout phases, and the redirect budget, which was asserted
       against its own constant); all four are covered and red.
 
-- [ ] `1.7` **`RenderServiceFetcher`** behind the same port — HTTP to the
+- [x] `1.7` **`RenderServiceFetcher`** behind the same port — HTTP to the
       sidecar, 503 as `Backpressure` rather than a fetch failure, 504
       retried once (spec 002 §6, spec 012 §1). Adds `static_fallback` to
       `page_observations.strategy` for `render_mode = auto`, which spec 001
@@ -230,7 +230,35 @@ choosing or reaching one.
       **Done when:** `1.6`'s tests are unchanged — if they need changing the
       port is wrong, not the test — and the sidecar being down leaves
       `static` domains unaffected, stalls `rendered` ones honestly and makes
-      `auto` fall back and record it. **Also closes spec 012 §6's "the Python
+      `auto` fall back and record it.
+      **Done:** 64 tests, 19 chosen mutations, all red — after review. The
+      first pass claimed "17 mutations, all red" and was **16 of 17**, with
+      four more survivors found in review: the endpoint was not pinned, the
+      `timeout=` kwarg was deletable (httpx2 defaults to **5 s**, so every
+      render over 5 s would have stalled a RENDERED domain silently), a 200
+      with an incomplete payload invented a page with an empty body and
+      status 0 — which `1.11` would read as `empty_extraction` and move
+      healthy domains to BROKEN — and `Strategy.STATIC_FALLBACK`, the
+      slice's own deliverable, was referenced by nothing. Review also found
+      two defects that produce a system which _works_: the AUTO fallback
+      **re-fetched the supplier** inside the same claim, with no politeness
+      gap, for a page extraction had already rejected; and a sidecar **500**
+      — which is what `render/src/index.js` answers when the browser will not
+      launch — was charged to the supplier instead of being backpressure, so
+      AUTO domains would not have fallen back for the one status the sidecar
+      emits when its browser is broken. **The port needed no
+      change and `1.6`'s test file is byte-identical** — the result `1.2` was
+      written early to produce. `strategy` is `TEXT`, so `static_fallback`
+      needed **no migration**. An unreachable sidecar is `Backpressure`, not
+      `FetchFailed`: spec 012 §4 wants those rows left `pending` and reported
+      stalled, and calling it a failure would charge a healthy domain three
+      times for our own service being stopped (ADR-0004). AUTO's
+      extraction-driven retry is **not** built — `empty_extraction` arrives
+      in `1.10` and the orchestration in `1.13` — and the hook is named
+      rather than approximated. `FetchedPage` gains one defaulted field,
+      `fell_back_from`, because `fetch_path` cannot distinguish a healthy
+      AUTO static fetch from a degraded one; two open questions raised in the
+      task file rather than resolved. **Also closes spec 012 §6's "the Python
       image contains no `playwright` package and no browser"** — deferred
       here from `1.5` because it needs no browser, and asserted nowhere
       today: `docker/api.Dockerfile` and `docker/worker.Dockerfile` only say

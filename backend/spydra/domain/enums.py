@@ -97,11 +97,24 @@ class ProposedBy(StrEnum):
 
 @unique
 class Strategy(StrEnum):
-    """Which rung of the extraction chain produced an observation (spec 003 §1)."""
+    """What produced an observation, and how it was fetched when that differs.
+
+    The first three are rungs of the extraction chain (spec 003 §1).
+    `STATIC_FALLBACK` is not a rung: it records that an AUTO domain wanted a
+    rendered fetch and could not have one, so the fields came from the static
+    path instead (spec 012 §4, TESTING.md §2, BUILD_PLAN 1.7).
+
+    That makes this enum answer two questions, and an observation extracted
+    by the selector rung after a fallback can only record one of them. The
+    specs name `strategy = static_fallback` explicitly, so it is implemented
+    as specified — see `.tasks/feat-1.7-render-service-fetcher.md` open
+    question 2, which argues the cleaner shape is a second column.
+    """
 
     STRUCTURED = "structured"
     SELECTOR = "selector"
     LLM = "llm"
+    STATIC_FALLBACK = "static_fallback"
 
 
 @unique
