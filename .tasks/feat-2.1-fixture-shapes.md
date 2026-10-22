@@ -111,6 +111,15 @@ its fixtures) unless trivially useful.
 - planner (main session): contract above, from spec 004 §1–§5 and
   BUILD_PLAN 2.2–2.10's "Done when" lines, so later tasks do not need to grow
   the site again.
+- backend (main session; fixture infrastructure, no production code):
+  `catalogue.py` + `pages/halden/{listing,product}.html`; `server.py` routes
+  `/shop` to it before `ROUTES`. 64 products in 7 leaves (discs 25 → 3
+  pages), 11 tree nodes. Deep chain hangs off the root's tiles
+  (`/shop/deep/1/`…`/8/`, no products, so the product BFS is unaffected).
+  `server.py` imports `catalogue` as `tests.fixtures.catalogue`, falling back
+  to a bare import when the render suite runs it as `python3 server.py` from
+  `/fixtures` (checked in the render container: `/shop/p/HT-CD-001` serves).
+  Lint and mypy clean.
 
 ## Open questions — for the human
 

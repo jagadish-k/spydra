@@ -39,6 +39,7 @@ So `server.py` synthesizes them, with the shape as a URL parameter.
 | `/oversized/<mb>`  | `<mb>` MB of HTML as one text node, bounded at 32 MB so a typo cannot ask for 20 GB                                          |
 | `/trap/…`          | unbounded link depth, for BUILD_PLAN `2.5`'s caps                                                                            |
 | `/generated/<n>`   | product `<n>` of an unbounded catalogue, with a `Set-Cookie` — for spec 009 §5's 1,000-page log budget (BUILD_PLAN `1.13`)   |
+| `/shop/…`          | Halden Tools, the discovery catalogue (`catalogue.py`, BUILD_PLAN `2.1`) — see below                                         |
 
 **`/generated/<n>` is `vantage-abrasives/product.html` with `<n>` written
 into the title, SKU, price and image names**, so a thousand URLs are a
@@ -104,3 +105,31 @@ host on the egress network, which is exactly what that ADR denies. The
 sidecar suite does not own a second copy of the route table: `ROUTES` is the
 contract, and a reimplementation is the drift the JSON-LD twins exist to
 prevent.
+
+## Halden Tools — the discovery catalogue (`/shop/`)
+
+BUILD_PLAN `2.1`. Every phase-2 task and the phase-2 exit test against one
+invented host, `halden.test`, rendered by `catalogue.py` from two
+hand-written templates (`pages/halden/{listing,product}.html`). Every page is
+a pure function of path, query and `Host`.
+
+| Shape                     | Where                                                                                                  | For          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ | ------------ |
+| exact product set         | `catalogue.PRODUCTS` (64 SKUs) at `/shop/p/<sku>`                                                      | phase-2 exit |
+| pagination                | leaves, 10 per page, `?page=N`, `a[rel=next]`; discs spans 3 pages                                     | 2.3          |
+| subcategory nest          | `/shop/grinding/belts/{narrow,wide}/`                                                                  | 2.3          |
+| scoped tiles vs mega-menu | `section.subcategories` (children only) vs `nav.mega` (whole tree, on every page)                      | 2.6          |
+| hidden tiles (§3a case A) | `/shop/finishing/`: tiles inside `display:none`                                                        | 2.6          |
+| facet explosion           | `form.facets a`: each link adds one value; every subset is reachable, far past 20,000                  | 2.3, 2.5     |
+| canonical pair            | `/shop/cutting/blades/p/<sku>` names `/shop/p/<sku>`; polishes name an off-host canonical              | 2.2          |
+| canonicalisation material | `section.promo` on `/shop/`: tracking params, fragment, unsorted query, `./..`, `//`, case             | 2.2          |
+| rejects                   | `footer.site-footer` on `/shop/`: off-host, subdomain, `mailto:`, `tel:`, `javascript:`, > 2,000 chars | 2.3, 2.5     |
+| depth chain               | `/shop/deep/1/` … `/8/`, one tile each, linked from the root's tiles                                   | 2.3          |
+| calendar trap             | `/shop/news/<yyyy>/<mm>/` links the next month for ever                                                | 2.5          |
+| relative-link trap        | `/shop/loop/x/` links `loop/x/` relative to itself for ever                                            | 2.5          |
+
+A path with or without its trailing slash is the same page, because `2.2`
+strips trailing slashes and the canonical form must be fetchable. Faceted
+pages list the same products as the unfiltered page: a filter that changes
+nothing is the real-world shape, and it is what makes a facet trap read as a
+working crawl.

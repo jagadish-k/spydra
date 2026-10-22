@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{title}} — Halden Tools</title>
+    {{canonical}}
+  </head>
+  <body>
+    <!-- Halden Tools product page (BUILD_PLAN 2.1). The markup a selector
+         template extracts, plus the mega-menu every page carries. -->
+    <header><a href="/shop/">Halden Tools</a></header>
+    <nav class="mega">{{mega}}</nav>
+    <nav class="breadcrumb">{{breadcrumb}}</nav>
+    <main class="product">
+      <h1 class="product__title">{{title}}</h1>
+      <div class="product__price">{{price}}</div>
+      <div class="product__sku">{{sku}}</div>
+      <div class="gallery">
+        <img
+          class="gallery__image"
+          src="/img/halden/{{sku}}-a.jpg"
+          alt="front"
+        />
+        <img
+          class="gallery__image"
+          src="/img/halden/{{sku}}-b.jpg"
+          alt="side"
+        />
+      </div>
+    </main>
+  </body>
+</html>
