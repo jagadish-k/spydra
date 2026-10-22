@@ -1,0 +1,48 @@
+# Phase 1's exit, second run: `render` has been stopped.
+# Static crawling must be unaffected, and the AUTO domain must fall back and
+# record `strategy = static_fallback` (TESTING.md §2, spec 012 §4). The
+# rendered domain is left out: with no sidecar it stalls by design, and the
+# run would never finish.
+domains:
+  - host: vantage.fixtures:8099
+    scheme: http
+    render_mode: static
+    crawl_delay_ms: 300
+    templates:
+      - name: vantage product
+        url_pattern: "/catalog/.+/.+"
+        page_kind: product
+        extraction:
+          title:
+            {
+              selector: ".product__title",
+              transform: [trim],
+              validation: [non_empty],
+            }
+          price: { selector: ".product__price", validation: [currency] }
+          images:
+            {
+              selector: ".gallery__image",
+              attr: src,
+              many: true,
+              transform: [absolute_url],
+            }
+    seeds: [/catalog/abrasives/discs/rfd-115-060]
+
+  - host: orbis.fixtures:8099
+    scheme: http
+    render_mode: auto
+    crawl_delay_ms: 300
+    templates:
+      - name: mertens product
+        url_pattern: "/katalog/.+"
+        page_kind: product
+        extraction:
+          title:
+            {
+              selector: ".produkt__name",
+              transform: [trim],
+              validation: [non_empty],
+            }
+          price: { selector: ".produkt__preis", validation: [currency] }
+    seeds: [/katalog/stirnlochschluessel-30-80]

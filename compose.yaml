@@ -145,6 +145,26 @@ services:
         ]
       interval: 10s
 
+  # Phase 1's exit only (ADR-0036): 1.4's own fixture server, reachable from
+  # the worker (default) AND the browser (egress), so both fetchers crawl the
+  # same site. Behind a profile, so `make up` never starts it, and no host
+  # port. The aliases give each fixture domain a host of its own, because
+  # politeness and templates are per host.
+  fixtures:
+    profiles: [phase1-exit]
+    image: python:3.15-slim
+    working_dir: /app
+    command: python -m tests.fixtures.server
+    environment:
+      FIXTURE_PORT: "8099"
+    volumes:
+      - ./backend/tests:/app/tests:ro
+    networks:
+      default:
+        aliases: [vantage.fixtures, mertens.fixtures, orbis.fixtures]
+      egress:
+        aliases: [vantage.fixtures, mertens.fixtures, orbis.fixtures]
+
   bff:
     build: { context: ., dockerfile: docker/bff.Dockerfile }
     command: npm run dev

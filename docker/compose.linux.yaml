@@ -1,0 +1,17 @@
+# Linux Docker Engine only (CI, cloud containers). Used by `make phase1-exit`.
+#
+# ADR-0023 reaches the render sidecar through the host loopback:
+# `RENDER_BASE_URL=http://host.docker.internal:3001` with render published on
+# 127.0.0.1. That works on Docker Desktop, the project's dev and target
+# platform, where the host's loopback is reachable from containers. On Linux
+# Docker Engine, `host-gateway` is the docker0 bridge address and a port bound
+# to 127.0.0.1 refuses it, so the worker cannot reach the sidecar at all
+# (measured: connection refused).
+#
+# This adds a second publish on that bridge address, which is host-internal
+# (unreachable from off the machine) and is exactly what `host-gateway`
+# resolves to. The 127.0.0.1 publish is kept. Nothing is bound to 0.0.0.0, so
+# ADR-0023's boundary stands. Raised in `.tasks/feat-1.14-yaml-loader.md`.
+services:
+  render:
+    ports: ["${DOCKER_HOST_GATEWAY:-172.17.0.1}:3001:3001"]
