@@ -914,21 +914,25 @@ async def test_the_page_is_stamped_as_crawled(clean_crawl: AsyncEngine) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_a_page_whose_only_field_is_an_asset_url_is_not_empty(
+async def test_a_page_whose_only_field_is_an_asset_url_is_an_empty_extraction(
     clean_crawl: AsyncEngine,
 ) -> None:
-    """The corner where the hash and the predicate legitimately disagree.
+    """Inverted on purpose by ADR-0037; this was
+    `test_a_page_whose_only_field_is_an_asset_url_is_not_empty`.
 
     Spec 003 §4 excludes asset URLs from the hash, so a page whose only
-    resolved field is an image URL normalises to nothing. It is **not**
-    empty — a field resolved (ADR-0027) — and the predicate, not the hash,
-    decides whether the page is evidence of a regression.
+    resolved field is an image URL normalises to nothing. Under ADR-0027's
+    first wording it was not empty ("a field resolved"), and the hash and the
+    predicate disagreed here. That disagreement is what let an image-only SEO
+    stub over a redesign write NULL-title rows without ever reaching the
+    inbox. ADR-0037 makes the predicate "nothing substantive", so the two
+    now agree: the page **is** an empty extraction and is reported.
 
-    But nothing survives normalisation, so it has **no hash** (spec 003 §4):
-    `content_hash` is NULL and a repeat of it is never `unchanged`. A shared
+    What did not change: nothing survives normalisation, so it has **no
+    hash**, and a repeat of it is never `unchanged` (spec 003 §4). A shared
     digest of `{}` would make every image-only page "the same as before"
-    from its second crawl, and `page_current` would then skip the row that
-    carries its gallery.
+    from its second crawl. And its image still reaches the asset queue: the
+    verdict is about the page, not about the URLs it carried.
     """
     engine = clean_crawl
     domain_id, _, template = await a_domain_with_a_template(engine)
@@ -936,38 +940,36 @@ async def test_a_page_whose_only_field_is_an_asset_url_is_not_empty(
     url = "https://vantage-abrasives.test/catalog/photo-only"
     page_id = await seed_page(engine, domain_id, url, template_id=template.id)
     fetched = page(GOOD, url)
+    outcomes = []
 
-    outcome = await writer(engine).record(
-        page=CrawledPage(id=page_id, domain_id=domain_id, url=url),
-        run_id=run_id,
-        fetched=fetched,
-        result=ChainResult(
-            fields={"images": ["https://cdn.vantage-abrasives.test/a.jpg"]},
-            strategy=Strategy.SELECTOR,
-        ),
-        template=template,
-        observed_at=tick(),
-    )
-
-    await writer(engine).record(
-        page=CrawledPage(id=page_id, domain_id=domain_id, url=url),
-        run_id=run_id,
-        fetched=fetched,
-        result=ChainResult(
-            fields={"images": ["https://cdn.vantage-abrasives.test/a.jpg"]},
-            strategy=Strategy.SELECTOR,
-        ),
-        template=template,
-        observed_at=tick(),
-    )
+    for _ in range(2):
+        outcomes.append(
+            await writer(engine).record(
+                page=CrawledPage(id=page_id, domain_id=domain_id, url=url),
+                run_id=run_id,
+                fetched=fetched,
+                result=ChainResult(
+                    fields={"images": ["https://cdn.vantage-abrasives.test/a.jpg"]},
+                    strategy=Strategy.SELECTOR,
+                ),
+                template=template,
+                observed_at=tick(),
+            )
+        )
 
     first, repeat = await observation_rows(engine, page_id)
-    assert first.empty_extraction is False
-    assert outcome.unknown_reason is None
+    assert first.empty_extraction is True
+    assert outcomes[0].unknown_reason is UnknownReason.EMPTY_EXTRACTION
+    assert [r.reason for r in await unknown_rows(engine, domain_id)] == [
+        UnknownReason.EMPTY_EXTRACTION.value
+    ], "one open inbox row for the page, however often it is empty"
     assert first.content_hash is None
     assert repeat.content_hash is None
     assert repeat.unchanged is False, "nothing to compare is not 'the same as before'"
-    assert repeat.empty_extraction is False
+    assert repeat.empty_extraction is True
+    assert [r.source_url for r in await asset_queue_rows(engine)] == [
+        "https://cdn.vantage-abrasives.test/a.jpg"
+    ] * 2
 
 
 async def test_a_404_with_no_template_is_not_reported_either(
@@ -1452,6 +1454,9 @@ async def test_an_image_only_stub_with_a_template_writes_the_templates_fields(
     assert row.price_amount == Decimal("14.7500")
     assert row.price_currency == "GBP"
     assert row.content_hash is not None
+    # ADR-0037 widened "empty"; it must not reach a page the template read.
+    assert row.empty_extraction is False
+    assert await unknown_rows(engine, domain_id) == []
 
 
 async def test_an_image_only_stub_has_no_hash_and_is_never_unchanged(
@@ -1461,10 +1466,11 @@ async def test_an_image_only_stub_has_no_hash_and_is_never_unchanged(
     hash** ... and the row is never `unchanged`".
 
     With no template the stub's image is all there is: the row is written
-    from rung 1, is not an empty extraction (a field resolved), and has
-    nothing to compare. Crawled twice, the second row must be a full row —
-    read as "unchanged", it would be skipped by `page_current` and its
-    gallery attached to a row nobody reads.
+    from rung 1 and has nothing to compare. Since ADR-0037 it is also an
+    empty extraction (nothing substantive), which is why it is asserted
+    here rather than left implicit. Crawled twice, the second row must be a
+    full row — read as "unchanged", it would be skipped by `page_current`
+    and its gallery attached to a row nobody reads.
     """
     engine = clean_crawl
     domain_id, _, _ = await a_domain_with_a_template(engine)
@@ -1485,7 +1491,7 @@ async def test_an_image_only_stub_has_no_hash_and_is_never_unchanged(
 
     first, second = await observation_rows(engine, page_id)
     assert first.strategy == Strategy.STRUCTURED.value
-    assert first.empty_extraction is False
+    assert first.empty_extraction is True
     assert (first.content_hash, second.content_hash) == (None, None)
     assert second.unchanged is False
 
@@ -1821,3 +1827,213 @@ async def test_an_older_observation_does_not_move_last_crawled_at_backwards(
             )
         ).scalar_one()
     assert stamped == newer
+
+
+# ---------------------------------------------------------------------------
+# ADR-0037: an image-only SEO stub over a broken template is an empty page.
+# Written from `.tasks/fix-2.0-phase1-decisions.md`'s D1 acceptance lines.
+# ---------------------------------------------------------------------------
+
+STUB_REDESIGNED = "vantage-abrasives/product-image-stub-redesigned.html"
+SHARE_IMAGE = "https://vantage-abrasives.test/img/rfd-115-060-share.jpg"
+
+
+async def test_a_stub_over_a_redesign_is_reported_and_its_images_are_still_queued(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The case ADR-0037 exists for. The template resolves nothing and rung 1
+    returns only the stub's share image. Read as "a field resolved", the page
+    was not empty, so a redesign on this domain never reached the inbox.
+
+    It must be an empty extraction in the row (the column the threshold
+    reads), in the inbox, and the stub's image must still be queued: the
+    verdict is about the page, the URL is still worth fetching.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    url = "https://vantage-abrasives.test/catalog/rfd-115-060"
+    page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+
+    outcome = await crawl(
+        engine,
+        fixture=STUB_REDESIGNED,
+        url=url,
+        page_id=page_id,
+        domain_id=domain_id,
+        run_id=run_id,
+        template=template,
+    )
+
+    (row,) = await observation_rows(engine, page_id)
+    assert row.empty_extraction is True
+    assert row.title is None
+    assert row.content_hash is None
+    assert outcome.unknown_reason is UnknownReason.EMPTY_EXTRACTION
+    assert [(r.url, r.reason) for r in await unknown_rows(engine, domain_id)] == [
+        (url, UnknownReason.EMPTY_EXTRACTION.value)
+    ]
+    queued = await asset_queue_rows(engine)
+    assert [r.source_url for r in queued] == [SHARE_IMAGE]
+    assert {r.observation_id for r in queued} == {outcome.observation_id}
+
+
+async def test_stubs_over_a_redesign_halt_a_domain_whose_pages_once_extracted(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """ADR-0030 unchanged, now reachable: five pages that each extracted
+    before, two of them redesigned behind the stub (40%, past the 20%
+    threshold). The domain halts mid-run as `broken`, the same as the bare
+    redesign does.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    earlier_run = await seed_run(engine, [int(domain_id)])
+    run_id = await seed_run(engine, [int(domain_id)])
+    events = []
+
+    for i in range(5):
+        url = f"https://vantage-abrasives.test/catalog/stub-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        await seed_observation(engine, page_id, earlier_run, empty=False)
+        outcome = await crawl(
+            engine,
+            fixture=STUB_REDESIGNED if i < 2 else GOOD,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=run_id,
+            template=template,
+        )
+        events.append(outcome.event)
+
+    health = await PostgresObservations(engine).health(run_id, domain_id)
+    assert (health.pages_crawled, health.empty_pages, health.regressions) == (5, 2, 2)
+    assert DomainEvent.BREAK in events
+    assert DomainEvent.NEVER_MATCHED not in events
+    assert await domain_state(engine, domain_id) == "broken"
+
+
+async def test_stubs_over_a_redesign_on_a_first_run_send_the_domain_back_to_review(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The mirror: the same pages with no history at all. Nothing can have
+    regressed, so this is not `broken` but "never matched", and the domain
+    goes back through approval (ADR-0030)."""
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    events = []
+
+    for i in range(5):
+        url = f"https://vantage-abrasives.test/catalog/stub-new-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        outcome = await crawl(
+            engine,
+            fixture=STUB_REDESIGNED if i < 2 else GOOD,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=run_id,
+            template=template,
+        )
+        events.append(outcome.event)
+
+    health = await PostgresObservations(engine).health(run_id, domain_id)
+    assert health.first_run is True
+    assert (health.empty_pages, health.regressions) == (2, 0)
+    assert DomainEvent.NEVER_MATCHED in events
+    assert DomainEvent.BREAK not in events
+    assert await domain_state(engine, domain_id) == "awaiting_approval"
+
+
+@pytest.mark.parametrize(
+    ("prior_status", "prior_hash", "regressions"),
+    [
+        # Written before ADR-0037: an image-only page, `empty_extraction =
+        # false` and no hash. It never extracted anything substantive.
+        pytest.param(200, None, 0, id="legacy-image-only-row-is-not-a-prior"),
+        # A 404 that resolved nothing: `empty_extraction` is false for every
+        # non-200, so the column read "once worked" for every dead link.
+        pytest.param(404, None, 0, id="a-blank-404-is-not-a-prior"),
+        # The positive control: a prior with a hash did extract.
+        pytest.param(200, b"\x01" * 32, 5, id="a-hashed-row-is-a-prior"),
+    ],
+)
+async def test_the_prior_is_a_row_that_extracted_something_substantive(
+    clean_crawl: AsyncEngine,
+    prior_status: int,
+    prior_hash: bytes | None,
+    regressions: int,
+) -> None:
+    """ADR-0037 reads ADR-0030's "an earlier observation whose extraction was
+    non-empty" as `prior.content_hash IS NOT NULL`. Rows are never updated
+    (ADR-0007), so history written under the old predicate still says
+    `empty_extraction = false` for pages that never worked; reading that
+    column would turn every such page into a regression the first time it
+    is empty under the new one.
+
+    Every page here is empty this run, so only the prior decides.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    earlier_run = await seed_run(engine, [int(domain_id)])
+    run_id = await seed_run(engine, [int(domain_id)])
+
+    for i in range(5):
+        url = f"https://vantage-abrasives.test/catalog/history-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        await seed_observation(
+            engine,
+            page_id,
+            earlier_run,
+            empty=False,
+            content_hash=prior_hash,
+            http_status=prior_status,
+        )
+        await crawl(
+            engine,
+            fixture=STUB_REDESIGNED,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=run_id,
+            template=template,
+        )
+
+    health = await PostgresObservations(engine).health(run_id, domain_id)
+    assert health.empty_pages == 5
+    assert health.regressions == regressions
+    assert (await domain_state(engine, domain_id) == "broken") is (regressions > 0)
+
+
+async def test_a_stub_with_no_template_is_a_configuration_gap_and_queues_its_images(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Stub alone: no template, so nothing but the share image. ADR-0027 §3
+    still holds over ADR-0037's wider "empty": the reason is `no_template`
+    (it outranks), the page stays out of the threshold, and the image is
+    queued."""
+    engine = clean_crawl
+    domain_id = await seed_domain(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    url = "https://vantage-abrasives.test/catalog/rfd-115-060"
+    page_id = await seed_page(engine, domain_id, url)
+
+    outcome = await crawl(
+        engine,
+        fixture=IMAGE_STUB,
+        url=url,
+        page_id=page_id,
+        domain_id=domain_id,
+        run_id=run_id,
+        template=None,
+    )
+
+    assert outcome.unknown_reason is UnknownReason.NO_TEMPLATE
+    assert [r.reason for r in await unknown_rows(engine, domain_id)] == [
+        UnknownReason.NO_TEMPLATE.value
+    ]
+    assert [r.source_url for r in await asset_queue_rows(engine)] == [SHARE_IMAGE]
+    health = await PostgresObservations(engine).health(run_id, domain_id)
+    assert (health.pages_crawled, health.empty_pages, health.regressions) == (0, 0, 0)

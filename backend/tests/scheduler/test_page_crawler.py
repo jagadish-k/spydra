@@ -40,7 +40,12 @@ from spydra.domain.enums import FetchPath, RenderMode
 from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchedPage, FetchRequest
 from spydra.domain.ids import DomainId, RunId
-from spydra.extraction import ExtractionChain, SelectorStrategy, StructuredStrategy
+from spydra.extraction import (
+    ExtractionChain,
+    SelectorStrategy,
+    StructuredStrategy,
+    empty_extraction,
+)
 from spydra.observations.writer import ObservationWriter
 from spydra.ports.fetcher import Fetcher
 from spydra.ports.frontier import ClaimedUrl, Completion, QueueItemState
@@ -430,8 +435,9 @@ async def test_auto_renders_once_when_the_static_page_has_nothing_usable(
     clean_crawl: AsyncEngine,
 ) -> None:
     """A JS-dependent page whose server HTML carries only an image-only SEO
-    stub: not empty (an image resolved) but not substantive, and the template
-    finds nothing in it. That must still earn the browser retry. Exactly one:
+    stub: an image resolved, but nothing substantive, so it is an empty
+    extraction (ADR-0037), and the template finds nothing in it. That must
+    earn the browser retry. Exactly one:
     the rendered page is no better here, and that is not a reason to ask
     again."""
     domain = await seed_crawl_domain(clean_crawl, mode=RenderMode.AUTO, with_template=True)
@@ -479,6 +485,61 @@ async def test_auto_does_not_render_a_substantive_static_page(clean_crawl: Async
     await claim_and_crawl(clean_crawl, crawler, domain)
 
     assert rendered.calls == []
+
+
+# Static bodies on a templated AUTO domain, and whether each is an empty
+# extraction. Written from ADR-0037, not read off the predicate.
+STUB_REDESIGNED = (PAGES / "vantage-abrasives/product-image-stub-redesigned.html").read_text()
+REDESIGNED = (PAGES / "northfield/product-redesigned.html").read_text()
+# The template's gallery still resolves, every text field is gone: blank it
+# is not, substantive it is not.
+GALLERY_ONLY = PRODUCT.replace('class="product__', 'class="was__')
+
+
+@pytest.mark.parametrize(
+    ("body", "empty"),
+    [
+        pytest.param(PRODUCT, False, id="the-template-reads-it"),
+        pytest.param(IMAGE_STUB, False, id="a-stub-over-a-working-template"),
+        pytest.param(STUB_ONLY, True, id="a-stub-and-nothing-else"),
+        pytest.param(STUB_REDESIGNED, True, id="a-stub-over-a-redesign"),
+        pytest.param(REDESIGNED, True, id="nothing-resolves"),
+        pytest.param(GALLERY_ONLY, True, id="the-template-finds-only-images"),
+    ],
+)
+async def test_auto_renders_exactly_when_the_static_page_is_an_empty_extraction(
+    clean_crawl: AsyncEngine, body: str, empty: bool
+) -> None:
+    """ADR-0037: the `auto` fallback is caller 1 of ADR-0027's one predicate,
+    so the second chance fires on exactly the pages `empty_extraction` calls
+    empty, no more and no fewer. The expectation is checked against the real
+    predicate over the real chain too, so a case cannot quietly be about a
+    different definition of "nothing usable"."""
+    fetched = FetchedPage(
+        request_url=f"{BASE}/catalog/a",
+        final_url=f"{BASE}/catalog/a",
+        http_status=200,
+        body=body,
+        headers={},
+        fetched_at=datetime.now(UTC),
+        elapsed_ms=5,
+        fetch_path=FetchPath.STATIC,
+    )
+    extracted = await ExtractionChain([StructuredStrategy(), SelectorStrategy()]).extract(
+        fetched, vantage_template()
+    )
+    assert empty_extraction(200, extracted.fields) is empty, "the case is mislabelled"
+
+    domain = await seed_crawl_domain(clean_crawl, mode=RenderMode.AUTO, with_template=True)
+    run = await seed_run(clean_crawl, [int(domain)])
+    url = f"{BASE}/catalog/abrasives/discs/rfd-115-060"
+    await seed_queue_row(clean_crawl, run, domain, url)
+    rendered = ScriptedFetcher(FetchPath.RENDERED, always(200, PRODUCT))
+    crawler = build(clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200, body)), rendered)
+
+    await claim_and_crawl(clean_crawl, crawler, domain)
+
+    assert rendered.calls == ([url] if empty else [])
 
 
 @pytest.mark.parametrize("status", [404, 403, 500])

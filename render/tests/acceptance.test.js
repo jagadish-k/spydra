@@ -22,6 +22,8 @@
 // resident, which is how a timing test ends up quarantined (TESTING.md §5).
 
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import http from 'node:http';
 import { after, before, describe, test } from 'node:test';
 import { MAX_HTML_BYTES } from '../src/limits.js';
 import { healthz, raw, render, startFixtureSite, startSidecar } from './helpers/service.js';
@@ -315,17 +317,336 @@ describe('boundary regression guard — not one of the six criteria', () => {
     // §6's network-isolation criterion ("a page fetching http://api:8000/…
     // cannot reach it") needs the full stack and so is deferred — see the
     // task file. But its NEGATIVE half costs nothing here and nothing needs
-    // to be running: `render` is alone on `egress` (ADR-0023), so these
-    // names must not resolve. Without this, an `extra_hosts:` line or a
-    // shared network added later reopens "the only real isolation boundary
-    // in the stack" silently, and the criterion that would have caught it is
-    // waiting on a task that does not exist yet.
+    // to be running: `render` shares no network with these services
+    // (ADR-0023, ADR-0038), so their names must not resolve. Without this,
+    // an `extra_hosts:` line or a shared network added later reopens "the
+    // only real isolation boundary in the stack" silently.
+    //
+    // `worker` is deliberately NOT on the list. Since ADR-0038 it shares
+    // `render-link` with `render` and resolves by design; it listens on
+    // nothing, and the sidecar's own guard (below) is what stops a page
+    // using `render-link` the other way.
     const dns = await import('node:dns');
-    for (const host of ['api', 'db', 'bff']) {
+    for (const host of ['api', 'db', 'bff', 'edge', 'web']) {
       await assert.rejects(
         () => dns.promises.lookup(host),
-        `${host} resolves from the render container, so the egress isolation in ADR-0023 is gone`,
+        `${host} resolves from the render container, so the egress isolation in ADR-0023/0038 is gone`,
       );
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADR-0038: the browser shares this container, so a crawled page can reach
+// the sidecar's own API. The sidecar refuses requests shaped like a browser's.
+// ---------------------------------------------------------------------------
+
+/** One raw HTTP request with exactly these headers. node:http rather than
+ *  fetch, because fetch adds headers of its own (`sec-fetch-mode`) and the
+ *  guard is about which headers are present. Resolves on the response: a
+ *  refusal that does not read the body may reset the socket while a large
+ *  body is still being written, and that is the guard working. */
+function send(baseUrl, { method, path, headers = {}, body }) {
+  return new Promise((resolve, reject) => {
+    let answered = false;
+    const req = http.request(`${baseUrl}${path}`, { method, headers }, (res) => {
+      answered = true;
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let json = null;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          // not JSON; the status is the assertion
+        }
+        resolve({ status: res.statusCode, json });
+      });
+    });
+    req.on('error', (e) => {
+      if (!answered) reject(e);
+    });
+    if (body !== undefined) req.write(body);
+    req.end();
+  });
+}
+
+/** A loopback HTTP server owned by the test. `handler` returns
+ *  `{ status, headers, body }`; every request is recorded. */
+async function startServer(handler, host = '127.0.0.1') {
+  const seen = [];
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      const entry = { method: req.method, url: req.url, headers: req.headers };
+      seen.push(entry);
+      const out = handler(entry, Buffer.concat(chunks).toString('utf8'));
+      res.writeHead(out.status ?? 200, out.headers ?? {});
+      res.end(out.body ?? '');
+    });
+  });
+  server.listen(0, host);
+  await once(server, 'listening');
+  const baseUrl = `http://${host}:${server.address().port}`;
+  return {
+    baseUrl,
+    seen,
+    stop: () => new Promise((resolve) => server.close(resolve)),
+  };
+}
+
+/** A page whose script tries every way a page can POST to a URL, against
+ *  each target: the real sidecar, and a decoy that accepts anything. The
+ *  decoy is the control. If its count is right, the script ran and sent
+ *  every request, so the real sidecar's refusal is the only reason the
+ *  marker was never rendered. Without it, a page whose script never ran
+ *  would pass this test against a sidecar with no guard at all. */
+function attackerPage({ targets, marker }) {
+  const payload = JSON.stringify({ url: marker, wait_until: 'load' });
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>attacker</title></head>
+<body>
+${Object.keys(targets).map((name) => `<iframe name="sink-${name}"></iframe>`).join('')}
+<script>
+const PAYLOAD = ${JSON.stringify(payload)};
+const TARGETS = ${JSON.stringify(targets)};
+const tries = [
+  // A "simple" request: no preflight, so the POST itself is sent.
+  (b) => fetch(b + '/render', { method: 'POST', mode: 'no-cors', headers: { 'content-type': 'text/plain' }, body: PAYLOAD }),
+  // The worker's own content type: preflighted.
+  (b) => fetch(b + '/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: PAYLOAD }),
+  // No type set at all: text/plain;charset=UTF-8, simple.
+  (b) => fetch(b + '/render', { method: 'POST', mode: 'no-cors', body: PAYLOAD }),
+  (b) => new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', b + '/render');
+    x.setRequestHeader('content-type', 'application/json');
+    x.onload = resolve; x.onerror = reject;
+    x.send(PAYLOAD);
+  }),
+  (b) => Promise.resolve(navigator.sendBeacon(b + '/render', PAYLOAD)),
+];
+function formPost(name, b) {
+  return new Promise((resolve) => {
+    const frame = document.querySelector('iframe[name="sink-' + name + '"]');
+    frame.addEventListener('load', resolve, { once: true });
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = b + '/render';
+    form.enctype = 'text/plain';
+    form.target = 'sink-' + name;
+    const input = document.createElement('input');
+    // text/plain form encoding is name=value, so the JSON is split across
+    // the two to come out whole: {"url":...,"x":"="}
+    input.name = PAYLOAD.slice(0, -1) + ',"x":"';
+    input.value = '"}';
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+  });
+}
+(async () => {
+  for (const [name, b] of Object.entries(TARGETS)) {
+    await Promise.allSettled(tries.map((t) => t(b)));
+    await formPost(name, b);
+  }
+  const done = document.createElement('p');
+  done.id = 'done';
+  done.textContent = 'done'; // visible, or wait_for_selector never sees it
+  document.body.appendChild(done);
+})();
+</script>
+</body></html>`;
+}
+
+// Requests per target the attacker page sends: five scripted, one form.
+const ATTEMPTS = 6;
+
+/** This container's own address, on a network rather than loopback. */
+async function ownAddress() {
+  const dns = await import('node:dns');
+  const os = await import('node:os');
+  return (await dns.promises.lookup(os.hostname(), { family: 4 })).address;
+}
+
+describe('ADR-0038 — the sidecar refuses requests shaped like a browser', () => {
+  const box = sidecarFor();
+  let page; // the attacker page and the marker, one origin
+  // Two ways in, each with its decoy. Loopback is `127.0.0.1:3001`, where
+  // Chromium adds Sec-Fetch-*. The container's own address stands in for
+  // `render:3001` on `render-link`: plain http to a non-loopback host is not
+  // a trustworthy origin, so Chromium sends no Sec-Fetch-* there, and the
+  // guard has Origin alone to go on.
+  let decoy;
+  let decoyLan;
+  let targets;
+  const markerHits = (tag) => page.seen.filter((r) => r.url === `/marker/${tag}`).length;
+  const markerUrl = (tag) => `${page.baseUrl}/marker/${tag}`;
+  const renderBody = (tag) => JSON.stringify({ url: markerUrl(tag), wait_until: 'load' });
+
+  before(async () => {
+    page = await startServer((req) => {
+      if (req.url.startsWith('/marker/')) {
+        return { headers: { 'content-type': 'text/html' }, body: '<p>marker</p>' };
+      }
+      if (req.url === '/attacker') {
+        return {
+          headers: { 'content-type': 'text/html' },
+          body: attackerPage({ targets, marker: markerUrl('page') }),
+        };
+      }
+      return { status: 404 };
+    });
+    const permissive = (req) => ({
+      status: req.method === 'OPTIONS' ? 204 : 200,
+      headers: {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'POST',
+        'access-control-allow-headers': 'content-type',
+        'content-type': 'application/json',
+      },
+      body: req.method === 'OPTIONS' ? '' : '{}',
+    });
+    const lan = await ownAddress();
+    decoy = await startServer(permissive);
+    decoyLan = await startServer(permissive, lan);
+    targets = {
+      sidecar: box.svc.baseUrl,
+      'sidecar-lan': box.svc.baseUrl.replace('127.0.0.1', lan),
+      decoy: decoy.baseUrl,
+      'decoy-lan': decoyLan.baseUrl,
+    };
+  });
+
+  after(async () => {
+    if (page) await page.stop();
+    if (decoy) await decoy.stop();
+    if (decoyLan) await decoyLan.stop();
+  });
+
+  test('control: a worker-shaped POST /render is served, and the marker counts it', async () => {
+    // Without this, "the marker was never hit" below could mean the marker
+    // cannot be hit at all.
+    const r = await send(box.svc.baseUrl, {
+      method: 'POST',
+      path: '/render',
+      headers: { 'content-type': 'application/json' },
+      body: renderBody('control'),
+    });
+    assert.equal(r.status, 200);
+    assert.equal(markerHits('control'), 1);
+  });
+
+  for (const [name, value] of [
+    ['origin', 'http://127.0.0.1:1'],
+    ['sec-fetch-site', 'same-site'],
+    ['sec-fetch-dest', 'empty'],
+    ['sec-fetch-user', '?1'],
+  ]) {
+    test(`a request carrying ${name} is refused with 403 and renders nothing`, async () => {
+      const tag = `header-${name}`;
+      const r = await send(box.svc.baseUrl, {
+        method: 'POST',
+        path: '/render',
+        headers: { 'content-type': 'application/json', [name]: value },
+        body: renderBody(tag),
+      });
+      assert.equal(r.status, 403);
+      const h = await send(box.svc.baseUrl, { method: 'GET', path: '/healthz', headers: { [name]: value } });
+      assert.equal(h.status, 403, 'every path is guarded, not only /render');
+      assert.equal(markerHits(tag), 0);
+    });
+  }
+
+  for (const type of [undefined, 'text/plain', 'application/x-www-form-urlencoded']) {
+    test(`POST /render with content-type ${type ?? '(none)'} is refused with 415`, async () => {
+      const tag = `type-${type ?? 'none'}`.replace(/\W/g, '-');
+      const r = await send(box.svc.baseUrl, {
+        method: 'POST',
+        path: '/render',
+        headers: type === undefined ? {} : { 'content-type': type },
+        body: renderBody(tag),
+      });
+      assert.equal(r.status, 415);
+      assert.equal(markerHits(tag), 0);
+    });
+  }
+
+  test('the refusal comes before the body is read', async () => {
+    // Past the 64 KB cap: a guard that ran after reading would answer 413.
+    const big = 'x'.repeat(100 * 1024);
+    const browser = await send(box.svc.baseUrl, {
+      method: 'POST',
+      path: '/render',
+      headers: { 'content-type': 'application/json', origin: 'http://127.0.0.1:1' },
+      body: big,
+    });
+    assert.equal(browser.status, 403);
+    const plain = await send(box.svc.baseUrl, {
+      method: 'POST',
+      path: '/render',
+      headers: { 'content-type': 'text/plain' },
+      body: big,
+    });
+    assert.equal(plain.status, 415);
+  });
+
+  test("Node's fetch, which sends only sec-fetch-mode, is still served", async () => {
+    // The healthcheck in compose and this suite's own helpers are Node
+    // clients. Refusing sec-fetch-mode would take the sidecar out of its
+    // own healthcheck.
+    const viaFetch = await fetch(`${box.svc.baseUrl}/healthz`);
+    assert.equal(viaFetch.status, 200);
+    const explicit = await send(box.svc.baseUrl, {
+      method: 'GET',
+      path: '/healthz',
+      headers: { 'sec-fetch-mode': 'cors' },
+    });
+    assert.equal(explicit.status, 200);
+  });
+
+  test('a page whose script POSTs to the sidecar does not cause a second render', async () => {
+    const rendersBefore = (await healthz(box.svc.baseUrl)).pages_since_restart;
+
+    const r = await render(box.svc.baseUrl, {
+      url: `${page.baseUrl}/attacker`,
+      wait_until: 'networkidle',
+      wait_for_selector: '#done',
+      timeout_ms: 20_000,
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 300));
+
+    // The control half: every attempt reached both decoys, so the script
+    // ran and the requests left the page. Chromium put Origin on every one
+    // of them, which is the premise the guard rests on (on the LAN path it
+    // is the ONLY browser header there is).
+    for (const [name, d] of [['loopback', decoy], ['lan', decoyLan]]) {
+      const posts = () => d.seen.filter((q) => q.method === 'POST');
+      await until(
+        async () => posts().length >= ATTEMPTS,
+        `the ${name} decoy to receive ${ATTEMPTS} POSTs (got ${posts().length})`,
+        10_000,
+      );
+      assert.equal(posts().length, ATTEMPTS, name);
+      assert.deepEqual(
+        posts().filter((q) => q.headers.origin === undefined),
+        [],
+        `a browser POST to the ${name} decoy arrived without Origin, so the guard would not see it`,
+      );
+    }
+
+    // The sidecar half: nothing the page sent became a render. Polled for a
+    // while rather than read once, because a render the page caused would
+    // run concurrently and could finish after ours.
+    const settleBy = Date.now() + 2_000;
+    while (Date.now() < settleBy) {
+      assert.equal(markerHits('page'), 0, 'a page made the sidecar render on its behalf');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const h = await healthz(box.svc.baseUrl);
+    assert.equal(h.pages_since_restart, rendersBefore + 1, 'only the attacker page itself was rendered');
+    assert.equal(h.contexts_in_use, 0);
   });
 });

@@ -11,8 +11,9 @@ the exit code, and stdout.
   row left `in_flight`, every `in_flight` counter back to 0. Both halves:
   pages that finish inside the grace, and a page that does not, which must
   be cancelled and released rather than waited for.
-- **The log** (spec 009 §1, §5): a 1,000-page run at `info` writes fewer
-  than 100 lines; no line carries a body, a tag or a credential; at `debug`
+- **The log** (spec 009 §1, §5): a 1,000-page run at `info` on an
+  override domain writes one `robots_override` per page and fewer than 100
+  other lines; no line carries a body, a tag or a credential; at `debug`
   every crawl-path line carries its context.
 
 The render sidecar is pointed at a closed loopback port: every domain here
@@ -73,6 +74,7 @@ async def seed_site(
     delay_ms: int = 0,
     max_concurrency: int = 1,
     url_pattern: str = "/catalog/.+",
+    respect_robots: bool = True,
 ) -> tuple[DomainId, RunId]:
     """An active static domain at the fixture site's `host:port`, its
     approved vantage template, a run, and one pending row per path."""
@@ -85,12 +87,12 @@ async def seed_site(
                         """
                         INSERT INTO crawl.domains
                             (host, state, crawl_delay_ms, configured_crawl_delay_ms,
-                             max_concurrency, next_eligible_at)
-                        VALUES (:h, 'active', :d, :d, :mc, now() - interval '1 minute')
+                             max_concurrency, respect_robots, next_eligible_at)
+                        VALUES (:h, 'active', :d, :d, :mc, :rr, now() - interval '1 minute')
                         RETURNING id
                         """
                     ),
-                    {"h": host, "d": delay_ms, "mc": max_concurrency},
+                    {"h": host, "d": delay_ms, "mc": max_concurrency, "rr": respect_robots},
                 )
             ).scalar_one()
         )
@@ -410,14 +412,36 @@ async def test_sigterm_cancels_a_page_that_overruns_the_grace_and_releases_its_r
 LIFECYCLE = frozenset({"worker_started", "worker_stopped", "run_finished"})
 
 
-async def test_a_1000_page_run_at_info_writes_under_100_lines_with_no_body_or_credential(
+# Spec 009 §1's carve-out: operator overrides are logged per page on purpose
+# and sit outside §5's budget. Named here, so a new per-page event cannot join
+# the carve-out by accident; it has to be added to the spec and to this set.
+OPERATOR_OVERRIDES = frozenset({"robots_override"})
+
+
+async def test_a_1000_page_run_at_info_writes_under_100_lines_besides_its_overrides(
     clean_crawl: AsyncEngine, database_url: str, tmp_path: Path
 ) -> None:
+    """Spec 009 §5 as amended for spec 002 §5 (`.tasks/fix-2.0-phase1-decisions.md`
+    D3). On a `respect_robots = false` domain every page is crawled under the
+    operator's override, and each one says so at `warning`: exactly one
+    `robots_override` per page. Everything else counts against the budget,
+    so any OTHER line written per page fails it (1,000 of them is ten times
+    the budget).
+
+    Run on an override domain on purpose. On a respecting domain the
+    override lines do not exist, and the test could not tell a budget that
+    excludes them from one that silently drops them.
+    """
     log = tmp_path / "worker.log"
     paths = [f"/generated/{n}" for n in range(1000)]
     with FixtureSite() as site:
-        _, run = await seed_site(
-            clean_crawl, site.base_url, paths, max_concurrency=4, url_pattern=r"/generated/\d+"
+        domain, run = await seed_site(
+            clean_crawl,
+            site.base_url,
+            paths,
+            max_concurrency=4,
+            url_pattern=r"/generated/\d+",
+            respect_robots=False,
         )
         with worker(database_url, log, WORKER_STATIC="4") as proc:
 
@@ -436,10 +460,28 @@ async def test_a_1000_page_run_at_info_writes_under_100_lines_with_no_body_or_cr
     assert crawled == 1000, "the budget only means something over a real 1,000-page crawl"
 
     lines = log_lines(log)
-    assert len(lines) < 100, f"{len(lines)} lines at info for 1,000 pages"
-    for line in lines:
-        json.loads(line)  # spec 009 §1: JSON to stdout, every line
+    records = [json.loads(line) for line in lines]  # spec 009 §1: JSON, every line
     assert_no_body_or_credential(lines)
+
+    overrides = [r for r in records if r.get("event") in OPERATOR_OVERRIDES]
+    others = [r for r in records if r.get("event") not in OPERATOR_OVERRIDES]
+    assert len(overrides) == 1000, f"{len(overrides)} robots_override lines for 1,000 pages"
+    assert {r.get("level") for r in overrides} == {"warning"}
+    assert {r.get("run_id") for r in overrides} == {int(run)}
+    host = urlsplit(site.base_url).netloc
+    assert {r.get("host") for r in overrides} == {host}, f"not attributed to {domain}"
+    assert len(others) < 100, (
+        f"{len(others)} lines at info for 1,000 pages, besides the overrides; "
+        f"most common: {_most_common_events(others)}"
+    )
+
+
+def _most_common_events(records: list[dict[str, Any]]) -> list[tuple[str, int]]:
+    counts: dict[str, int] = {}
+    for r in records:
+        key = str(r.get("event"))
+        counts[key] = counts.get(key, 0) + 1
+    return sorted(counts.items(), key=lambda kv: -kv[1])[:3]
 
 
 async def test_at_debug_every_crawl_path_line_carries_its_context_and_no_body_or_credential(

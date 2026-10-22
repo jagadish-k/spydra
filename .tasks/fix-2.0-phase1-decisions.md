@@ -241,6 +241,76 @@ phase1-exit` green on Linux with no override.
     test-writer's.
   - ADR-0037, ADR-0038; status lines on 0023/0027/0030/0036; specs 001,
     003, 009, 010, 012; DEVELOPMENT.md.
+- test (spydra-test): written from the Acceptance list, ADR-0037/0038 and
+  spec 009 §1/§5. No production code touched.
+  - **Before:** 15 backend failures (13 in `test_observations.py`, 1 in
+    `test_chain.py`, plus the asset-URL test). **After:** backend 639
+    passed, 2 skipped, 0 failed; render 55/55 (the 20 MB A6 case passed
+    this run); `make lint-api` clean.
+  - **Seed helper, deliberately:** `observation_seed.seed_observation`'s
+    `content_hash` now follows `empty` (a fixed digest when `empty=False`),
+    because a non-empty row with no hash is a row the writer cannot produce
+    since 1.11. `content_hash=None, empty=False` is kept as the explicit way
+    to seed the legacy shape. That alone fixed 13 of the 15.
+  - **Changed on purpose, not deleted:**
+    `test_a_page_whose_only_field_is_an_asset_url_is_not_empty` →
+    `..._is_an_empty_extraction`; `test_an_image_only_jsonld_stub_alone_
+still_yields_its_images` → `..._yields_its_images_as_an_empty_extraction`;
+    `test_an_image_only_stub_has_no_hash_and_is_never_unchanged` now asserts
+    `empty_extraction = true`. Docstrings cite ADR-0037.
+  - **New fixture:** `vantage-abrasives/product-image-stub-redesigned.html`
+    (the stub's JSON-LD over renamed classes), hand-written, in the README.
+  - **D1 tests:** `test_validation.py` (predicate table incl. image-only,
+    hollow price, non-200; package export is the same function);
+    `test_chain.py` (stub over redesign → stub kept + empty; working template
+    behind stub → not empty; a 404 still names `selector`, the same page at
+    200 names none); `test_observations.py` (stub over redesign → row empty,
+    inbox `empty_extraction`, share image in `asset_queue`; 2/5 with priors →
+    `BREAK`/`broken`; first run → `NEVER_MATCHED`/`awaiting_approval`; prior
+    table: legacy `false`/NULL-hash row and blank 404 row are not priors, a
+    hashed row is; stub with no template → `no_template`, image queued,
+    outside the threshold; B3 test now also asserts not empty, no inbox);
+    `test_page_crawler.py` (AUTO renders iff `empty_extraction`, six bodies
+    incl. gallery-only).
+  - **D2 tests:** `render/tests/guard.test.js` (each header 403 on both
+    routes, `sec-fetch-mode` alone served, 415 table) and acceptance block
+    "ADR-0038": raw `node:http` requests per header → 403 and no render;
+    415 for none/text/form; refusal before body read (100 KB → 403/415, not
+    413); Node `fetch` healthz → 200; a worker-shaped control render hits
+    the marker once; a page served by the test, rendered by the sidecar,
+    POSTs to the sidecar on loopback AND on the container's own address
+    (stand-in for `render:3001`) five scripted ways plus a text/plain form,
+    with decoys as the control (6 POSTs each, every one with `Origin`) → 0
+    marker hits, `pages_since_restart` +1. DNS guard now lists
+    api/db/bff/edge/web; `worker` excluded by design, with the reason.
+  - **D3 test:** the 1,000-page test runs `respect_robots = false`, asserts
+    exactly 1,000 `robots_override` lines (warning, this run, this host) and
+    < 100 others; the carve-out set is named in the test.
+  - **Mutation (scratchpad runner, code restored with `git checkout`,
+    `git diff -- backend/spydra render/src` empty after): 16 chosen, 16
+    red, no survivors.** D1: predicate reverted; prior read from
+    `NOT empty_extraction`; AUTO on blank-ness; chain skips blanks on every
+    status; chain drops the fallback. D3: a per-page `info` line; a
+    per-page `warning` line; override logged once per run. D2: `refusal()`
+    null; content-type check dropped; each of the four headers dropped;
+    `sec-fetch-mode` added; guard only on `/render`. Predicate revert alone
+    turns 14 tests red across the four D1 files.
+  - **Finding (not a behaviour defect today; a false safety claim):** the
+    `application/json` barrier does **not** hold on its own. The sidecar
+    routes every request through `context.route('**/*')`, and with Playwright
+    interception on, a page's CORS `application/json` POST reached `/render`
+    with **no OPTIONS preflight** (measured: header list emptied, content-type
+    check kept → the page caused **2 renders**, sidecar log showed the two
+    JSON POSTs and no OPTIONS). `guard.js`'s "Either barrier alone would
+    hold" and ADR-0038's "cannot reach it with a preflighted one either" are
+    wrong for this sidecar. And on the `render:3001` path (plain http,
+    non-loopback, so not a trustworthy origin) Chromium sends no
+    `Sec-Fetch-*`: **`Origin` is the only thing refusing those requests**
+    (measured: dropping `origin` alone → the page renders). Reviewer: the
+    ADR text and the comment need correcting; the guard as written holds.
+  - **Observation:** `robots_override` carries `host` and `run_id` but no
+    `url`, so spec 009 §1's "each request should be attributable" is per
+    host per run, not per request. Left as is; raise if it matters.
 
 ## Open questions — for the human
 
