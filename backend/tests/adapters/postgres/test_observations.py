@@ -1146,11 +1146,12 @@ async def test_an_unchanged_page_still_enqueues_its_gallery(
     """The lightweight row has no fields, and its images still have to be
     linked.
 
-    `page_current` is the newest observation (ADR-0007), and `5.2` links
-    assets to the observation that enqueued them — so skipping this would
-    show an unchanged product with no images in the UI. The cost is a
-    re-fetch of an unchanged gallery every run, which `5.2` should fix by
-    copying the previous observation's links; raised in the task file.
+    Asset URLs are excluded from the hash (spec 003 §4), so an `unchanged`
+    row can carry a gallery that did change: a re-upload under new URLs.
+    Skipping the enqueue would make that change undetectable. `page_current`
+    skips `unchanged` rows (ADR-0033), so reconciling this gallery with the
+    view is `5.2`'s; raised in `.tasks/fix-1.11-review-findings.md`. The cost
+    is a re-fetch of an unchanged gallery every run.
     """
     engine = clean_crawl
     domain_id, _, template = await a_domain_with_a_template(engine)
@@ -1568,9 +1569,13 @@ async def test_a_page_empty_on_every_run_is_one_open_inbox_item(
             template=template,
         )
 
+    # The reason is reported on both runs; only the first opens an item.
+    opened = []
     for _ in range(2):
         outcome = await a_run()
         assert outcome.unknown_reason is UnknownReason.EMPTY_EXTRACTION
+        opened.append(outcome.inbox_opened)
+    assert opened == [True, False]
 
     (only,) = await inbox_rows(engine, domain_id)
     assert only.resolved_at is None
@@ -1581,7 +1586,7 @@ async def test_a_page_empty_on_every_run_is_one_open_inbox_item(
             sa.text("UPDATE crawl.unknown_pages SET resolved_at = now() WHERE id = :id"),
             {"id": only.id},
         )
-    await a_run()
+    assert (await a_run()).inbox_opened is True
 
     resolved, reopened = await inbox_rows(engine, domain_id)
     assert resolved.id == only.id and resolved.resolved_at is not None

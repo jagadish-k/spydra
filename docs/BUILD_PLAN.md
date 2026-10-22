@@ -371,12 +371,20 @@ choosing or reaching one.
       page halted the domain at 100%; `MINIMUM_PAGES_FOR_A_VERDICT = 5` is
       derived from `1/n > 0.20`, and spec 003 §3 names no minimum — raised.
       **ADR-0030's own prescription had no lifecycle edge**: `active ->
-  awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
+awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
       diagram, so a first run that never matched would have raised
       `InvalidTransition` instead of going back to review. And the inherited
       emptiness verdict **was production code that could not fail** —
       mutation showed it agreed with the computed verdict everywhere
       reachable and was wrong in the one corner where they differ.
+      **Follow-up** (`fix/1.11-review-findings`): three blocking findings
+      from a fresh-context review, each measured on real Postgres before
+      the fix. `page_current` returned the lightweight `unchanged` row, so
+      every stable page read empty from run 2 (ADR-0033). No-template pages
+      were counted in the threshold. An image-only JSON-LD stub stopped the
+      chain before the template and hashed like nothing. Also eleven
+      non-blocking findings. 20 chosen mutations, 16 red; the 4 survivors
+      are equivalent and named in the task file.
 
 - [x] `1.12` **Asset enqueue and backpressure** — the scheduler half only
       (spec 002 §7, ADR-0003): a page worker resolves image URLs, inserts

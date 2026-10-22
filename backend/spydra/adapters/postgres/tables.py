@@ -244,7 +244,7 @@ page_observations = sa.Table(
 # `include_object` filter in migrations/env.py, which keeps autogenerate from
 # proposing to drop a view it cannot see a definition for.
 #
-# **`unchanged` rows are skipped.** They are spec 003 §4's lightweight rows,
+# **`unchanged` rows are skipped** (ADR-0033). They are spec 003 §4's lightweight rows,
 # with NULL fields by design, and an `unchanged` row asserts "same content as
 # the observation before". So the newest row that is NOT `unchanged` *is* the
 # current content. Returning the lightweight row made every stable page read

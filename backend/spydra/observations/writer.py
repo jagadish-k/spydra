@@ -86,7 +86,12 @@ class WriteOutcome:
     # the URL count: a re-crawl conflicts on UNIQUE (observation_id,
     # source_url) and adds nothing.
     assets_enqueued: int
+    # A classification, not a write: the page's reason is reported on every
+    # run it applies to. `inbox_opened` says whether this run actually added
+    # an inbox row, which it does not while an earlier one is still open, so
+    # a nightly dead link is one item for the operator rather than one per run.
     unknown_reason: UnknownReason | None
+    inbox_opened: bool
     event: DomainEvent | None
     halted: bool
 
@@ -163,15 +168,26 @@ class ObservationWriter:
         enqueued = await self._assets.enqueue(run_id, observation_id, asset_urls(result.fields))
 
         reason = _reason(fetched.http_status, template, empty)
+        opened = False
         if reason is not None:
-            await self._observations.record_unknown(page.domain_id, page.url, reason)
+            opened = (
+                await self._observations.record_unknown(page.domain_id, page.url, reason)
+                is not None
+            )
 
-        event, halted = await self._apply_health(run_id, page.domain_id, empty=empty)
+        event, halted = (
+            # ADR-0027 §3: a page with no template is outside the threshold
+            # entirely, so it cannot change the verdict and is not assessed.
+            await self._apply_health(run_id, page.domain_id, empty=empty)
+            if template is not None
+            else (None, False)
+        )
         return WriteOutcome(
             observation_id=observation_id,
             observation=observation,
             assets_enqueued=enqueued,
             unknown_reason=reason,
+            inbox_opened=opened,
             event=event,
             halted=halted,
         )
@@ -195,6 +211,12 @@ class ObservationWriter:
         ~40 min at 34,000 pages. The one non-empty page that *can* trip it is
         the one that brings the run up to the minimum, when 4 empties of 5
         is suddenly a verdict. Hence the bounded count.
+
+        That reasoning assumes one write at a time. Two workers on one domain
+        (`max_concurrency > 1`, or two replicas) can both commit non-empty
+        pages 5 and 6 before either asks, and both then see a run already past
+        the minimum. The verdict is then **delayed, not lost**: the next empty
+        page on the domain is assessed and trips it.
         """
         if not empty and await self._observations.past_minimum(
             run_id, domain_id, MINIMUM_PAGES_FOR_A_VERDICT

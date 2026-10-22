@@ -177,6 +177,34 @@ resolved_at IS NULL` plus `ON CONFLICT DO NOTHING`. Spec 001 §1 is
     the test DB re-migrated) turns 3 tests red.
   - Suite: 493 passed, 2 skipped. Lint green.
 
+- reviewer (fresh context; did not write the code): 2 blocking, 5
+  non-blocking. Ran the slice's suites, plus a migration down/up with seeded
+  duplicate inbox rows (2 older resolved, newest left open).
+  1. **Blocking: a decision, not a defect.** A stub carrying only an image,
+     plus a _broken_ template, is still neither reported nor counted. The
+     chain sees the template come back empty and returns the stub's images,
+     so the page is not `empty_extraction`. Verified through the real chain.
+     This is the consequence of keeping ADR-0027's predicate unchanged, which
+     was the human's instruction ("an image URL _is_ a field that
+     resolved"). So it is **not changed here** and is raised as open
+     question 12.
+  2. **Blocking, docs:** the `page_current` change needed an ADR. **Written
+     as ADR-0033**, amending ADR-0007, including the reviewer's point that
+     `price_history` must skip `unchanged` rows too.
+  3. **Fixed.** A page with no template is no longer assessed at all, since
+     ADR-0027 §3 puts it outside the threshold, so it cannot change the
+     verdict.
+  4. **Documented.** Two concurrent writers can both see a run past the
+     minimum and skip, so the verdict is delayed to the next empty page.
+     It is not lost.
+  5. **Fixed.** One stale test docstring about `page_current`.
+  6. **Fixed.** `WriteOutcome.inbox_opened` tells a new inbox item from a
+     re-report, so 1.13/2.8 do not announce a nightly dead link as new.
+     Pinned in the dedupe test.
+  7. **Noted.** The migration marks older duplicate inbox rows resolved with
+     `now()`, and those cannot be told apart from an operator's own
+     resolution afterwards. Fine for one user.
+
 ## Open questions — for the human
 
 Carried forward from 1.11/1.12:
@@ -208,3 +236,20 @@ New:
 11. **`unknown_pages` dedupe is a schema decision outside spec 001 §1.**
     I made it (index plus spec edit) rather than leave ~1,700 inbox rows a
     day per large dead-link domain. Revert the migration if you disagree.
+12. **Image-only stub plus broken template is invisible** (review finding 1).
+    - **What happens:** ADR-0027's predicate says an image URL is a field
+      that resolved, so the page is not empty and cannot be a regression,
+      even when the chain knows the approved template came back with
+      nothing. A redesign on a domain whose SEO plugin emits image-only
+      `Product` blocks therefore writes NULL-title rows and never trips
+      `broken`.
+    - **The fix needs a decision:** count "a template was consulted and came
+      back empty, and no rung was substantive" as an empty extraction. That
+      changes where ADR-0027's predicate applies, so it wants an ADR, and it
+      is the opposite of the instruction this slice was given.
+    - **1.13's AUTO second chance uses "not substantive" rather than
+      `empty_extraction`,** so such a page _does_ get its browser retry.
+13. **"Substantive" is any surviving field.** A stub with `name` plus
+    `image`, or only `offers.priceCurrency`, is substantive and still
+    shadows the template's price. Merging rungs (open question 10) is the
+    real answer.

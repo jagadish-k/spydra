@@ -46,3 +46,4 @@ shape everything else sits inside.
 | [0030](0030-empty-needs-a-prior.md)                         | An empty extraction only counts as a regression if the page once worked     | Accepted                                   |
 | [0031](0031-figma-is-the-drawing-authority.md)              | Figma is the drawing authority; `SCREENS.md` is the screen registry         | Accepted                                   |
 | [0032](0032-everything-above-a-primitive-is-a-component.md) | Everything above a primitive is a component; screens are compositions       | Accepted                                   |
+| [0033](0033-current-state-skips-lightweight-rows.md)        | Current state skips lightweight rows; "nothing comparable" has no hash      | Accepted                                   |

@@ -6,19 +6,20 @@
 
 The operator asked for change tracking: prices and availability move, and the
 point of re-crawling is to see that. The naive implementation updates a
-`products` row in place and keeps an `updated_at`. That records *when* you
-looked, not *what changed*, and the difference cannot be retrofitted — once a
+`products` row in place and keeps an `updated_at`. That records _when_ you
+looked, not _what changed_, and the difference cannot be retrofitted — once a
 value is overwritten the history is gone.
 
 ## Decision
 
 Every crawl writes a `page_observations` row. Nothing is ever updated in
 place. Current state is the `page_current` view
-(`DISTINCT ON (page_id) … ORDER BY page_id, observed_at DESC`).
+(`DISTINCT ON (page_id) … ORDER BY page_id, observed_at DESC`), **which skips
+`unchanged` rows**: [ADR-0033](0033-current-state-skips-lightweight-rows.md).
 
 Two guards keep the table from filling with identical rows:
 
-1. **`content_hash`** over the *normalised extracted fields* — not the raw
+1. **`content_hash`** over the _normalised extracted fields_ — not the raw
    HTML, which changes on every request because of timestamps and session
    tokens. If the hash matches the previous observation, write a lightweight
    row (timestamp, status, `unchanged` flag) or skip and bump
