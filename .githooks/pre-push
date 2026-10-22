@@ -22,12 +22,29 @@ refused() {
   exit 1
 }
 
+untested() {
+  echo "${RED}✗ make check would test a tree you are not pushing: ${1}${OFF}" >&2
+  echo "  ${2}" >&2
+  exit 1
+}
+
+ZERO=0000000000000000000000000000000000000000
+head_sha=$(git rev-parse HEAD)
 refs_seen=0
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+while read -r local_ref local_sha remote_ref _remote_sha; do
   refs_seen=1
   case "$remote_ref" in
     refs/heads/develop|refs/heads/main) refused "${remote_ref#refs/heads/}" ;;
   esac
+  # `make check` runs against the working tree, so it only vouches for the
+  # commit that tree is. Pushing another branch from here — the routine move
+  # when a stack is rebased and force-pushed from one checkout — ran the gate
+  # on the wrong commit and let 1.9 ship without its regenerated crawl mirror,
+  # which CI then failed on #13 and #14. Deletions carry no tree to test.
+  if [ "$local_sha" != "$ZERO" ] && [ "$local_sha" != "$head_sha" ]; then
+    untested "${local_ref#refs/heads/} is at ${local_sha:0:7}, HEAD is ${head_sha:0:7}." \
+      "Check out ${local_ref#refs/heads/} and push from there."
+  fi
 done
 
 # No refs on stdin means the hook was invoked by hand, not by a push. Fall
@@ -35,6 +52,17 @@ done
 if [ "$refs_seen" -eq 0 ]; then
   branch=$(git rev-parse --abbrev-ref HEAD)
   case "$branch" in develop|main) refused "$branch" ;; esac
+fi
+
+# The same failure from the other side: an uncommitted regenerated file, or an
+# untracked migration, makes the gate green on a tree the commit is not.
+# Untracked files count — alembic and pytest both pick up a file git ignores
+# the existence of.
+dirty=$(git status --porcelain --untracked-files=normal)
+if [ -n "$dirty" ]; then
+  untested "the working tree has changes HEAD does not." \
+    "Commit them, or 'git stash -u', then push again:
+$(echo "$dirty" | head -20 | sed 's/^/    /')"
 fi
 
 if [ ! -f Makefile ] || ! grep -qE '^check:' Makefile; then
