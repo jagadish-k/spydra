@@ -45,6 +45,7 @@ from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.adapters.postgres.pages import PostgresPages
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates, matching
+from spydra.discovery.canonical import canonical_link
 from spydra.domain.entities import Domain, Template
 from spydra.domain.enums import DomainEvent, RenderMode, UnknownReason
 from spydra.domain.errors import Backpressure, FetchFailed
@@ -255,15 +256,21 @@ class PageCrawler:
         template: Template | None,
         result: ChainResult,
     ) -> None:
+        # Spec 004 §2 step 7: the page's own same-host canonical names the
+        # `pages` row, so two URLs for one product are one page. Only on a
+        # 200: an error page's canonical says nothing about the URL asked for.
+        page_url = (
+            canonical_link(fetched.body, item.url) if fetched.http_status == 200 else None
+        ) or item.url
         page_id = await self._repos.pages.upsert(
             domain.id,
-            item.url,
+            page_url,
             depth=item.depth,
             template_id=template.id if template else None,
             page_kind=template.page_kind if template else None,
         )
         outcome = await self._writer.record(
-            page=CrawledPage(id=page_id, domain_id=domain.id, url=item.url),
+            page=CrawledPage(id=page_id, domain_id=domain.id, url=page_url),
             run_id=item.run_id,
             fetched=fetched,
             result=result,

@@ -240,7 +240,9 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self._send(body, "text/html; charset=utf-8", status)
             return
 
-        target = ROUTES.get(path)
+        # 2.2 strips trailing slashes, so a route is served with or without
+        # one: the canonical form of `/catalog/abrasives/discs/` must fetch.
+        target = ROUTES.get(path) or ROUTES.get(path + "/") or ROUTES.get(path.rstrip("/"))
         if target is None:
             self._send(b"<!doctype html><title>404</title>", "text/html; charset=utf-8", 404)
             return
