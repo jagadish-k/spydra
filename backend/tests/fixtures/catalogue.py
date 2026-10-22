@@ -160,7 +160,9 @@ EXIT_DISCOVERY: dict[str, object] = {
     "product_links": "a.product-card__link",
     "next_page": "a[rel='next']",
     "subcategory_links": "section.subcategories a, form.facets a",
-    "deny_patterns": [r"\?(colour|grit|sort|view|per_page)="],
+    # `[?&]`, not `\?`: patterns see the canonical query, which is sorted, so
+    # a facet is not always the first parameter (`page=2&sort=price`).
+    "deny_patterns": [r"[?&](colour|grit|sort|view|per_page)="],
     "max_depth": 5,
 }
 EXIT_PRODUCTS: tuple[str, ...] = products_under(EXIT_SEED)

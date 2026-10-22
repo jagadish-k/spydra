@@ -39,8 +39,15 @@ redesign or invents one.
 - **Cost: a listing redesign is not caught by this detector.** If listing
   selectors stop matching, discovery finds nothing and the run simply
   crawls fewer pages. That failure is visible as a drop in discovered and
-  crawled counts per run (`runs.stats`, 2.7), not as `broken`. A per-rule
-  discovery count in the run report (2.7, 2.10) is the place to make it loud.
+  crawled counts per run, not as `broken`, and **until 2.7 adds discovered
+  counts to `runs.stats` it is silent**: only a low `pages_crawled` and the
+  per-page `debug` line show it. A per-rule discovery count in the run report
+  (2.7, 2.10) is the place to make it loud.
+- `_FIRST_RUN` ignores listing observations: a run that saw only listings
+  has not tried the product template, so the next run is still the first.
+- An AUTO domain does not render a listing page for a second chance (it is
+  not an extraction). A listing whose links only exist after JavaScript
+  therefore discovers nothing on AUTO; such a domain needs `rendered`.
 - `runs.stats.empty_extractions` still counts listing rows whose fields are
   empty; it is a raw count, not the verdict.
 

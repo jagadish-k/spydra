@@ -19,15 +19,15 @@ From `templates.discovery`:
   "product_links": "a.product-card__link",
   "subcategory_links": "nav.cat-tree a",
   "allow_patterns": ["^/catalog/", "^/products/"],
-  "deny_patterns": ["\\?(colour|grit|sort|view|per_page)=", "/compare"]
+  "deny_patterns": ["[?&](colour|grit|sort|view|per_page)=", "/compare"]
 }
 ```
 
 `max_depth` (default 5) and a further `deny_patterns` list live on the
 **domain** (spec 001 §1); a link must pass both lists. Patterns are searched
 against the canonical URL's path and query (§2). Rules are applied only on a
-page matched by a template, resolved against the URL the body was served
-from, by `spydra.discovery.links.discover`, which the dry-run (§4) shares.
+page matched by a template; hrefs resolve against the document's
+`<base href>` if it has one, else the URL the body was served from, by `spydra.discovery.links.discover`, which the dry-run (§4) shares.
 
 Each extracted link is kept only if **all** hold:
 
@@ -183,12 +183,12 @@ matched:
     "subcategory_links": { "count": 11, "sample": ["..."] }
   },
   "rejected": {
-    "deny_pattern": {
+    "deny_pattern:[?&](colour|grit|sort)=": {
       "count": 312,
-      "pattern": "\\?(colour|grit|sort)=",
+      "pattern": "[?&](colour|grit|sort)=",
       "sample": ["..."]
     },
-    "off_domain": { "count": 7, "sample": ["..."] }
+    "off_host": { "count": 7, "sample": ["..."] }
   },
   "projected_urls_at_depth_5": 2140
 }

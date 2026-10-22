@@ -224,10 +224,32 @@ WHERE run_id = :run_id AND domain_id = :domain_id AND state = 'pending'
 """
 )
 
+# One statement per page, and only into a live run on an active domain.
+#
+# **The guard is in the INSERT, under a share lock on the domain row.** A
+# check made first and an insert made after is a race: another worker can
+# halt the domain (`BREAK`, a 403 pause) and abandon its pending rows in
+# between, and rows inserted after that are claimed by nobody, so the run
+# never drains (2.3 review finding 1, reproduced). `FOR SHARE` makes a
+# concurrent halt's `UPDATE domains` wait for this insert to commit, so its
+# abandon sees these rows; an insert that waited on a halt re-reads the state
+# and inserts nothing. The run must still be `running`: a worker whose lease
+# was lost can otherwise add work to a run the sweep already finished.
+#
+# `unnest` makes it one round trip whatever the page links to: a mega-menu
+# page re-sends hundreds of links, almost all of them conflicts.
 _ENQUEUE = sa.text(
     """
 INSERT INTO crawl.crawl_queue (run_id, domain_id, url, url_hash, depth)
-VALUES (:run_id, :domain_id, :url, :url_hash, :depth)
+SELECT :run_id, :domain_id, u.url, u.url_hash, u.depth
+FROM unnest(CAST(:urls AS text[]), CAST(:hashes AS bytea[]), CAST(:depths AS int[]))
+     AS u(url, url_hash, depth)
+WHERE EXISTS (
+          SELECT 1 FROM crawl.domains d
+          WHERE d.id = :domain_id AND d.state = 'active'
+          FOR SHARE
+      )
+  AND EXISTS (SELECT 1 FROM crawl.runs r WHERE r.id = :run_id AND r.state = 'running')
 ON CONFLICT (run_id, url_hash) DO NOTHING
 RETURNING id
 """
@@ -370,21 +392,15 @@ class PostgresFrontier:
         """
         if not urls:
             return 0
-        inserted = 0
         async with self._engine.begin() as conn:
-            for url, depth in urls:
-                row = (
-                    await conn.execute(
-                        _ENQUEUE,
-                        {
-                            "run_id": int(run_id),
-                            "domain_id": int(domain_id),
-                            "url": fetchable_url(url),
-                            "url_hash": url_hash(url),
-                            "depth": depth,
-                        },
-                    )
-                ).scalar_one_or_none()
-                if row is not None:
-                    inserted += 1
-        return inserted
+            result = await conn.execute(
+                _ENQUEUE,
+                {
+                    "run_id": int(run_id),
+                    "domain_id": int(domain_id),
+                    "urls": [fetchable_url(url) for url, _ in urls],
+                    "hashes": [url_hash(url) for url, _ in urls],
+                    "depths": [depth for _, depth in urls],
+                },
+            )
+            return len(result.fetchall())

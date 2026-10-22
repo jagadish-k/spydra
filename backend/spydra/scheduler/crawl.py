@@ -48,7 +48,7 @@ from spydra.adapters.postgres.templates import PostgresTemplates, matching
 from spydra.discovery.canonical import canonical_link
 from spydra.discovery.links import discover
 from spydra.domain.entities import Domain, Template
-from spydra.domain.enums import DomainEvent, RenderMode, UnknownReason
+from spydra.domain.enums import DomainEvent, PageKind, RenderMode, UnknownReason
 from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchedPage, FetchRequest
 from spydra.domain.urls import canonical_url
@@ -175,9 +175,13 @@ class PageCrawler:
         # page with no template has no selector a render could feed, and
         # rendering every one would be a second request to the supplier per
         # page for nothing.
+        # A listing template's page is never an extraction verdict
+        # (ADR-0039), so "nothing usable" says nothing about it either: an
+        # AUTO domain would otherwise render every field-less listing twice.
         if (
             domain.render_mode is RenderMode.AUTO
             and template is not None
+            and template.page_kind is PageKind.PRODUCT
             and fetched.http_status == 200
         ):
             result = await self._chain.extract(fetched, template)

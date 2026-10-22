@@ -43,7 +43,7 @@ shape everything else sits inside.
 | [0027](0027-no-required-fields.md)                          | No field is ever required; emptiness is the only failure signal             | Accepted _(amended by 0037, 0039)_         |
 | [0028](0028-httpx2-and-mocktransport.md)                    | httpx2 for the Fetcher; its own MockTransport instead of respx              | Accepted                                   |
 | [0029](0029-deterministic-crawl-mirror.md)                  | The committed crawl mirror is normalised, not verbatim                      | Accepted                                   |
-| [0030](0030-empty-needs-a-prior.md)                         | An empty extraction only counts as a regression if the page once worked     | Accepted _(prior amended by 0037)_         |
+| [0030](0030-empty-needs-a-prior.md)                         | An empty extraction only counts as a regression if the page once worked     | Accepted _(amended by 0037, 0039)_         |
 | [0031](0031-figma-is-the-drawing-authority.md)              | Figma is the drawing authority; `SCREENS.md` is the screen registry         | Accepted                                   |
 | [0032](0032-everything-above-a-primitive-is-a-component.md) | Everything above a primitive is a component; screens are compositions       | Accepted                                   |
 | [0033](0033-current-state-skips-lightweight-rows.md)        | Current state skips lightweight rows; "nothing comparable" has no hash      | Accepted                                   |

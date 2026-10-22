@@ -90,6 +90,7 @@ def discover(
     # tally, so a link two rules match is counted once, under the first.
     seen: set[bytes | str] = set()
     doc = LexborHTMLParser(html) if html else None
+    page_url = _base(doc, page_url)
 
     for rule, href in _hrefs(doc, rules):
         absolute = urljoin(page_url, href) if _resolvable(page_url, href) else href
@@ -132,6 +133,19 @@ def discover(
         accepted={rule: tuple(links) for rule, links in accepted.items()},
         rejected=tally.result(),
     )
+
+
+def _base(doc: LexborHTMLParser | None, page_url: str) -> str:
+    """The URL relative hrefs resolve against: the document's own
+    `<base href>` if it has one (resolved against the page), else the page.
+    A browser does the same, and the site's links are written for it."""
+    if doc is None:
+        return page_url
+    node = doc.css_first("base[href]")
+    href = (node.attributes.get("href") or "").strip() if node is not None else ""
+    if not href or not _resolvable(page_url, href):
+        return page_url
+    return urljoin(page_url, href)
 
 
 def _first(seen: set[bytes | str], key: bytes | str) -> bool:

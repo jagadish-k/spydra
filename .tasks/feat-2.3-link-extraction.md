@@ -197,6 +197,43 @@ event=outcome.event, ...)`; `event` is structlog's positional, so every
      `event=` (grep).
      Suite: 1023 passed, 2 skipped; lint clean.
 
+- reviewer (fresh context; did not write it): 1 blocking, 12 non-blocking,
+  with DB probes for 1, 3, 5, 6.
+  1. **Blocking, fixed.** With `max_concurrency > 1`, another claim could
+     halt the domain and abandon its rows while this page was in flight;
+     this page's write saw no halt of its own, discovery inserted `pending`
+     rows nobody would claim, and the run never finished (reproduced). The
+     enqueue is now **one statement** that inserts only while the domain is
+     `active` (`FOR SHARE` on its row, so a concurrent halt waits for the
+     insert and its abandon sees the rows) and the run is `running`.
+  2. **Fixed.** Spec 004's example deny `\?(colour|…)=` misses a facet that
+     is not first in the sorted canonical query (`page=2&sort=price`). The
+     spec example, the §4 sample and `EXIT_DISCOVERY` use `[?&](…)=`.
+  3. **Fixed.** `_FIRST_RUN` ignores listing observations (ADR-0039).
+  4. **Fixed, with a stated cost.** AUTO no longer gives a listing page a
+     second chance: every field-less listing was fetched twice. A listing
+     whose links need JavaScript discovers nothing on AUTO; written into
+     ADR-0039 (use `rendered`). Raised as open question 2.
+  5. **Fixed by 1:** the enqueue refuses a run that is not `running`, so a
+     worker whose lease was lost cannot add work to a finished run.
+  6. **Fixed in part.** The loader refuses `discovery.max_depth` (10). An
+     invalid discovery regex or selector in a hand-edited row still raises
+     after the observation is written: raised as open question 3.
+  7. **Fixed.** `<base href>` is honoured; spec 004 §1 says so.
+  8. **Documented.** ADR-0039 now says the listing-redesign gap is silent
+     until 2.7 adds discovered counts. No per-page warning: it would spend
+     spec 009's line budget on every empty listing.
+  9. **Documented.** Spec 001 §1: `url_pattern` matches the canonical
+     path+query (no trailing slash, sorted query).
+  10. **Fixed.** `discovery.max_depth` in a YAML template is refused, as
+      `required` is.
+  11. **Fixed.** Spec 004 §4 keys: `off_host`, `deny_pattern:<pattern>`.
+  12. **Fixed.** BUILD_PLAN 2.3 ticked; ADR-0030 and the index link 0039.
+  13. **Fixed by 1:** one round trip per page (`unnest`).
+      Suite after: 1023 passed, 2 skipped. A first attempt at 3 also excluded
+      no-template priors and turned 14 existing ADR-0030 tests red; narrowed to
+      listing-template rows only.
+
 ## Open questions — for the human
 
 Carried from 2.2.
@@ -206,3 +243,11 @@ New:
 1. **Subdomains are never followed** (same-host rule). Spec 004 §1's
    "subdomains configurable per domain" needs a column and the public suffix
    list; neither is built.
+2. **Listings whose links need JavaScript discover nothing on AUTO** (review
+   finding 4). Rendering every listing to find out costs a second request
+   per listing page. Options: such domains use `rendered`; or render a
+   listing only when static discovery accepts zero links. Not built.
+3. **An invalid discovery pattern or selector** in a hand-edited template or
+   domain row raises during discovery, after the observation is written, and
+   the row is retried. The loader refuses `max_depth` but does not compile
+   patterns or selectors; phase 3's authoring path should validate both.

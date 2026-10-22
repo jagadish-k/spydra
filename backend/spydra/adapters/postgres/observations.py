@@ -175,7 +175,9 @@ FROM (
 """
 )
 
-# A domain's first run is one with no observation from any EARLIER run. Not
+# A domain's first run is one with no observation from any EARLIER run,
+# listing pages aside (ADR-0039: a run that only ever saw listings has not
+# tried the product template, so the next run is still its first verdict). Not
 # "no observations at all": this is asked while the current run is writing,
 # so counting its own rows would make every run the first one and no domain
 # would ever reach `broken`.
@@ -187,6 +189,10 @@ SELECT NOT EXISTS (
     JOIN crawl.pages p ON p.id = o.page_id
     WHERE p.domain_id = :domain_id
       AND o.run_id <> :run_id
+      AND NOT EXISTS (
+          SELECT 1 FROM crawl.templates t
+          WHERE t.id = o.template_id AND t.page_kind = 'listing'
+      )
 ) AS first_run
 """
 )

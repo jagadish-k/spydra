@@ -520,13 +520,17 @@ from the task above it.
       canonical, and a same-host `rel=canonical` (resolved after redirects)
       names the page row.
 
-- [ ] `2.3` **Link extraction from discovery rules** (spec 004 §1) —
+- [x] `2.3` **Link extraction from discovery rules** (spec 004 §1) —
       `product_links`, `next_page`, `subcategory_links`, the per-domain
       allow/deny patterns and `max_depth`. Discovery never leaves the
       registrable domain.
       **Done when:** depth-6 links are not enqueued at `max_depth = 5`, an
       off-host link is dropped, and a faceted listing is capped by
       `deny_patterns`.
+      **Done:** `discovery/links.py` `discover()` (pure; per-rule accepts,
+      per-reason rejects, shared with 2.10's dry-run). The crawler enqueues
+      in one guarded statement: only into a running run on an active domain.
+      Listing pages are outside the extraction verdict (ADR-0039).
 
 - [ ] `2.4` **Dedupe within a run and breadth-first enqueue** — `UNIQUE
 (run_id, url_hash)` (spec 001 §1) with listings drained before
