@@ -182,7 +182,9 @@ class Observation:
     # the one the `broken` threshold counts), and spec 001 §1 makes the
     # column nullable for exactly that row.
     strategy: Strategy | None
-    content_hash: bytes
+    # `None` when nothing survives normalisation (spec 003 §4): no content to
+    # compare, so the row can never be `unchanged`. The column is nullable.
+    content_hash: bytes | None
     fields: ExtractedFields
     validation: Mapping[str, ValidationResult] = field(default_factory=dict)
     unchanged: bool = False

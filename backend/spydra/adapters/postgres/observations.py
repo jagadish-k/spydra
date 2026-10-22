@@ -45,18 +45,18 @@ _CORE_TEXT: Final[tuple[str, ...]] = (
 
 @dataclass(frozen=True, slots=True)
 class PriorObservation:
-    """What the previous observation of a page says about this one.
+    """The previous observation of a page: only what decides `unchanged`.
 
-    `empty_extraction` is carried because a lightweight `unchanged` row has
-    no fields of its own, and recomputing the predicate against an empty
-    mapping says `True` for every stable page on a stable site — which would
-    report an unchanging catalogue as a redesign. The verdict is inherited
-    with the hash it matched.
+    **No emptiness verdict.** An earlier version carried the predecessor's
+    `empty_extraction` so a lightweight row could inherit it. Mutation proved
+    the inherited verdict could not be caught by any test, and it was wrong
+    in the one corner where it differed from the computed one. Emptiness is
+    computed from the current extraction, always (`writer.py`); a field here
+    would invite the next reader to reinstate the inheritance.
     """
 
     id: ObservationId
     content_hash: bytes | None
-    empty_extraction: bool
 
 
 _INSERT = sa.text(
@@ -79,7 +79,7 @@ RETURNING id
 
 _LATEST = sa.text(
     """
-SELECT id, content_hash, empty_extraction
+SELECT id, content_hash
 FROM crawl.page_observations
 WHERE page_id = :page_id
 ORDER BY observed_at DESC, id DESC
@@ -98,17 +98,25 @@ LIMIT 1
 # subquery rather than a FILTER over the table: ADR-0027 pins the predicate
 # to the FINAL observation of a page, after any `auto` fallback, and a page
 # fetched twice in one run otherwise contributes its first attempt as well.
-_HEALTH = sa.text(
-    """
-WITH final AS (
+#
+# **A page with no template is not in it at all** (ADR-0027 §3: "neither as
+# empty nor as crawled-successfully"). Counted, a domain's `/about` and
+# category pages diluted a real redesign as healthy pages, and on a first run
+# they were empty pages that pushed a healthy domain to `awaiting_approval`.
+_RUN_PAGES = """
     SELECT DISTINCT ON (o.page_id)
            o.page_id, o.observed_at, o.empty_extraction
     FROM crawl.page_observations o
     JOIN crawl.pages p ON p.id = o.page_id
     WHERE o.run_id = :run_id
       AND p.domain_id = :domain_id
+      AND o.template_id IS NOT NULL
     ORDER BY o.page_id, o.observed_at DESC, o.id DESC
-)
+"""
+
+_HEALTH = sa.text(
+    f"""
+WITH final AS ({_RUN_PAGES})
 SELECT
     count(*) AS pages_crawled,
     count(*) FILTER (WHERE f.empty_extraction) AS empty_pages,
@@ -123,6 +131,30 @@ SELECT
           )
     ) AS regressions
 FROM final f
+"""
+)
+
+# Whether this run has observed more pages of the domain than the minimum a
+# verdict needs, read without counting the whole run: the `LIMIT` stops the
+# scan one page past the minimum. See `ObservationWriter._apply_health` for
+# why that is the only count a non-empty page needs.
+#
+# Plain `DISTINCT page_id`, not `_RUN_PAGES`: which observation of a page is
+# final does not change whether the page was observed, and `DISTINCT ON ...
+# ORDER BY observed_at` would sort the whole run before the LIMIT applied.
+# `ix_page_observations_run_page` lets this stop early.
+_PAST_MINIMUM = sa.text(
+    """
+SELECT count(*) > :minimum
+FROM (
+    SELECT DISTINCT o.page_id
+    FROM crawl.page_observations o
+    JOIN crawl.pages p ON p.id = o.page_id
+    WHERE o.run_id = :run_id
+      AND p.domain_id = :domain_id
+      AND o.template_id IS NOT NULL
+    LIMIT :minimum + 1
+) AS sample
 """
 )
 
@@ -142,10 +174,17 @@ SELECT NOT EXISTS (
 """
 )
 
+# One OPEN row per (domain, url), enforced by `uq_unknown_pages_open`.
+# ADR-0030 keeps a dead-link-heavy domain crawling, so without this the same
+# empty URLs reopened the inbox every run: ~1,700 rows a day on a 3,400-page
+# domain crawled daily, and `resolved_at` meant nothing. The conflict target
+# repeats the index predicate because Postgres only infers a partial index
+# from a matching WHERE.
 _UNKNOWN = sa.text(
     """
 INSERT INTO crawl.unknown_pages (domain_id, url, reason)
 VALUES (:domain_id, :url, :reason)
+ON CONFLICT (domain_id, url) WHERE resolved_at IS NULL DO NOTHING
 RETURNING id
 """
 )
@@ -160,7 +199,17 @@ WHERE id = :domain_id
 """
 )
 
-_TOUCH_PAGE = sa.text("UPDATE crawl.pages SET last_crawled_at = :at WHERE id = :page_id")
+# `GREATEST`, so a late write never moves the page backwards in time: `1.13`
+# retries a page, and a retry's older `observed_at` landing after a newer one
+# would make a fresh page look stale. `GREATEST` ignores NULL, so the first
+# crawl still sets it.
+_TOUCH_PAGE = sa.text(
+    """
+UPDATE crawl.pages
+SET last_crawled_at = GREATEST(last_crawled_at, :at)
+WHERE id = :page_id
+"""
+)
 
 
 class PostgresObservations:
@@ -181,11 +230,7 @@ class PostgresObservations:
             row = (await conn.execute(_LATEST, {"page_id": page_id})).mappings().first()
         if row is None:
             return None
-        return PriorObservation(
-            id=ObservationId(row["id"]),
-            content_hash=row["content_hash"],
-            empty_extraction=row["empty_extraction"],
-        )
+        return PriorObservation(id=ObservationId(row["id"]), content_hash=row["content_hash"])
 
     async def insert(self, observation: Observation) -> ObservationId:
         """One row. Append-only: nothing here updates an existing one."""
@@ -198,22 +243,24 @@ class PostgresObservations:
             )
         return observation_id
 
-    async def record_unknown(self, domain_id: DomainId, url: str, reason: UnknownReason) -> int:
+    async def record_unknown(
+        self, domain_id: DomainId, url: str, reason: UnknownReason
+    ) -> int | None:
         """A page the operator has to look at (spec 001 §1, ADR-0027).
 
         Every empty page reaches the review inbox whether or not it counts
         toward the threshold — ADR-0030 narrows what is *evidence of a
-        regression*, not what is reported.
+        regression*, not what is reported. Reaches it **once**: `None` means
+        an open row for this URL already exists, and the operator has not
+        resolved it yet.
         """
         async with self._engine.begin() as conn:
-            return int(
-                (
-                    await conn.execute(
-                        _UNKNOWN,
-                        {"domain_id": domain_id, "url": url, "reason": reason.value},
-                    )
-                ).scalar_one()
+            inserted = await conn.execute(
+                _UNKNOWN,
+                {"domain_id": domain_id, "url": url, "reason": reason.value},
             )
+            row_id = inserted.scalar_one_or_none()
+        return int(row_id) if row_id is not None else None
 
     async def health(self, run_id: RunId, domain_id: DomainId) -> RunHealth:
         """ADR-0030's three counts, plus whether this is a first run."""
@@ -234,6 +281,18 @@ class PostgresObservations:
             empty_pages=int(counts["empty_pages"]),
             first_run=first_run,
         )
+
+    async def past_minimum(self, run_id: RunId, domain_id: DomainId, minimum: int) -> bool:
+        """Has this run observed more than `minimum` templated pages here?"""
+        async with self._engine.connect() as conn:
+            return bool(
+                (
+                    await conn.execute(
+                        _PAST_MINIMUM,
+                        {"run_id": run_id, "domain_id": domain_id, "minimum": minimum},
+                    )
+                ).scalar_one()
+            )
 
     async def domain_state(self, domain_id: DomainId) -> DomainState:
         async with self._engine.connect() as conn:

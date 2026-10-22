@@ -134,10 +134,14 @@ CREATE TABLE page_observations (
 );
 CREATE INDEX ON page_observations (page_id, observed_at DESC);
 
--- Current state is a view, not a table.
+-- Current state is a view, not a table. `unchanged` rows are skipped: they
+-- are spec 003 §4's lightweight rows (NULL fields by design) and assert
+-- "same as the row before", so the newest full row IS the current content.
+-- When the page was last seen is pages.last_crawled_at.
 CREATE VIEW page_current AS
 SELECT DISTINCT ON (page_id) *
-FROM page_observations ORDER BY page_id, observed_at DESC;
+FROM page_observations WHERE NOT unchanged
+ORDER BY page_id, observed_at DESC;
 
 -- Work queue. SKIP LOCKED does the dequeue.
 CREATE TABLE crawl_queue (
@@ -195,6 +199,12 @@ CREATE TABLE unknown_pages (
   resolved_at  TIMESTAMPTZ,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- One OPEN row per URL. A page that stays empty run after run is one thing
+-- to review, not one per run (ADR-0030 keeps such a domain crawling); once
+-- resolved, the same URL failing again opens a new row. Writers insert with
+-- ON CONFLICT DO NOTHING.
+CREATE UNIQUE INDEX uq_unknown_pages_open
+  ON unknown_pages (domain_id, url) WHERE resolved_at IS NULL;
 
 -- Bounded per-run event log. Exists so an SSE client that reconnects with
 -- Last-Event-ID can be backfilled rather than shown a gap (ADR-0012).
@@ -418,7 +428,8 @@ Alembic, one migration per schema change, in `backend/migrations/`.
       that only works against a half-built schema is not a migration.
 - [ ] Inserting two `templates` rows with `is_active = true` for the same
       `(domain_id, url_pattern)` is rejected by the partial unique index.
-- [ ] `page_current` returns exactly one row per page, the newest.
+- [ ] `page_current` returns exactly one row per page: the newest that is not
+      `unchanged`.
 - [ ] Every `domain_state` value in `DESIGN_SYSTEM.md` exists in the enum.
 - [ ] Lifecycle transition tests cover every valid edge and reject at least
       three invalid ones.

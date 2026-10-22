@@ -134,3 +134,26 @@ def test_pairs_builds_a_spec_table_and_drops_an_unpaired_cell() -> None:
     assert pairs(["Diameter", "115 mm", "Grit", "P60"]) == {"Diameter": "115 mm", "Grit": "P60"}
     assert pairs([" Diameter ", "  115  mm "]) == {"Diameter": "115 mm"}
     assert pairs(["Odd"]) == {}
+
+
+@pytest.mark.parametrize(
+    ("raw", "code"),
+    [
+        ("CA$12.50", "CAD"),
+        ("A$12.50", "AUD"),
+        ("NZ$12.50", "NZD"),
+        ("HK$12.50", "HKD"),
+        ("US$12.50", "USD"),
+        ("$12.50", "USD"),
+    ],
+)
+def test_a_dollar_prefixed_symbol_names_its_own_currency(raw: str, code: str) -> None:
+    """Multi-currency pages (spec 003 §5) are where the dollars collide: `$`
+    is a substring of `CA$`, `A$`, `NZ$`, `HK$` and `US$`. Matched short
+    symbol first, a Canadian price is recorded as US dollars — a plausible
+    number under the wrong currency, which spec 003 §2 ranks below a missing
+    one. The amount has to survive the prefix too: a stripped `CA` left on
+    the number is not a decimal."""
+    assert detect_currency(raw, None, None) == code
+    assert strip_currency(raw) == "12.50"
+    assert parse_decimal(raw) == Decimal("12.50")

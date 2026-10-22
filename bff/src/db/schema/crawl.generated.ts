@@ -165,6 +165,7 @@ export const pageObservationsInCrawl = crawl.table("page_observations", {
 	emptyExtraction: boolean("empty_extraction").default(false).notNull(),
 }, (table) => [
 	index("ix_page_observations_page_observed").using("btree", table.pageId.asc().nullsLast(), table.observedAt.desc().nullsFirst()),
+	index("ix_page_observations_run_page").using("btree", table.runId.asc().nullsLast(), table.pageId.asc().nullsLast()),
 	foreignKey({
 			columns: [table.pageId],
 			foreignColumns: [pagesInCrawl.id],
@@ -296,6 +297,7 @@ export const unknownPagesInCrawl = crawl.table("unknown_pages", {
 	resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: 'string' }),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
+	uniqueIndex("uq_unknown_pages_open").using("btree", table.domainId.asc().nullsLast(), table.url.asc().nullsLast()).where(sql`(resolved_at IS NULL)`),
 	foreignKey({
 			columns: [table.domainId],
 			foreignColumns: [domainsInCrawl.id],
@@ -331,4 +333,4 @@ export const pageCurrentInCrawl = crawl.view("page_current", {	// You can use { 
 	extractionRung: text("extraction_rung"),
 	unchanged: boolean(),
 	emptyExtraction: boolean("empty_extraction"),
-}).as(sql`SELECT DISTINCT ON (page_id) id, page_id, run_id, template_id, observed_at, http_status, content_hash, strategy, title, price_amount, price_currency, availability, vendor, category_path, description, attributes, supplier, validation, raw_html_path, raw_html_expires_at, extraction_rung, unchanged, empty_extraction FROM crawl.page_observations ORDER BY page_id, observed_at DESC`);
+}).as(sql`SELECT DISTINCT ON (page_id) id, page_id, run_id, template_id, observed_at, http_status, content_hash, strategy, title, price_amount, price_currency, availability, vendor, category_path, description, attributes, supplier, validation, raw_html_path, raw_html_expires_at, extraction_rung, unchanged, empty_extraction FROM crawl.page_observations WHERE NOT unchanged ORDER BY page_id, observed_at DESC`);

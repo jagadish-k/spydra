@@ -158,12 +158,13 @@ async def test_prior_versions_stay_readable(conn: AsyncConnection) -> None:
     assert count == 3
 
 
-async def test_page_current_returns_exactly_the_newest_observation(
+async def test_page_current_returns_exactly_the_newest_full_observation(
     conn: AsyncConnection,
 ) -> None:
-    """Spec 001 §6. Three observations of one page, inserted out of order so
-    the view's ORDER BY is actually exercised rather than agreeing with
-    insertion order by accident."""
+    """Spec 001 §1/§6. Three full observations of one page, inserted out of
+    order so the view's ORDER BY is actually exercised rather than agreeing
+    with insertion order by accident. (None is `unchanged`; the test below
+    covers the rows the view skips.)"""
     domain_id = await _a_domain(conn, "current.test")
     run_id = await _a_run(conn, domain_id)
     page_id = await conn.scalar(
@@ -198,6 +199,51 @@ async def test_page_current_returns_exactly_the_newest_observation(
 
     assert len(rows) == 1
     assert rows[0].price_amount == Decimal("30.0000")
+
+
+async def test_page_current_skips_unchanged_rows(conn: AsyncConnection) -> None:
+    """Spec 001 §1: "`unchanged` rows are skipped ... so the newest full row
+    IS the current content".
+
+    A full row, then two lightweight `unchanged` rows after it. The newest
+    row by `observed_at` has no fields by design (spec 003 §4), so a view
+    returning it would show the page as blank. One row, and it is the full
+    one."""
+    domain_id = await _a_domain(conn, "unchanged.test")
+    run_id = await _a_run(conn, domain_id)
+    page_id = await conn.scalar(
+        sa.text(
+            f"INSERT INTO {SCHEMA}.pages (domain_id, url, url_hash) "
+            "VALUES (:d, 'https://unchanged.test/products/1', sha256('w')) RETURNING id"
+        ),
+        {"d": domain_id},
+    )
+    for price, when, unchanged in (
+        (Decimal("10.0000"), datetime(2026, 10, 1, tzinfo=UTC), False),
+        (None, datetime(2026, 10, 2, tzinfo=UTC), True),
+        (None, datetime(2026, 10, 3, tzinfo=UTC), True),
+    ):
+        await conn.execute(
+            sa.text(
+                f"INSERT INTO {SCHEMA}.page_observations "
+                "(page_id, run_id, observed_at, http_status, price_amount, unchanged) "
+                "VALUES (:p, :r, :t, 200, :a, :u)"
+            ),
+            {"p": page_id, "r": run_id, "t": when, "a": price, "u": unchanged},
+        )
+
+    rows = (
+        await conn.execute(
+            sa.text(
+                f"SELECT price_amount, unchanged FROM {SCHEMA}.page_current WHERE page_id = :p"
+            ),
+            {"p": page_id},
+        )
+    ).all()
+
+    assert len(rows) == 1
+    assert rows[0].price_amount == Decimal("10.0000")
+    assert rows[0].unchanged is False
 
 
 async def test_observations_dedupe_nothing_and_keep_every_row(conn: AsyncConnection) -> None:
