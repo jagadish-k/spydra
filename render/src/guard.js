@@ -14,11 +14,14 @@
 // `sec-fetch-mode: cors`), and the healthcheck and the acceptance suite are
 // Node clients.
 //
-// `POST /render` also demands `content-type: application/json`. A page that
-// sets that type on a cross-origin request triggers a CORS preflight, which
-// carries `Origin` and is refused here, so the POST is never sent. A page
-// that avoids the preflight with `text/plain` gets a 415. Either barrier
-// alone would hold; both cost nothing.
+// `POST /render` also demands `content-type: application/json`, which turns
+// away a page's "simple" (`text/plain`, form) POST with a 415. It is NOT a
+// barrier on its own: the sidecar intercepts every request with
+// `context.route('**/*')`, and under that Chromium sends a page's CORS JSON
+// POST without a preflight (measured in 2.0's tests: 2 renders with the header
+// list emptied). On `render:3001`, plain http to a non-loopback host, Chromium
+// sends no `Sec-Fetch-*` either, so `Origin` is the check that holds there.
+// Do not remove it on the strength of the content-type check.
 
 const BROWSER_HEADERS = ['origin', 'sec-fetch-site', 'sec-fetch-dest', 'sec-fetch-user'];
 

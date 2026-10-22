@@ -96,8 +96,8 @@ suite reaches the public internet (AGENTS.md rule 14).
 
 **Two suites consume this, and they reach it differently.** The Python suite
 imports `FixtureSite` and gets an ephemeral port. The render sidecar's suite
-(BUILD_PLAN `1.5`) cannot: `render` is alone on `egress`, so the api
-container is unreachable by design (ADR-0023). It mounts this directory at
+(BUILD_PLAN `1.5`) cannot: `render` shares no network with the api (ADR-0038), so the api
+container is unreachable by design. It mounts this directory at
 `/fixtures` read-only and runs **this same server** on its own loopback with
 `FIXTURE_HOST=127.0.0.1` — binding `0.0.0.0` there would put a resolvable
 host on the egress network, which is exactly what that ADR denies. The

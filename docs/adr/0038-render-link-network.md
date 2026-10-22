@@ -62,10 +62,15 @@ handles this before routing and before the body is read:
     sends it (measured), and the healthcheck and the acceptance suite are
     Node clients.
 - **`415`** for a `POST /render` that is not `content-type: application/json`.
-  - A cross-origin page request with that type is preflighted, and the
-    preflight carries `Origin`.
-  - So a page cannot reach the render path with a "simple" request, and
-    cannot reach it with a preflighted one either.
+  - This turns away a page's "simple" (`text/plain`, form) POST.
+  - **It is not a barrier on its own.** The sidecar intercepts every request
+    (`context.route('**/*')`), and under interception Chromium sends a page's
+    CORS JSON POST without a preflight. Measured in this slice's tests: with
+    the header list emptied and this check kept, a page caused 2 renders.
+  - On `render:3001` (plain http, not loopback) Chromium sends no
+    `Sec-Fetch-*` headers, so **`Origin` is the check that holds** there.
+    Measured: dropping `origin` alone from the list lets a page trigger
+    renders.
 
 ## Measured (Linux Docker Engine, full stack up, from inside `render`)
 
