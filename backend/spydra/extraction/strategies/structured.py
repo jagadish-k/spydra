@@ -16,6 +16,9 @@ from typing import Any
 
 import extruct
 
+# lxml ships no type stubs; extruct depends on it and raises its ParserError.
+from lxml.etree import ParserError  # type: ignore[import-untyped]
+
 from spydra.domain.entities import ExtractedFields, Template
 from spydra.domain.enums import Strategy
 from spydra.domain.fetch import FetchedPage
@@ -96,7 +99,13 @@ class StructuredStrategy:
         return {k: v for k, v in fields.items() if not is_empty(v)}
 
     def _find_product(self, html: str) -> Mapping[str, Any] | None:
-        data = extruct.extract(html, syntaxes=["json-ld", "microdata", "rdfa"], uniform=True)
+        # An empty body (a bare 404, a 204) is a page with no structured data,
+        # not an error: lxml refuses to parse it ("Document is empty"), and
+        # unguarded that crashed the crawl of every such page (found in 1.13).
+        try:
+            data = extruct.extract(html, syntaxes=["json-ld", "microdata", "rdfa"], uniform=True)
+        except ParserError:
+            return None
         for syntax in ("json-ld", "microdata", "rdfa"):
             for item in data.get(syntax, []):
                 found = self._as_product(item)

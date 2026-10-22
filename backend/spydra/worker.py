@@ -65,6 +65,7 @@ async def main() -> None:
         RenderServiceFetcher(os.environ["RENDER_BASE_URL"], clock), rendered_size
     )
     observations = PostgresObservations(engine)
+    runs = PostgresRuns(engine)
     assets = PostgresAssets(engine)
     frontier = PostgresFrontier(engine)
     crawler = PageCrawler(
@@ -74,7 +75,7 @@ async def main() -> None:
             pages=PostgresPages(engine),
             templates=PostgresTemplates(engine),
             observations=observations,
-            runs=PostgresRuns(engine),
+            runs=runs,
         ),
         writer=ObservationWriter(observations, assets),
         chain=ExtractionChain([StructuredStrategy(), SelectorStrategy()]),
@@ -82,6 +83,7 @@ async def main() -> None:
         robots=RobotsCache(static),
         fetchers=Fetchers(static=static, rendered=rendered, auto=AutoFetcher(static, rendered)),
         user_agent=os.environ["USER_AGENT"],
+        clock=clock,
     )
     pressure = AssetPressure()
     pools = (
@@ -91,7 +93,12 @@ async def main() -> None:
     worker = Worker(
         [
             ClaimLoop(
-                pool=pool, frontier=frontier, assets=assets, pressure=pressure, crawler=crawler
+                pool=pool,
+                frontier=frontier,
+                assets=assets,
+                runs=runs,
+                pressure=pressure,
+                crawler=crawler,
             )
             for pool in pools
             for _ in range(pool.size)

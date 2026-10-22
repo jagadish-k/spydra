@@ -52,6 +52,7 @@ from spydra.domain.fetch import FetchedPage, FetchRequest
 from spydra.extraction.chain import ChainResult, ExtractionChain
 from spydra.extraction.hashing import is_substantive
 from spydra.observations.writer import CrawledPage, ObservationWriter
+from spydra.ports.clock import Clock
 from spydra.ports.fetcher import Fetcher
 from spydra.ports.frontier import MAX_ATTEMPTS, ClaimedUrl, Completion, Frontier, QueueItemState
 from spydra.scheduler.politeness import (
@@ -63,6 +64,11 @@ from spydra.scheduler.politeness import (
 from spydra.scheduler.robots import RobotsCache, RobotsRules
 
 log = structlog.get_logger(__name__)
+
+# Spec 012 §4 wants a stalled rendered domain *reported*. Every claim of it
+# fails the same way while the sidecar is down, so the report is rate-limited
+# rather than one line per claim, which would break spec 009 §5's budget.
+RENDER_UNAVAILABLE_EVERY_S = 60.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +115,7 @@ class PageCrawler:
         robots: RobotsCache,
         fetchers: Fetchers,
         user_agent: str,
+        clock: Clock,
     ) -> None:
         self._frontier = frontier
         self._repos = repositories
@@ -118,8 +125,14 @@ class PageCrawler:
         self._robots = robots
         self._fetchers = fetchers
         self._user_agent = user_agent
+        self._clock = clock
+        self._render_reported_at: float | None = None
 
-    async def crawl(self, item: ClaimedUrl) -> None:
+    async def crawl(self, item: ClaimedUrl) -> bool:
+        """Crawl one claimed URL. `True` asks the loop to back off before its
+        next claim: the row went back unfetched (spec 002 §6), and claiming
+        again at once would take the same row from the same domain, which is
+        still the most eligible, at hundreds of cycles a second."""
         domain = await self._repos.domains.get(item.domain_id)
         # Spec 009 §1's `domain` is what an operator reads: the host.
         structlog.contextvars.bind_contextvars(domain=domain.host)
@@ -138,7 +151,7 @@ class PageCrawler:
             # as it was: nothing happened that the gate could decide about.
             log.debug("robots_disallowed")
             await self._close(item, QueueItemState.FAILED, _unchanged(domain))
-            return
+            return False
 
         request = FetchRequest(url=item.url, user_agent=user_agent)
         try:
@@ -146,16 +159,23 @@ class PageCrawler:
         except Backpressure:
             # Spec 002 §6: our sidecar is full. Not the supplier's doing, so
             # no penalty, and the gate is given back so another worker can try.
-            log.debug("render_backpressure")
+            self._report_render_unavailable()
             await self._frontier.release(item)
-            return
+            return True
         except FetchFailed:
             await self._retry_or_fail(item, self._gate.on_fetch_error(state), "fetch_failed")
-            return
+            return False
 
         template = matching(await self._repos.templates.active_for(domain.id), _path(item.url))
         result: ChainResult | None = None
-        if domain.render_mode is RenderMode.AUTO and fetched.http_status == 200:
+        # Only a page a template was meant to extract. A listing or category
+        # page with no template is never substantive, and rendering every one
+        # would be a second request to the supplier per page for nothing.
+        if (
+            domain.render_mode is RenderMode.AUTO
+            and template is not None
+            and fetched.http_status == 200
+        ):
             result = await self._chain.extract(fetched, template)
             if not is_substantive(result.fields):
                 fetched, result = await self._second_chance(request, fetched, template, result)
@@ -164,17 +184,22 @@ class PageCrawler:
         status = fetched.http_status
         if status == 403:
             log.warning("refused", status=status, consecutive_403s=decision.consecutive_403s)
-            await self._close(item, QueueItemState.FAILED, decision)
-            await self._pause_if_blocked(item, decision)
-            return
+            # Only a 403 this claim actually recorded counts toward the pause.
+            if await self._close(item, QueueItemState.FAILED, decision):
+                await self._pause_if_blocked(item, decision)
+            return False
+        if status in RATE_LIMIT_STATUSES:
+            # Spec 009 §1 puts "backoff applied" at warning.
+            log.warning("backoff", status=status, crawl_delay_ms=decision.crawl_delay_ms)
         if status in RATE_LIMIT_STATUSES or status >= 500:
             await self._retry_or_fail(item, decision, "server_refused", status=status)
-            return
+            return False
 
         if result is None:
             result = await self._chain.extract(fetched, template)
         await self._observe(item, domain, fetched, template, result)
         await self._close(item, QueueItemState.DONE, decision)
+        return False
 
     async def abort(self, item: ClaimedUrl) -> None:
         """Close a row whose crawl raised something unexpected.
@@ -183,10 +208,17 @@ class PageCrawler:
         to the domain, because a bug of ours is not the supplier's doing.
         Left to the lease sweep instead, the row would hold the domain's
         `in_flight` for two minutes on every crash.
+
+        A crash after the row was already closed changes nothing: the
+        completion is fenced on the lease. And a crash is not a
+        `fetch_error`, which spec 001 §1 defines as "non-2xx or timeout", so
+        it never reaches the inbox; it is an error line with a traceback.
         """
         domain = await self._repos.domains.get(item.domain_id)
         state = _politeness(domain, RobotsRules.unrestricted())
-        await self._retry_or_fail(item, self._gate.on_server_error(state), "crawl_crashed")
+        await self._retry_or_fail(
+            item, self._gate.on_server_error(state), "crawl_crashed", inbox=False
+        )
 
     async def _second_chance(
         self,
@@ -260,12 +292,19 @@ class PageCrawler:
             )
 
     async def _retry_or_fail(
-        self, item: ClaimedUrl, decision: Decision, why: str, **detail: Any
+        self,
+        item: ClaimedUrl,
+        decision: Decision,
+        why: str,
+        *,
+        inbox: bool = True,
+        **detail: Any,
     ) -> None:
         final = item.attempts >= MAX_ATTEMPTS
         state = QueueItemState.FAILED if final else QueueItemState.PENDING
-        await self._close(item, state, decision)
-        if final:
+        if not await self._close(item, state, decision):
+            return
+        if final and inbox:
             await self._repos.observations.record_unknown(
                 item.domain_id, item.url, UnknownReason.FETCH_ERROR
             )
@@ -291,9 +330,24 @@ class PageCrawler:
 
     async def _close(
         self, item: ClaimedUrl, state: QueueItemState, decision: Decision | Completion
-    ) -> None:
-        await self._frontier.complete(item, _completion(state, decision))
+    ) -> bool:
+        """`False` when this claim no longer held the row, so nothing that
+        depends on having closed it (an inbox row, a run finish) follows."""
+        if not await self._frontier.complete(item, _completion(state, decision)):
+            log.warning("lease_lost", action="none; the row's current holder completes it")
+            return False
         await self._finish(item)
+        return True
+
+    def _report_render_unavailable(self) -> None:
+        now = self._clock.monotonic()
+        last = self._render_reported_at
+        if last is None or now - last >= RENDER_UNAVAILABLE_EVERY_S:
+            self._render_reported_at = now
+            log.warning(
+                "render_unavailable",
+                action="check the render service; rendered domains are stalled until it answers",
+            )
 
     async def _finish(self, item: ClaimedUrl) -> None:
         stats = await self._repos.runs.finish_if_drained(item.run_id)

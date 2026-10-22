@@ -16,7 +16,8 @@ delay. The worker runs until it is told to stop.
 is load-bearing: a worker killed mid-page leaves its domain's `in_flight`
 high, and nothing else lowers it.
 
-**Shutdown** (SIGTERM, `docker compose stop`): claiming stops at once; pages
+**Shutdown** (SIGTERM, `docker compose stop`): no new claim starts, and a
+claim that raced the signal is released unfetched; pages
 already being crawled get `grace_s` to finish; whatever remains is cancelled
 and its row released with no penalty, so the next worker picks it straight up
 rather than after a two-minute lease.
@@ -29,6 +30,7 @@ from dataclasses import dataclass
 import structlog
 
 from spydra.adapters.postgres.assets import PostgresAssets
+from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.domain.enums import RenderMode
 from spydra.ports.frontier import ClaimedUrl, Frontier
 from spydra.scheduler.asset_pressure import AssetPressure
@@ -37,6 +39,11 @@ from spydra.scheduler.crawl import PageCrawler
 log = structlog.get_logger(__name__)
 
 IDLE_S = 0.5
+# After a row went back unfetched because the sidecar was full or down: the
+# same domain is still the most eligible, so claiming again at once is a
+# claim/release cycle at hundreds a second (found in review).
+BACKPRESSURE_S = 2.0
+CLAIM_FAILED_EVERY = 30
 # After an unexpected error in the loop itself (the database went away): long
 # enough not to spin, short enough that a restarted database is picked up.
 ERROR_BACKOFF_S = 2.0
@@ -62,60 +69,103 @@ class ClaimLoop:
         pool: Pool,
         frontier: Frontier,
         assets: PostgresAssets,
+        runs: PostgresRuns,
         pressure: AssetPressure,
         crawler: PageCrawler,
     ) -> None:
         self._pool = pool
         self._frontier = frontier
         self._assets = assets
+        self._runs = runs
         self._pressure = pressure
         self._crawler = crawler
+        self._failures = 0
 
     async def run(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
             try:
                 item = await self._next()
             except Exception:
-                log.exception("claim_failed", pool=self._pool.name)
+                self._claim_failed()
                 await _sleep_unless(stop, ERROR_BACKOFF_S)
                 continue
+            self._failures = 0
             if item is None:
                 await _sleep_unless(stop, IDLE_S)
                 continue
-            await self._crawl(item)
+            if stop.is_set():
+                # The claim raced the signal. Nothing has been fetched, so the
+                # row goes straight back rather than starting a request after
+                # SIGTERM.
+                await self._frontier.release(item)
+                return
+            if await self._crawl(item):
+                await _sleep_unless(stop, BACKPRESSURE_S)
 
     async def _next(self) -> ClaimedUrl | None:
-        await self._frontier.sweep_expired_leases()
+        if await self._frontier.sweep_expired_leases():
+            # A row the sweep retired is closed by no worker, so if it was a
+            # run's last one the run is finished here or never.
+            for run_id, stats in await self._runs.finish_drained():
+                log.info("run_finished", run_id=int(run_id), stats=stats)
         await self._pressure.before_claim(await self._assets.pending())
         return await self._frontier.claim(self._pool.render_modes)
 
-    async def _crawl(self, item: ClaimedUrl) -> None:
+    def _claim_failed(self) -> None:
+        """The database (or the loop itself) failed. Logged with a traceback
+        the first time and then once per `CLAIM_FAILED_EVERY` attempts: 15
+        loops retrying every 2 s through an outage would otherwise be ~450
+        error lines a minute (spec 009 §5)."""
+        self._failures += 1
+        if self._failures == 1 or self._failures % CLAIM_FAILED_EVERY == 0:
+            log.error(
+                "claim_failed",
+                pool=self._pool.name,
+                consecutive=self._failures,
+                exc_info=self._failures == 1,
+                action="check that the database is reachable; the worker retries by itself",
+            )
+
+    async def _crawl(self, item: ClaimedUrl) -> bool:
+        """`True` asks the loop to back off before claiming again."""
+        # `domain_id` here; the crawler binds `domain` (the host) once it has
+        # read the row, so `domain` is always the same type in every line.
         with structlog.contextvars.bound_contextvars(
             run_id=int(item.run_id),
-            domain=int(item.domain_id),
+            domain_id=int(item.domain_id),
             url=item.url,
             attempt=item.attempts,
             pool=self._pool.name,
         ):
             try:
-                await self._crawler.crawl(item)
+                return await self._crawler.crawl(item)
             except asyncio.CancelledError:
-                # Shutdown overran the grace. The row goes back with no
-                # penalty, shielded so the cancellation cannot interrupt
-                # the release itself and strand the domain's `in_flight`.
-                await asyncio.shield(self._frontier.release(item))
-                log.info("released_on_shutdown")
+                await self._release_on_shutdown(item)
                 raise
             except Exception:
-                log.exception("crawl_crashed")
+                log.exception("crawl_crashed", action="a crawler bug: read the traceback")
                 try:
                     await self._crawler.abort(item)
+                except asyncio.CancelledError:
+                    # Cancelled inside the handler: the sibling clause above
+                    # does not see it, so the release happens here too.
+                    await self._release_on_shutdown(item)
+                    raise
                 except Exception:
                     # The lease sweep is the backstop: the row comes back
                     # after `locked_until` and `in_flight` is reconciled.
-                    log.exception("abort_failed")
+                    log.exception("abort_failed", action="none; the lease sweep recovers the row")
+                return False
             finally:
-                structlog.contextvars.unbind_contextvars("strategy")
+                structlog.contextvars.unbind_contextvars("strategy", "domain")
+
+    async def _release_on_shutdown(self, item: ClaimedUrl) -> None:
+        """Shutdown overran the grace. The row goes back with no penalty,
+        shielded so the cancellation cannot interrupt the release itself and
+        strand the domain's `in_flight`. Fenced on the lease, so a row this
+        claim already closed is left closed."""
+        if await asyncio.shield(self._frontier.release(item)):
+            log.info("released_on_shutdown")
 
 
 class Worker:

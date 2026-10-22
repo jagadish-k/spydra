@@ -78,6 +78,27 @@ RETURNING stats
 )
 
 
+# Every running run whose queue has drained. For the lease sweep: a row it
+# retires to `failed` (a worker SIGKILLed on the run's last row, third
+# attempt) is closed by no worker, so without this the run stayed `running`
+# for ever.
+_FINISH_DRAINED = sa.text(
+    f"""
+UPDATE crawl.runs r
+SET state = 'completed', finished_at = now(),
+    stats = {_STATS.replace(":run_id", "r.id")}
+WHERE r.state = 'running'
+  -- A run that has not enqueued anything yet is not drained, it is new.
+  AND EXISTS (SELECT 1 FROM crawl.crawl_queue WHERE run_id = r.id)
+  AND NOT EXISTS (
+      SELECT 1 FROM crawl.crawl_queue
+      WHERE run_id = r.id AND state IN ('pending', 'in_flight')
+  )
+RETURNING r.id, r.stats
+"""
+)
+
+
 class PostgresRuns:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
@@ -89,3 +110,10 @@ class PostgresRuns:
                 await conn.execute(_FINISH_IF_DRAINED, {"run_id": int(run_id)})
             ).scalar_one_or_none()
         return dict(stats) if stats is not None else None
+
+    async def finish_drained(self) -> list[tuple[RunId, dict[str, Any]]]:
+        """Finish every running run with nothing left to claim; the runs
+        THIS call finished, with their stats."""
+        async with self._engine.begin() as conn:
+            rows = (await conn.execute(_FINISH_DRAINED)).all()
+        return [(RunId(row.id), dict(row.stats)) for row in rows]

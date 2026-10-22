@@ -56,11 +56,11 @@ class DomainPoliteness:
     arithmetic is pure and testable. `1.13` loads it with the claim and hands
     the result back to the frontier.
 
-    `floor_ms` is the configured delay the decay may not go below — and it is
-    a parameter rather than a column because **there is no column**. See the
-    task file's open question: `domains.crawl_delay_ms` is a single value, so
-    the ×2 backoff destroys whatever the operator configured and spec 002
-    §4's "never below it" has nothing to refer to.
+    `floor_ms` is the configured delay the decay may not go below. It is a
+    parameter so the arithmetic stays pure; since `1.13` the worker reads it
+    from `domains.configured_crawl_delay_ms`, raised by robots' `Crawl-delay`
+    (`scheduler/crawl.py`). The ×2 backoff overwrites `crawl_delay_ms`, which
+    is why the configured value needs a column of its own.
     """
 
     crawl_delay_ms: int

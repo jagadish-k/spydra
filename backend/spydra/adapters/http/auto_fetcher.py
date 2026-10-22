@@ -1,7 +1,9 @@
 """`render_mode = AUTO` — static first, the sidecar as the second chance.
 
-Spec 012 §4 gives AUTO two behaviours, and only one of them can be built
-here:
+Spec 012 §4 gives AUTO two behaviours. This module implements the first and
+offers the seam for the second; the worker (`scheduler/crawl.py`, BUILD_PLAN
+`1.13`) decides when to take it, using "not substantive" as "nothing usable".
+What follows is the reasoning as it stood when this module was written:
 
 1. **The sidecar is unavailable.** Fall back to static and record that it
    happened, so a stopped `render` service leaves an AUTO domain crawling

@@ -29,6 +29,7 @@ from spydra.domain.enums import (
 )
 from spydra.domain.fetch import FetchedPage
 from spydra.extraction import ExtractionChain, SelectorStrategy, StructuredStrategy
+from spydra.extraction.hashing import is_substantive
 from spydra.extraction.validation import empty_extraction, validate
 from tests.extraction.pages import PAGES, page, vantage_template  # noqa: E402
 
@@ -524,6 +525,18 @@ async def test_a_jsonld_offer_with_no_price_and_no_currency_is_not_a_price() -> 
     assert fields is not None
     assert fields["title"] == "Disc"
     assert "price" not in fields
+
+
+@pytest.mark.parametrize("body", ["", "   \n  "])
+async def test_an_empty_body_extracts_nothing_rather_than_crashing(body: str) -> None:
+    """A bare 404 or a 204 has no body. lxml refuses to parse an empty
+    document, and unguarded that crashed the crawl of every such page (found
+    writing the 1.13 review tests)."""
+    fetched = replace(page(IMAGE_STUB, STUB_URL, 404), body=body)
+
+    result = await chain("GBP").extract(fetched, template=vantage_template())
+
+    assert not is_substantive(result.fields)
 
 
 def test_the_chain_cannot_reach_a_model_at_crawl_time() -> None:

@@ -217,6 +217,66 @@ One claim-loop iteration (spec 002 §1–§7):
   for a page that extracted nothing, and that is still "carrying" it in
   spec 009 §1's sense.
 
+- reviewer (fresh context; did not write the code): 2 blocking findings,
+  8 non-blocking. Both blocking ones were confirmed with a throwaway test.
+  1. **Blocking, fixed.** The rendered pool spun at ~100 claim/release
+     cycles a second while `render` was down, with nothing logged above
+     `debug`.
+     - `crawl()` now returns "back off", and the loop sleeps
+       `BACKPRESSURE_S`.
+     - A `render_unavailable` warning (with an action) fires at most once a
+       minute, which is spec 012 §4's "reported stalled".
+  2. **Blocking, fixed.** A row could be closed twice.
+     - A crash after a committed 403 made `abort()` reopen it as `pending`,
+       a retry through a block.
+     - A lost lease let the first owner close the second owner's lease.
+     - `complete`/`release` are now **fenced on the lease** (`state =
+'in_flight' AND locked_until = :lease`, `RETURNING id`). A stale
+       completion only pushes `next_eligible_at` forward, and only a
+       completion that matched decrements `in_flight`.
+     - Fencing exposed a latent 1.8 bug: `ClaimedUrl.locked_until` was a
+       `str` (`row_to_json`) despite its annotation. It is now parsed.
+  3. **Fixed.** When the sweep retires a run's last row, it now finishes the
+     run (`PostgresRuns.finish_drained`, only for runs that have rows).
+  4. **Fixed.** The `RenderBudget` wait is bounded (`max_wait_s=30`, then
+     `Backpressure`), so a queue of second chances cannot outlive the lease.
+  5. **Fixed in part.** A crash no longer files `fetch_error`.
+     - A template that cannot be decoded still fails each page with a
+       traceback. 1.14's loader writes templates through the same codec, so
+       only a hand-edited row can reach that path. Raised below.
+  6. **Fixed in part.**
+     - `claim_failed` logs a traceback once and then every 30 failures, and
+       every `error` line names an action.
+     - 429 backoff now logs at `warning`.
+     - The loop binds `domain_id` and the crawler binds `domain` (the host),
+       so the type no longer changes between lines.
+     - `robots_override` every page vs the 100-line budget is a conflict
+       between two specs. Raised below.
+  7. **Fixed.** The stale docstrings (politeness `floor_ms`, `auto_fetcher`,
+     `logs.py`); the `tables.py` CHECK mirror; spec 005 now says the API's
+     `crawl_delay_ms` is `configured_crawl_delay_ms`; and a claim that raced
+     SIGTERM is released unfetched.
+  8. **Fixed.** A cancellation that lands inside `abort()` now releases the
+     row too.
+  9. **Deferred.** `by_domain` 403/429 counts. Raised below.
+  10. **Tests added** for the review's cases: a crash after a 403, release
+      after completion, a lost lease, robots disallow, loop backoff, sweep
+      finishes the run, the bounded budget wait. Halt-then-abandon is still
+      untested and is raised below.
+
+  **On the contract:** AUTO now renders only pages a template matched, since
+  untemplated pages are never substantive and every one would be a second
+  request.
+
+  **Writing the review tests found one more defect:** an empty body (a bare
+  404, a 204) made lxml raise `Document is empty` inside `extruct`, which
+  crashed the crawl of the page. It is caught now, and a test pins it.
+
+  **Mutation:** 7 chosen mutations on the fixes, 6 red. The survivor was a
+  redundant empty-body pre-check that duplicated the `ParserError` catch. It
+  was removed, and the remaining catch was shown red when broken.
+  Suite: 550 passed, 2 skipped.
+
 ## Open questions — for the human
 
 Carried: the eleven from `fix/1.11-review-findings` and earlier.
@@ -234,3 +294,18 @@ New:
 4. **Observations are written for 4xx (404, 410) but not for 403/429/5xx.**
    A dead link is a fact about the page. A refusal or an outage is a fact
    about the request.
+5. **`robots_override` vs the line budget.** Spec 002 §5 logs the override
+   "every time it takes effect", which is a `warning` per page of a
+   `respect_robots = false` domain. Spec 009 §5 caps a 1,000-page run at 100
+   lines. One of the two specs has to give. Unchanged here.
+6. **`stats.by_domain` has no 403/429 counts.** Spec 009 §2 shows them, but
+   nothing records a refusal per row today (no observation is written for
+   one, by decision 4 above). That wants either a column on `crawl_queue` or
+   `run_events` (2.8).
+7. **A template the codec cannot decode fails every page of its domain**,
+   with an error and a traceback each time, and the run still completes.
+   1.14's loader decodes before it writes, so only a hand-edited row reaches
+   this. A better answer is a domain event for "misconfigured", which the
+   lifecycle does not have.
+8. **Halt-then-abandon has no test.** The writer's halt is tested in 1.11,
+   and the abandon is one call. The composition of the two is not tested.

@@ -110,6 +110,9 @@ domains = sa.Table(
     # loud rather than silent.
     sa.CheckConstraint("in_flight >= 0", name="in_flight_non_negative"),
     sa.CheckConstraint("consecutive_403s >= 0", name="consecutive_403s_non_negative"),
+    sa.CheckConstraint(
+        "configured_crawl_delay_ms >= 0", name="configured_crawl_delay_ms_non_negative"
+    ),
     # The claim query's driving index (spec 002 §1). Partial, because only
     # active domains are ever eligible.
     sa.Index(

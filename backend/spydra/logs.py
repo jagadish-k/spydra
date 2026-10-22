@@ -10,8 +10,9 @@ once per claim (`strategy` once it is known), and every line logged while
 that page is being crawled, by any module, carries them (spec 009 §1: "a line
 without the context needed to act on it is noise").
 
-**Bodies cannot be logged by accident** (spec 009 §1 "never log"). Keys that
-name a body, headers or a credential are dropped, and any string longer than
+**Bodies cannot be logged by accident** (spec 009 §1 "never log"). The value
+of any key that names a body, headers or a credential is replaced with
+`[redacted]`, and any string longer than
 `_MAX_VALUE` is cut. A supplier's page is many kilobytes and nothing a worker
 logs on purpose is; a test asserts the guarantee over a captured run
 (spec 009 §5).

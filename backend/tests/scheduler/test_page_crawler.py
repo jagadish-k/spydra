@@ -16,6 +16,7 @@ between claims.** Nothing here is about the gap between requests (that is
 writes, and waiting out a real delay would only make them slow.
 """
 
+import asyncio
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -36,15 +37,17 @@ from spydra.adapters.postgres.pages import PostgresPages
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates, extraction_to_json
 from spydra.domain.enums import FetchPath, RenderMode
-from spydra.domain.errors import FetchFailed
+from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchedPage, FetchRequest
 from spydra.domain.ids import DomainId, RunId
 from spydra.extraction import ExtractionChain, SelectorStrategy, StructuredStrategy
 from spydra.observations.writer import ObservationWriter
 from spydra.ports.fetcher import Fetcher
-from spydra.ports.frontier import ClaimedUrl
+from spydra.ports.frontier import ClaimedUrl, Completion, QueueItemState
+from spydra.scheduler.asset_pressure import AssetPressure
 from spydra.scheduler.crawl import Fetchers, PageCrawler, Repositories
 from spydra.scheduler.politeness import PolitenessGate
+from spydra.scheduler.pools import RENDERED_MODES, STATIC_MODES, ClaimLoop, Pool
 from spydra.scheduler.render_budget import RenderBudget
 from spydra.scheduler.robots import RobotsCache
 from tests.adapters.postgres.observation_seed import unknown_rows
@@ -93,14 +96,17 @@ class ScriptedFetcher:
         self,
         path: FetchPath,
         answer: Callable[[FetchRequest], tuple[int, str] | Exception],
+        *,
+        robots: tuple[int, str] = (404, ""),
     ) -> None:
         self.path = path
         self._answer = answer
+        self._robots = robots
         self.calls: list[str] = []
 
     async def fetch(self, request: FetchRequest) -> FetchedPage:
         if request.url.endswith("/robots.txt"):
-            return _page(request, 404, "", self.path)
+            return _page(request, *self._robots, self.path)
         self.calls.append(request.url)
         answer = self._answer(request)
         if isinstance(answer, Exception):
@@ -112,6 +118,16 @@ class ScriptedFetcher:
         pass
 
 
+# The image-only SEO stub on its own, with none of the product markup: what a
+# JS-dependent page's server HTML looks like before the browser runs.
+STUB_ONLY = (
+    '<html><head><script type="application/ld+json">'
+    '{"@context":"https://schema.org","@type":"Product",'
+    '"image":"https://vantage-abrasives.test/img/share.jpg"}'
+    "</script></head><body></body></html>"
+)
+
+
 def always(status: int, body: str = "") -> Callable[[FetchRequest], tuple[int, str]]:
     return lambda _request: (status, body)
 
@@ -120,7 +136,9 @@ def raising(exc: Exception) -> Callable[[FetchRequest], Exception]:
     return lambda _request: exc
 
 
-def build(engine: AsyncEngine, static: Fetcher, rendered: Fetcher) -> PageCrawler:
+def build(
+    engine: AsyncEngine, static: Fetcher, rendered: Fetcher, *, runs: PostgresRuns | None = None
+) -> PageCrawler:
     """A `PageCrawler` wired the way `spydra.worker` wires it, over these
     two fetchers."""
     clock = SystemClock()
@@ -132,13 +150,14 @@ def build(engine: AsyncEngine, static: Fetcher, rendered: Fetcher) -> PageCrawle
             pages=PostgresPages(engine),
             templates=PostgresTemplates(engine),
             observations=observations,
-            runs=PostgresRuns(engine),
+            runs=runs or PostgresRuns(engine),
         ),
         writer=ObservationWriter(observations, PostgresAssets(engine)),
         chain=ExtractionChain([StructuredStrategy(), SelectorStrategy()]),
         gate=PolitenessGate(clock),
         robots=RobotsCache(static),
         fetchers=Fetchers(static=static, rendered=rendered, auto=AutoFetcher(static, rendered)),
+        clock=clock,
         user_agent=UA,
     )
 
@@ -410,16 +429,17 @@ async def test_a_503_from_the_sidecar_releases_the_row_with_no_attempt_charged(
 async def test_auto_renders_once_when_the_static_page_has_nothing_usable(
     clean_crawl: AsyncEngine,
 ) -> None:
-    """The image-only stub is not empty (an image resolved) but it is not
-    substantive either, and that must still earn the browser retry. Exactly
-    one: the rendered page is no better here, and that is not a reason to
-    ask again."""
-    domain = await seed_crawl_domain(clean_crawl, mode=RenderMode.AUTO)
+    """A JS-dependent page whose server HTML carries only an image-only SEO
+    stub: not empty (an image resolved) but not substantive, and the template
+    finds nothing in it. That must still earn the browser retry. Exactly one:
+    the rendered page is no better here, and that is not a reason to ask
+    again."""
+    domain = await seed_crawl_domain(clean_crawl, mode=RenderMode.AUTO, with_template=True)
     run = await seed_run(clean_crawl, [int(domain)])
     url = f"{BASE}/catalog/abrasives/discs/rfd-115-060"
     row = await seed_queue_row(clean_crawl, run, domain, url)
-    static = ScriptedFetcher(FetchPath.STATIC, always(200, IMAGE_STUB))
-    rendered = ScriptedFetcher(FetchPath.RENDERED, always(200, IMAGE_STUB))
+    static = ScriptedFetcher(FetchPath.STATIC, always(200, STUB_ONLY))
+    rendered = ScriptedFetcher(FetchPath.RENDERED, always(200, STUB_ONLY))
     crawler = build(clean_crawl, static, rendered)
 
     await claim_and_crawl(clean_crawl, crawler, domain)
@@ -427,6 +447,25 @@ async def test_auto_renders_once_when_the_static_page_has_nothing_usable(
     assert static.calls == [url]
     assert rendered.calls == [url]
     assert (await queue_row(clean_crawl, row)).state == "done"
+
+
+async def test_auto_does_not_render_a_page_no_template_matches(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """A listing or category page on an AUTO domain has no template, so it is
+    never substantive. Rendering every one would be a second request to the
+    supplier per page, with no gap, for nothing a template could use."""
+    domain = await seed_crawl_domain(clean_crawl, mode=RenderMode.AUTO)
+    run = await seed_run(clean_crawl, [int(domain)])
+    url = f"{BASE}/catalog/abrasives/discs/rfd-115-060"
+    await seed_queue_row(clean_crawl, run, domain, url)
+    static = ScriptedFetcher(FetchPath.STATIC, always(200, STUB_ONLY))
+    rendered = ScriptedFetcher(FetchPath.RENDERED, always(200, STUB_ONLY))
+    crawler = build(clean_crawl, static, rendered)
+
+    await claim_and_crawl(clean_crawl, crawler, domain)
+
+    assert rendered.calls == []
 
 
 async def test_auto_does_not_render_a_substantive_static_page(clean_crawl: AsyncEngine) -> None:
@@ -526,3 +565,228 @@ async def test_the_decay_floor_is_robots_crawl_delay_when_that_is_higher(
     assert backed_off > 3000
     assert min(delays) >= 3000, f"decayed below the site's Crawl-delay: {delays}"
     assert delays[-1] == 3000
+
+
+# ---------------------------------------------------------------------------
+# Review findings (`.tasks/feat-1.13-worker.md`): each pins a fix
+# ---------------------------------------------------------------------------
+
+
+class _RunsThatFailOnce(PostgresRuns):
+    """The run finish raises once, the way a dropped connection would, after
+    the row has already been committed."""
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        super().__init__(engine)
+        self.failed = False
+
+    async def finish_if_drained(self, run_id: RunId) -> dict[str, object] | None:
+        if not self.failed:
+            self.failed = True
+            raise RuntimeError("connection reset")
+        return await super().finish_if_drained(run_id)
+
+
+async def test_a_crash_after_a_403_was_recorded_never_reopens_the_row(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Review finding 2. The 403 was committed as `failed`, then something
+    after it raised and the loop called `abort`, which closed the row a second
+    time as `pending`. That queued a retry through a block (AGENTS.md rule 8).
+    The completion is fenced on the lease, so the second close changes
+    nothing."""
+    domain = await seed_crawl_domain(clean_crawl)
+    run = await seed_run(clean_crawl, [int(domain)])
+    row = await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/x")
+    crawler = build(
+        clean_crawl,
+        ScriptedFetcher(FetchPath.STATIC, always(403)),
+        unused_renderer(),
+        runs=_RunsThatFailOnce(clean_crawl),
+    )
+
+    await make_due(clean_crawl, domain)
+    item = await PostgresFrontier(clean_crawl).claim()
+    assert item is not None
+    with pytest.raises(RuntimeError):
+        await crawler.crawl(item)
+    await crawler.abort(item)
+
+    after = await queue_row(clean_crawl, row)
+    assert after.state == "failed", "a recorded 403 was reopened for retry"
+    assert (await domain_row(clean_crawl, domain)).in_flight == 0
+
+
+async def test_a_release_after_the_row_was_completed_is_a_no_op(clean_crawl: AsyncEngine) -> None:
+    """A release on shutdown that lands after the crawl completed must not
+    reopen a finished page, or give back an `in_flight` already given back."""
+    domain = await seed_crawl_domain(clean_crawl)
+    run = await seed_run(clean_crawl, [int(domain)])
+    row = await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/x")
+    crawler = build(clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(404)), unused_renderer())
+
+    item = await claim_and_crawl(clean_crawl, crawler, domain)
+
+    assert await PostgresFrontier(clean_crawl).release(item) is False
+    assert (await queue_row(clean_crawl, row)).state == "done"
+
+
+async def test_a_completion_from_a_lost_lease_leaves_the_new_holders_row_alone(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The lease expired mid-crawl, the sweep returned the row and another
+    worker claimed it. The first worker's late completion must not close the
+    second worker's lease or lower its `in_flight`."""
+    frontier = PostgresFrontier(clean_crawl)
+    domain = await seed_crawl_domain(clean_crawl)
+    run = await seed_run(clean_crawl, [int(domain)])
+    row = await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/x")
+    await make_due(clean_crawl, domain)
+    first = await frontier.claim()
+    assert first is not None
+    async with clean_crawl.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "UPDATE crawl.crawl_queue SET locked_until = now() - interval '1 second' "
+                "WHERE id = :id"
+            ),
+            {"id": row},
+        )
+    await frontier.sweep_expired_leases()
+    await make_due(clean_crawl, domain)
+    second = await frontier.claim()
+    assert second is not None and second.id == first.id
+
+    closed = await frontier.complete(
+        first,
+        Completion(
+            state=QueueItemState.DONE,
+            next_eligible_at=datetime.now(UTC),
+            crawl_delay_ms=2000,
+            consecutive_failures=0,
+        ),
+    )
+
+    assert closed is False
+    after = await queue_row(clean_crawl, row)
+    assert after.state == "in_flight"
+    assert after.locked_until == second.locked_until
+    assert (await domain_row(clean_crawl, domain)).in_flight == 1
+
+
+async def test_a_url_robots_disallows_is_failed_without_a_request(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Spec 002 §5: a `Disallow` is honoured. The page is never requested and
+    nothing is observed."""
+    domain = await seed_crawl_domain(clean_crawl)
+    run = await seed_run(clean_crawl, [int(domain)])
+    row = await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/x")
+    static = ScriptedFetcher(
+        FetchPath.STATIC, always(200, "<html></html>"), robots=(200, "User-agent: *\nDisallow: /")
+    )
+
+    await claim_and_crawl(clean_crawl, build(clean_crawl, static, unused_renderer()), domain)
+
+    assert static.calls == []
+    assert (await queue_row(clean_crawl, row)).state == "failed"
+    assert await observation_statuses(clean_crawl, domain) == []
+
+
+async def test_the_loop_backs_off_while_the_sidecar_is_unavailable(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Review finding 1. A released row's domain is still the most eligible,
+    so a loop that claimed again at once ran ~100 claim/release cycles a
+    second against a stopped `render`. It backs off instead."""
+    domain = await seed_crawl_domain(clean_crawl, mode=RenderMode.RENDERED)
+    run = await seed_run(clean_crawl, [int(domain)])
+    await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/x")
+    await make_due(clean_crawl, domain)
+    rendered = ScriptedFetcher(FetchPath.RENDERED, raising(Backpressure("sidecar down")))
+    crawler = build(clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200)), rendered)
+    loop = ClaimLoop(
+        pool=Pool("rendered", 1, RENDERED_MODES),
+        frontier=PostgresFrontier(clean_crawl),
+        assets=PostgresAssets(clean_crawl),
+        runs=PostgresRuns(clean_crawl),
+        pressure=AssetPressure(),
+        crawler=crawler,
+    )
+    stop = asyncio.Event()
+
+    task = asyncio.create_task(loop.run(stop))
+    await asyncio.sleep(1.0)
+    stop.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    assert 1 <= len(rendered.calls) <= 2, f"{len(rendered.calls)} claims in one second"
+
+
+async def test_the_sweep_finishes_a_run_whose_last_row_it_retired(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Review finding 3. A worker SIGKILLed on a run's last row, third
+    attempt, leaves the sweep to retire the row, and no worker closes it, so
+    the run stayed `running` for ever."""
+    domain = await seed_crawl_domain(clean_crawl)
+    run = await seed_run(clean_crawl, [int(domain)])
+    row = await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/x")
+    async with clean_crawl.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "UPDATE crawl.crawl_queue SET state = 'in_flight', attempts = 3, "
+                "locked_until = now() - interval '1 second' WHERE id = :id"
+            ),
+            {"id": row},
+        )
+    loop = ClaimLoop(
+        pool=Pool("static", 1, STATIC_MODES),
+        frontier=PostgresFrontier(clean_crawl),
+        assets=PostgresAssets(clean_crawl),
+        runs=PostgresRuns(clean_crawl),
+        pressure=AssetPressure(),
+        crawler=build(
+            clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200)), unused_renderer()
+        ),
+    )
+    stop = asyncio.Event()
+
+    task = asyncio.create_task(loop.run(stop))
+    await asyncio.sleep(0.5)
+    stop.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    assert (await queue_row(clean_crawl, row)).state == "failed"
+    async with clean_crawl.connect() as conn:
+        state = (
+            await conn.execute(
+                sa.text("SELECT state::text FROM crawl.runs WHERE id = :r"), {"r": int(run)}
+            )
+        ).scalar_one()
+    assert state == "completed"
+
+
+async def test_a_render_slot_that_does_not_free_up_is_backpressure() -> None:
+    """Review finding 4. Waiting for a slot happens inside a claim, so an
+    unbounded wait could outlive the lease and hand the row to a second
+    worker. Past `max_wait_s` the budget answers like a full sidecar."""
+
+    class Hanging:
+        path = FetchPath.RENDERED
+
+        async def fetch(self, request: FetchRequest) -> FetchedPage:
+            await asyncio.sleep(10)
+            raise AssertionError("unreachable")
+
+        async def aclose(self) -> None:
+            pass
+
+    budget = RenderBudget(Hanging(), 1, max_wait_s=0.2)
+    request = FetchRequest(url=f"{BASE}/x", user_agent="t")
+    holder = asyncio.create_task(budget.fetch(request))
+    await asyncio.sleep(0.05)
+
+    with pytest.raises(Backpressure):
+        await budget.fetch(request)
+    holder.cancel()

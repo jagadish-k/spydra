@@ -109,12 +109,18 @@ class Frontier(Protocol):
         """
         ...
 
-    async def complete(self, item: ClaimedUrl, completion: Completion) -> None:
+    async def complete(self, item: ClaimedUrl, completion: Completion) -> bool:
         """Close the row, advance the domain, decrement `in_flight`. One
-        transaction."""
+        transaction.
+
+        Fenced on the lease: `False`, and nothing closed, if this claim no
+        longer holds the row (it was already closed, or its lease expired and
+        another worker took it). The gate is still pushed forward, since the
+        host did receive the request.
+        """
         ...
 
-    async def release(self, item: ClaimedUrl) -> None:
+    async def release(self, item: ClaimedUrl) -> bool:
         """Return a leased row to PENDING with no penalty.
 
         For `Backpressure` only (spec 002 §6): the sidecar's queue was full,
