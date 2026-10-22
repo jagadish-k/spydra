@@ -26,8 +26,9 @@ That is the whole list. No Python, no Node, no Postgres on the host.
 cp .env.example .env          # defaults work; nothing secret in it
 make up                       # builds images, starts db/api/worker/web
 make migrate                  # creates the schema
-make seed-dev                 # optional: two fixture domains, offline
 ```
+
+`make seed-dev` arrives with BUILD_PLAN 5.1; until then it skips.
 
 **Use `http://localhost:8080` for everything.** It is the edge, it is one
 origin, and it is what the SPA talks to. The ports below are published in
@@ -44,6 +45,79 @@ development for direct inspection only.
 | Postgres                     | localhost:5432 (`spydra` / `spydra`) |
 
 `make down` stops and keeps data. `make reset` drops the database volume.
+
+## Verify what is built
+
+There is no API or UI until phase 3. Today you verify the crawler three ways,
+all offline against the fixture site in `backend/tests/fixtures/`.
+
+### 1. The gates (what CI runs)
+
+```sh
+make check          # lint, types, all test suites, generated-file drift
+make phase1-exit    # phase 1's exit: both fetchers, then render stopped
+```
+
+`make phase1-exit` uses the test database and prints a checklist ending
+`✓ phase 1 exit`.
+
+### 2. Crawl by hand and look at the rows
+
+After `make up` and `make migrate`:
+
+```sh
+# the fixture site (test-only, behind a profile; no host port)
+docker compose --profile phase1-exit up -d --wait fixtures
+
+# three domains: static, rendered, auto. The running worker crawls them.
+make load f=tests/fixtures/phase1/render-up.yaml
+make logs           # worker: run_finished within a few seconds; Ctrl-C
+```
+
+```sh
+make psql
+```
+
+```sql
+SELECT p.url, o.strategy, o.http_status, o.title, o.price_amount, o.price_currency
+FROM crawl.page_observations o JOIN crawl.pages p ON p.id = o.page_id
+ORDER BY o.id DESC LIMIT 5;
+
+SELECT id, state, stats FROM crawl.runs ORDER BY id DESC LIMIT 2;
+SELECT source_url, state FROM crawl.asset_queue ORDER BY id DESC LIMIT 5;
+```
+
+Expected: three rows with `strategy = selector`, titles filled, the vantage
+price in `GBP`, the run `completed`, asset rows `pending` (they are drained in
+phase 5).
+
+Then stop the browser and crawl again:
+
+```sh
+docker compose stop render
+make load f=tests/fixtures/phase1/render-down.yaml
+```
+
+The vantage (static) page still extracts; the orbis (`auto`) page records
+`strategy = static_fallback` with no title. Put things back with
+`docker compose up -d render` and
+`docker compose --profile phase1-exit stop fixtures`.
+
+### 3. The render sidecar's isolation (ADR-0038)
+
+A crawled page must not reach `db`/`api`/`bff`. On Linux this is measured. **On
+Docker Desktop it is not yet**: please run this once and report the result.
+
+```sh
+docker compose exec render node -e "
+for (const u of ['http://host.docker.internal:8000/', 'http://host.docker.internal:5432/'])
+  fetch(u).then(r => console.log(u, 'REACHED', r.status), e => console.log(u, 'blocked', e.cause?.code));"
+```
+
+Pass: `blocked ENOTFOUND` or `blocked ECONNREFUSED` on both (Linux prints
+`ENOTFOUND`). Anything else — `REACHED`, or another code such as
+`UND_ERR_SOCKET` on `:5432` — means a page can reach the host's dev ports
+(open question in `.tasks/fix-2.0-phase1-decisions.md`).
 
 ## llama-server on the host
 
