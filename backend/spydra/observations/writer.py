@@ -2,10 +2,11 @@
 
 The order below is the slice (BUILD_PLAN `1.11`):
 
-1. hash the **normalised** fields (spec 003 §4);
+1. hash the **normalised** fields (spec 003 §4) — no hash at all when
+   nothing survives normalisation;
 2. compare against the page's previous hash — equal means a lightweight
-   `unchanged` row, with the **predecessor's emptiness verdict carried
-   forward**;
+   `unchanged` row. The emptiness verdict is computed from **this**
+   extraction, before the fields are dropped, and never inherited;
 3. write the observation (append-only, ADR-0007);
 4. the asset URLs the extraction produced are enqueued — one `INSERT`, never
    a download (ADR-0003, spec 008 §1 step 1, `1.12`);
@@ -14,7 +15,8 @@ The order below is the slice (BUILD_PLAN `1.11`):
    (ADR-0027, ADR-0030);
 6. re-read the domain's health and apply the event it calls for: `BREAK`
    past 20% of regressions, `NEVER_MATCHED` on a first run past 20% of
-   empties.
+   empties. Only on a page that could have moved a ratio — see
+   `_apply_health`.
 
 **Step 2 is where the worst available bug in this slice lives, and the
 ordering is what prevents it.** A lightweight row has no fields, and
@@ -24,15 +26,15 @@ a perfectly stable catalogue would halt itself as a redesign on its second
 run. The verdict is therefore computed from the real extraction *before* the
 fields are dropped, and never re-derived from the row.
 
-**The assets are enqueued even when the page is unchanged.** `asset_queue`
-rows hang off an observation and `5.2` links them into
-`observation_assets`, so skipping the enqueue on a lightweight row would
-leave the newest observation of an unchanged product with no images — and
-`page_current` is what the UI reads (ADR-0007). The cost is that every run
-re-fetches the gallery of every unchanged page; spec 008 §4's
-hash-before-decode makes that cheap but not free, and the better fix is for
-`5.2` to copy the previous observation's links rather than re-download.
-Raised in the task file.
+**The assets are enqueued even when the page is unchanged.** Asset URLs are
+excluded from the hash (spec 003 §4), so an `unchanged` row can carry a
+gallery that did change: a re-upload under new URLs. Skipping the enqueue
+would make that change undetectable, and detecting it by content is what
+spec 008 does with these rows. `page_current` skips `unchanged` rows, so the
+gallery `5.2` links to one is not what the view returns; reconciling the two
+is `5.2`'s, raised in `.tasks/fix-1.11-review-findings.md`. The cost is a
+re-fetch of every unchanged gallery every run, which spec 008 §4's
+hash-before-decode makes cheap but not free.
 
 **No politeness and no queue state here.** The frontier closes the queue row
 (`1.8`) and the politeness gate computes the delay (`1.9`); this writes what
@@ -47,7 +49,7 @@ from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.domain.entities import Observation, Template
 from spydra.domain.enums import DomainEvent, Strategy, UnknownReason
 from spydra.domain.fetch import FetchedPage
-from spydra.domain.health import assess
+from spydra.domain.health import MINIMUM_PAGES_FOR_A_VERDICT, assess
 from spydra.domain.ids import DomainId, ObservationId, PageId, RunId
 from spydra.domain.lifecycle import can, transition
 from spydra.extraction.assets import asset_urls
@@ -117,27 +119,22 @@ class ObservationWriter:
         empty = empty_extraction(fetched.http_status, fields)
 
         prior = await self._observations.latest(page.id)
-        unchanged = prior is not None and prior.content_hash == digest
+        # A NULL digest is "nothing comparable", never "the same as before":
+        # two pages with nothing in them do not have equal content, and
+        # without this an image-only or empty page would be `unchanged` from
+        # its second run for ever (`hashing.content_hash`).
+        unchanged = digest is not None and prior is not None and prior.content_hash == digest
         if unchanged:
-            # Spec 003 §4's lightweight row: the fields are not repeated.
+            # Spec 003 §4's lightweight row: the fields are not repeated, and
+            # `page_current` skips the row, so current state is still the
+            # last full observation (ADR-0007).
             #
             # **`empty` is already decided, and that ordering is the guard.**
             # It was computed from the real extraction two lines up, so
             # emptying `fields` here cannot make a stable page look like an
             # empty one — `empty_extraction(200, {})` is `True` by
-            # definition, and a row carrying that verdict would be a
-            # regression on every unchanged page of an unchanging catalogue.
-            #
-            # An earlier version also copied the predecessor's verdict on top
-            # of this. Mutation proved that line could not fail: it agreed
-            # with the computed verdict in every case a test could reach, so
-            # it was a second mechanism for one decision — and it was the
-            # WRONG one in the corner where they differ. A page whose only
-            # field is an asset URL normalises to `{}` (spec 003 §4 excludes
-            # asset URLs), so it hashes like an empty page while the
-            # predicate correctly says it has content; inheriting would have
-            # marked it empty. The hash decides whether to repeat the fields;
-            # only the predicate decides emptiness.
+            # definition. The hash decides whether to repeat the fields; only
+            # the predicate decides emptiness.
             fields = {}
 
         observation = Observation(
@@ -169,7 +166,7 @@ class ObservationWriter:
         if reason is not None:
             await self._observations.record_unknown(page.domain_id, page.url, reason)
 
-        event, halted = await self._apply_health(run_id, page.domain_id)
+        event, halted = await self._apply_health(run_id, page.domain_id, empty=empty)
         return WriteOutcome(
             observation_id=observation_id,
             observation=observation,
@@ -180,15 +177,30 @@ class ObservationWriter:
         )
 
     async def _apply_health(
-        self, run_id: RunId, domain_id: DomainId
+        self, run_id: RunId, domain_id: DomainId, *, empty: bool
     ) -> tuple[DomainEvent | None, bool]:
         """Re-read the ratio and move the domain if it calls for it.
 
-        **After every page, not at the end of the run.** Spec 003 §3 halts a
-        domain "mid-run"; assessed at the end, the detector would let a
-        redesigned catalogue be crawled to completion and then report it,
-        which is the data corruption it exists to prevent.
+        **After every page that could move it, not at the end of the run.**
+        Spec 003 §3 halts a domain "mid-run"; assessed at the end, the
+        detector would let a redesigned catalogue be crawled to completion
+        and then report it, which is the data corruption it exists to
+        prevent.
+
+        **A non-empty page can only lower both ratios**: it grows the
+        denominator, or replaces an earlier empty attempt of the same page.
+        Past the minimum sample, it cannot be the page that trips the
+        threshold, so it is not assessed. Assessing every page made the run
+        quadratic: measured at 7 ms per call on a 3,400-page run, ~24 s, and
+        ~40 min at 34,000 pages. The one non-empty page that *can* trip it is
+        the one that brings the run up to the minimum, when 4 empties of 5
+        is suddenly a verdict. Hence the bounded count.
         """
+        if not empty and await self._observations.past_minimum(
+            run_id, domain_id, MINIMUM_PAGES_FOR_A_VERDICT
+        ):
+            return None, False
+
         health = await self._observations.health(run_id, domain_id)
         event = assess(health)
         if event is None:

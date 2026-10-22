@@ -29,8 +29,18 @@ _WHITESPACE = re.compile(r"\s+")
 # Currency symbols and codes we strip before parsing. The symbol is also the
 # first source of truth for *which* currency (spec 003 §2), so detection
 # reads this table rather than guessing from the page.
+#
+# **Matched longest first** (`_BY_LENGTH`). `$` is a substring of `CA$`,
+# `A$`, `NZ$`, `HK$` and `US$`, so a table read in insertion order recorded a
+# Canadian price as USD, which looks exactly like data. Stripping has the same
+# order problem from the other side: removing `$` first leaves `CA10.00`.
 CURRENCY_SYMBOLS: Mapping[str, str] = {
     "£": "GBP",
+    "US$": "USD",
+    "CA$": "CAD",
+    "A$": "AUD",
+    "NZ$": "NZD",
+    "HK$": "HKD",
     "$": "USD",
     "€": "EUR",
     "¥": "JPY",
@@ -38,6 +48,10 @@ CURRENCY_SYMBOLS: Mapping[str, str] = {
     "SEK": "SEK",
     "PLN": "PLN",
 }
+
+_BY_LENGTH: tuple[tuple[str, str], ...] = tuple(
+    sorted(CURRENCY_SYMBOLS.items(), key=lambda item: len(item[0]), reverse=True)
+)
 
 # A number with a thousands separator and no decimal part is ambiguous:
 # `1,234` is 1234 to an English site and 1.234 to a German one. Spec 003 §2
@@ -72,7 +86,7 @@ def strip_currency(value: str) -> str:
     that dropped everything non-numeric would turn `-1.50` into `150`.
     """
     out = trim(value)
-    for symbol, code in CURRENCY_SYMBOLS.items():
+    for symbol, code in _BY_LENGTH:
         out = out.replace(symbol, "").replace(code, "")
     out = out.replace("\xa0", "").replace(" ", "").strip()
 
@@ -97,7 +111,7 @@ def detect_currency(
     a `0.00` and not an assumed GBP — spec 003 §2 is explicit, and a wrong
     currency is worse than a missing one because it looks like data.
     """
-    for symbol, code in CURRENCY_SYMBOLS.items():
+    for symbol, code in _BY_LENGTH:
         if symbol in value:
             return code
     return page_currency or domain_default

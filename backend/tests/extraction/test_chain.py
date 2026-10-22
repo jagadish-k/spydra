@@ -81,7 +81,7 @@ async def test_the_same_page_without_its_jsonld_falls_through_to_the_selector() 
     )
     without_template = await chain().extract(stripped, template=None)
     assert without_template.strategy is None, "no rung can work without JSON-LD or a template"
-    assert without_template.empty is True
+    assert without_template.fields == {}
 
 
 async def test_the_selector_rung_extracts_the_well_formed_fixture() -> None:
@@ -165,7 +165,7 @@ async def test_the_redesigned_page_yields_an_empty_extraction() -> None:
     )
 
     assert empty_extraction(200, result.fields) is True
-    assert result.empty is True, "the chain reports unknown rather than a half-page"
+    assert result.strategy is None, "the chain reports unknown rather than a half-page"
 
 
 async def test_the_soft_404_also_yields_an_empty_extraction() -> None:

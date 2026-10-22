@@ -36,13 +36,25 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-from spydra.adapters.postgres.tables import PAGE_CURRENT_NAME, PAGE_CURRENT_SQL
+from spydra.adapters.postgres.tables import PAGE_CURRENT_NAME, SCHEMA
 
 # revision identifiers, used by Alembic.
 revision: str = "156197f778f8"
 down_revision: str | None = "2071b5ff83e1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+
+# Frozen: the view as this revision shipped it. Importing the live constant
+# from `tables.py` made history depend on the present: replayed today, this
+# revision would install a later revision's view, and that revision's
+# downgrade would have nothing to restore.
+_PAGE_CURRENT_SQL = f"""
+CREATE VIEW {SCHEMA}.page_current AS
+SELECT DISTINCT ON (page_id) *
+FROM {SCHEMA}.page_observations
+ORDER BY page_id, observed_at DESC
+"""
 
 
 def upgrade() -> None:
@@ -77,17 +89,17 @@ def downgrade() -> None:
     op.drop_column("page_observations", "empty_extraction", schema="crawl")
     op.drop_column("page_observations", "unchanged", schema="crawl")
     op.drop_column("page_observations", "extraction_rung", schema="crawl")
-    op.execute(PAGE_CURRENT_SQL)
+    op.execute(_PAGE_CURRENT_SQL)
 
 
 def _rebuild_page_current() -> None:
     """Re-expand `SELECT *` over the widened table (ADR-0007).
 
-    The definition is imported from `tables.py` rather than copied: two
-    copies of the view's SQL is how a later migration recreates yesterday's
-    view, and `migrations/env.py` already treats that constant as the one
-    definition (its `include_object` filter keeps autogenerate from proposing
-    to drop a view it cannot see).
+    The definition is a frozen literal, not the live constant in
+    `tables.py`. This revision once imported that constant, which made
+    replaying it depend on whatever the view became later.
+    `fix/1.11-review-findings` changed the view and froze each revision's
+    own copy.
     """
     op.execute(f"DROP VIEW IF EXISTS {PAGE_CURRENT_NAME}")
-    op.execute(PAGE_CURRENT_SQL)
+    op.execute(_PAGE_CURRENT_SQL)

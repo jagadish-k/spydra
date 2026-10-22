@@ -25,6 +25,7 @@ from typing import Protocol
 from spydra.domain.entities import ExtractedFields, Template
 from spydra.domain.enums import Strategy
 from spydra.domain.fetch import FetchedPage
+from spydra.extraction.hashing import is_substantive
 from spydra.extraction.validation import empty_extraction
 
 
@@ -51,10 +52,6 @@ class ChainResult:
     fields: ExtractedFields
     strategy: Strategy | None
 
-    @property
-    def empty(self) -> bool:
-        return self.strategy is None or not self.fields
-
 
 class ExtractionChain:
     """Tries each rung in order until one produces something usable."""
@@ -63,22 +60,37 @@ class ExtractionChain:
         self._strategies = tuple(strategies)
 
     async def extract(self, page: FetchedPage, template: Template | None = None) -> ChainResult:
-        """The first rung that produces a non-empty extraction wins.
+        """The first rung whose extraction is **substantive** wins.
 
-        **"Nothing usable" is `empty_extraction`, not `None`.** A rung that
-        returns a mapping of all-empty values has not extracted anything, and
-        stopping there would leave a selector template unreachable on a page
-        whose JSON-LD is present but hollow — a shape that exists, because
-        SEO plugins emit skeleton markup. The single predicate in
-        `validation.py` is what both this and `1.11` use, so they cannot
-        disagree about it (ADR-0027).
+        **"Nothing usable" is decided twice, and both tests are shared.**
+
+        - A rung that returns a mapping of all-empty values has extracted
+          nothing (`empty_extraction`, ADR-0027's one predicate), so the chain
+          moves on.
+        - A rung that returned *something*, but nothing that survives
+          normalisation (`is_substantive`), has not settled the page either.
+          SEO plugins emit skeleton markup: a `Product` carrying only an
+          `image`. Stopping there would leave the approved template
+          unreachable, and the page would hash like nothing at all, so it
+          would be neither reported nor counted and would read `unchanged`
+          for ever.
+
+        That second kind of result is kept as a fallback, not discarded.
+        When no later rung does better, it is still the best answer, and its
+        image URLs still reach the asset queue (`1.12`). The first such
+        result wins, which keeps spec 003 §1's cheapest-first order.
         """
+        fallback: ChainResult | None = None
         for strategy in self._strategies:
             fields = await strategy.extract(page, template)
             if fields is None:
                 continue
             if empty_extraction(page.http_status, fields):
                 continue
-            return ChainResult(fields=fields, strategy=strategy.name)
+            result = ChainResult(fields=fields, strategy=strategy.name)
+            if is_substantive(fields):
+                return result
+            if fallback is None:
+                fallback = result
 
-        return ChainResult(fields={}, strategy=None)
+        return fallback or ChainResult(fields={}, strategy=None)

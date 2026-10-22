@@ -11,7 +11,7 @@ Normalisation is that section's list, implemented literally:
 | sorted keys            | `json.dumps(..., sort_keys=True)`                 |
 | decimals canonicalised | `format(d.normalize(), "f")`                      |
 | whitespace collapsed   | `" ".join(text.split())`                          |
-| asset URLs excluded    | nothing to exclude in phase 1 — see below         |
+| asset URLs excluded    | `is_asset_url`, by value — see below              |
 
 **`format(d.normalize(), "f")` and not `str(d)`.** `normalize()` alone turns
 `Decimal("100")` into `Decimal("1E+2")`, so two spellings of one price would
@@ -90,18 +90,40 @@ def normalise(fields: ExtractedFields) -> dict[str, Normalised]:
     return out
 
 
-def content_hash(fields: ExtractedFields) -> bytes:
-    """sha256 over the canonical JSON of `normalise(fields)`.
+def is_substantive(fields: ExtractedFields) -> bool:
+    """Does anything survive normalisation, i.e. is there content to compare?
+
+    Not the same question as `empty_extraction`, and the difference is the
+    asset URLs. A page whose only field is an image URL is **not** empty
+    (ADR-0027: a field resolved), but nothing of it survives the hash, so it
+    is not *substantive*: there is no content against which "unchanged" could
+    mean anything. The chain uses this to keep looking for a better rung, and
+    `content_hash` to refuse a hash of nothing. Defined over `normalise`, so
+    the two cannot disagree about what counts.
+    """
+    return bool(normalise(fields))
+
+
+def content_hash(fields: ExtractedFields) -> bytes | None:
+    """sha256 over the canonical JSON of `normalise(fields)`, or `None` when
+    nothing survives normalisation.
+
+    **`None`, not the hash of `{}`.** Every page with nothing comparable
+    would otherwise share one digest, and the writer reads equal digests as
+    `unchanged`: an image-only page, or a page from which nothing resolved,
+    would be recorded as "same as last time" for ever. Two NULLs are not
+    equal in SQL either, which is the semantics wanted.
 
     32 raw bytes, for `page_observations.content_hash` (BYTEA). Not hex: the
     column is binary, and a hex string in a BYTEA column is a 64-byte value
     that compares equal to nothing anyone expects.
     """
+    normalised = normalise(fields)
+    if not normalised:
+        return None
     # Keys sorted, no spaces, unicode left as unicode so a German product
     # name hashes as itself rather than as escapes.
-    canonical = json.dumps(
-        normalise(fields), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
+    canonical = json.dumps(normalised, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).digest()
 
 

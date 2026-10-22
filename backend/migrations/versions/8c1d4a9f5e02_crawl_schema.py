@@ -44,7 +44,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from spydra.adapters.postgres.tables import PAGE_CURRENT_NAME, PAGE_CURRENT_SQL, SCHEMA
+from spydra.adapters.postgres.tables import PAGE_CURRENT_NAME, SCHEMA
 
 # revision identifiers, used by Alembic.
 revision: str = "8c1d4a9f5e02"
@@ -55,6 +55,17 @@ depends_on: str | Sequence[str] | None = None
 # Created by the first op.create_table that uses each, dropped explicitly in
 # downgrade(). Listed once so the two halves cannot disagree.
 _ENUMS = ("domain_state", "run_state")
+
+
+# Frozen: the view as this revision shipped it. Importing the live constant
+# from `tables.py` made history depend on the present, and the current
+# definition names a column (`unchanged`) that arrives two revisions later.
+_PAGE_CURRENT_SQL = f"""
+CREATE VIEW {SCHEMA}.page_current AS
+SELECT DISTINCT ON (page_id) *
+FROM {SCHEMA}.page_observations
+ORDER BY page_id, observed_at DESC
+"""
 
 
 def upgrade() -> None:
@@ -451,7 +462,7 @@ def upgrade() -> None:
 
     # Current state is a view over the append-only table, never a second
     # table that something could UPDATE (ADR-0007, AGENTS.md rule 13).
-    op.execute(PAGE_CURRENT_SQL)
+    op.execute(_PAGE_CURRENT_SQL)
 
 
 def downgrade() -> None:

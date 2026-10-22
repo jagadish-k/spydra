@@ -144,6 +144,12 @@ If the hash matches the previous observation, write a lightweight row
 (`observed_at`, `http_status`, `unchanged = true`) or skip and bump
 `pages.last_crawled_at` — configurable per domain.
 
+`page_current` skips `unchanged` rows (spec 001 §1), so current state is the
+last full observation. When nothing survives normalisation (an empty page,
+or one whose only field is an asset URL) there is **no hash**:
+`content_hash` is NULL and the row is never `unchanged`, because "nothing to
+compare" is not "the same as before".
+
 ## 5. Acceptance
 
 - [ ] A page with valid JSON-LD extracts via `structured` without consulting a

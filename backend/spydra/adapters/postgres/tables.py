@@ -232,6 +232,10 @@ page_observations = sa.Table(
     sa.Column("raw_html_path", sa.Text),  # gzipped, purged after 7 days
     sa.Column("raw_html_expires_at", sa.DateTime(timezone=True)),
     sa.Index("ix_page_observations_page_observed", "page_id", sa.text("observed_at DESC")),
+    # The broken-template detector reads one run's pages after every empty
+    # page (ADR-0030). Without this the only index is per page, and every
+    # read was a scan of the whole history.
+    sa.Index("ix_page_observations_run_page", "run_id", "page_id"),
 )
 
 # `page_current` is a VIEW over this table, not a column or a second table
@@ -239,10 +243,22 @@ page_observations = sa.Table(
 # absent from this metadata — see PAGE_CURRENT_SQL below and the
 # `include_object` filter in migrations/env.py, which keeps autogenerate from
 # proposing to drop a view it cannot see a definition for.
+#
+# **`unchanged` rows are skipped.** They are spec 003 §4's lightweight rows,
+# with NULL fields by design, and an `unchanged` row asserts "same content as
+# the observation before". So the newest row that is NOT `unchanged` *is* the
+# current content. Returning the lightweight row made every stable page read
+# empty from its second run. When a page was last seen is
+# `pages.last_crawled_at`.
+#
+# This constant is the CURRENT definition. A migration that creates the view
+# freezes the SQL it shipped as a literal, because importing this would make
+# an old revision create a view over columns that do not exist yet.
 PAGE_CURRENT_SQL = f"""
 CREATE VIEW {SCHEMA}.page_current AS
 SELECT DISTINCT ON (page_id) *
 FROM {SCHEMA}.page_observations
+WHERE NOT unchanged
 ORDER BY page_id, observed_at DESC
 """
 
@@ -363,6 +379,16 @@ unknown_pages = sa.Table(
     sa.Column("sample_html_path", sa.Text),
     sa.Column("resolved_at", sa.DateTime(timezone=True)),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=_NOW),
+    # One OPEN row per URL. A page that stays empty run after run is one
+    # thing for the operator to look at, not one per run; once resolved, the
+    # same URL failing again opens a new row (spec 001 §1).
+    sa.Index(
+        "uq_unknown_pages_open",
+        "domain_id",
+        "url",
+        unique=True,
+        postgresql_where=sa.text("resolved_at IS NULL"),
+    ),
 )
 
 run_events = sa.Table(

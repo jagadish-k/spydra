@@ -52,34 +52,44 @@ class SelectorStrategy:
 
         fields: dict[str, FieldValue] = {}
         for name, rule in template.extraction.items():
-            fields[name] = self._field(tree, rule, page)
-
-        price = fields.get("price")
-        if price is not None:
-            # Price is the one field that carries two values, and spec 003 §2
-            # makes the currency a first-class part of it: a price without a
-            # determinable currency is a validation failure, so the amount
-            # and the code travel together and `validation.currency` checks
-            # both halves.
-            fields["price"] = self._price(price, page_currency)
+            raw = self._raw(tree, rule)
+            value = apply_chain(raw, rule.transform, page_url=page.final_url)
+            if name == "price" and value is not None:
+                # Price is the one field that carries two values, and spec 003
+                # §2 makes the currency a first-class part of it: a price
+                # without a determinable currency is a validation failure, so
+                # the amount and the code travel together and
+                # `validation.currency` checks both halves.
+                #
+                # **The currency is read from the text BEFORE the transforms.**
+                # `strip_currency` is one of spec 003 §2's own transforms, and
+                # it removes exactly the symbol detection reads, so a template
+                # that declared it recorded `price_currency` NULL on every
+                # product and failed its own currency rule.
+                value = self._price(value, raw, page_currency)
+            fields[name] = value
 
         return fields
 
-    def _field(self, tree: LexborHTMLParser, rule: FieldRule, page: FetchedPage) -> FieldValue:
-        nodes = tree.css(rule.selector)
-        if not nodes and rule.fallback:
-            nodes = tree.css(rule.fallback)
+    def _raw(self, tree: LexborHTMLParser, rule: FieldRule) -> FieldValue:
+        """The selected text, before any transform.
 
-        values = [self._value(node, rule.attr) for node in nodes]
-        present = [v for v in values if v is not None]
+        `fallback` is tried when the primary selector yields no **value**,
+        not only when it matches no node. An empty `<span class="price">`
+        left behind by a redesign is the common shape, and a fallback that
+        did not cover it would not cover the case it was written for.
+        """
+        present = self._present(tree, rule.selector, rule.attr)
+        if not present and rule.fallback:
+            present = self._present(tree, rule.fallback, rule.attr)
 
-        raw: FieldValue
         if rule.many or any(t.name is TransformName.PAIRS for t in rule.transform):
-            raw = present
-        else:
-            raw = present[0] if present else None
+            return present
+        return present[0] if present else None
 
-        return apply_chain(raw, rule.transform, page_url=page.final_url)
+    def _present(self, tree: LexborHTMLParser, selector: str, attr: str) -> list[str]:
+        values = (self._value(node, attr) for node in tree.css(selector))
+        return [v for v in values if v is not None]
 
     @staticmethod
     def _value(node: LexborNode, attr: str) -> str | None:
@@ -90,7 +100,7 @@ class SelectorStrategy:
         return trim(value) if value else None
 
     def _price(
-        self, value: FieldValue, page_currency: str | None
+        self, value: FieldValue, raw: FieldValue, page_currency: str | None
     ) -> Mapping[str, str | Decimal | None]:
         """`{amount, currency}`, with either half possibly missing.
 
@@ -99,10 +109,13 @@ class SelectorStrategy:
         §2/§3) — assuming the domain default when the page said nothing
         different would be the one error that looks exactly like data.
         """
-        text = str(value)
+        # `raw` is the pre-transform selection; a many-valued price is not a
+        # shape spec 003 §2 defines, so its first value stands for it.
+        seen = str(raw[0] if isinstance(raw, list) and raw else raw)
+        amount = value if isinstance(value, Decimal) else parse_decimal(str(value))
         return {
-            "amount": parse_decimal(text),
-            "currency": detect_currency(text, page_currency, self._domain_currency),
+            "amount": amount,
+            "currency": detect_currency(seen, page_currency, self._domain_currency),
             # The raw text, kept so a failure can say what it SAW. Spec 003
             # §3's example record is literally
             # `{"rule": "currency", "ok": false, "saw": "POA"}` — "POA" is
@@ -110,7 +123,7 @@ class SelectorStrategy:
             # record saying `{'amount': None, 'currency': 'GBP'}` explains
             # nothing. Without this the price is the one field whose failure
             # is unreadable, which is the field most likely to fail.
-            "raw": text,
+            "raw": seen,
         }
 
     @staticmethod

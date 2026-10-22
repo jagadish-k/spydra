@@ -19,7 +19,9 @@ import extruct
 from spydra.domain.entities import ExtractedFields, Template
 from spydra.domain.enums import Strategy
 from spydra.domain.fetch import FetchedPage
+from spydra.extraction.hashing import is_substantive
 from spydra.extraction.transforms import absolute_url, parse_decimal
+from spydra.extraction.validation import is_empty
 
 # schema.org/Product, however the page spells the @type.
 _PRODUCT_TYPES = {
@@ -84,11 +86,14 @@ class StructuredStrategy:
             }
 
         # An all-empty composite is not a price, so it goes too — otherwise a
-        # hollow `offers: {}` would make the page look extracted.
+        # hollow `offers: {}` would make the page look extracted. "Hollow" is
+        # the hasher's rule, not a third one: `raw` is evidence of what the
+        # page said, not a value, so a composite carrying only `raw` has
+        # nothing in it (ADR-0027 asks for one notion of empty).
         price = fields.get("price")
-        if isinstance(price, Mapping) and price.get("amount") is None and not price.get("currency"):
+        if price is not None and not is_substantive({"price": price}):
             fields.pop("price", None)
-        return {k: v for k, v in fields.items() if v not in (None, [], "")}
+        return {k: v for k, v in fields.items() if not is_empty(v)}
 
     def _find_product(self, html: str) -> Mapping[str, Any] | None:
         data = extruct.extract(html, syntaxes=["json-ld", "microdata", "rdfa"], uniform=True)
