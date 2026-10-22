@@ -39,3 +39,9 @@ class Backpressure(SpydraError):
 
 class FetchFailed(SpydraError):
     """A fetch that did not produce a response: DNS, refused, timeout."""
+
+
+class RefusedConfiguration(SpydraError, ValueError):
+    """A configuration file asks for something the system will not do
+    (BUILD_PLAN 1.14): a required field (ADR-0027), a seed on another host, or
+    reactivating a domain the lifecycle says only a human may move."""

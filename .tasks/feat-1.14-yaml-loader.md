@@ -43,7 +43,7 @@ static crawling unaffected and makes `auto` record `static_fallback`.
   ADR-0023: only static test pages become reachable from inside the
   browser, and only when the profile is up.
 - `make phase1-exit` starts db, render, fixtures and worker, loads
-  `backend/tests/fixtures/phase1.yaml`, waits for the run, asserts, then
+  `backend/tests/fixtures/phase1/render-up.yaml` and `render-down.yaml`, waits for the run, asserts, then
   stops `render` and repeats for the AUTO domain.
 
 ## Acceptance
@@ -87,8 +87,58 @@ static crawling unaffected and makes `auto` record `static_fallback`.
   no seeds is set active but left out of the run. That is not tested
   either. Next: `spydra-reviewer`.
 
+- backend (after test): two gaps the test-writer found are closed, and
+  that **supersedes the test line above**. Any `required` value except a
+  literal `false` is refused (`yes`, `on`, `1`, `"true"` too), and the run's
+  `domain_ids` covers every domain in the file, seeded or not.
+- reviewer (fresh context; did not write the code): 3 blocking findings,
+  7 non-blocking. It ran `make phase1-exit` (green) and probed concurrent
+  loads (safe: the conflicting row lock serialises them).
+  1. **Blocking, fixed.** A reload reset a `paused` domain to `active` and
+     wiped its 429 backoff: a retry through a block.
+     - Existing domains now go through the lifecycle. A candidate
+       (`discovered`, `awaiting_approval`) walks PROPOSE/APPROVE to
+       `active`.
+     - `paused`, `broken` and `archived` refuse the whole load, naming the
+       state.
+     - The live delay is only ever raised to the new floor. The test that
+       blessed the old behaviour is replaced by refusal, approval and
+       backoff-kept tests.
+  2. **Blocking, fixed.** A seed on another host would have been crawled
+     under the wrong domain's robots and politeness. Such a seed is refused.
+  3. **Blocking, fixed.** The Linux override was an undocumented second
+     hole in ADR-0023: a page in the browser can reach the sidecar's API at
+     the bridge address. The exit script also left it in place afterwards.
+     - It is now recorded in ADR-0036 as a second bounded exception, with
+       its cost stated.
+     - The script restores `render` from `compose.yaml` alone, and only if
+       it was running before.
+  4. **Fixed.** `many: no` and `respect_robots: no` used to read as true.
+     Boolean keys must now be YAML booleans.
+  5. **Left as is.** Misspelt keys are still ignored: BUILD_PLAN 1.14 says
+     no validator.
+  6. **Fixed in part.** The checker now fails fast on a `failed` or
+     `stopped` run. "Politely" is proven by TESTING.md §2's tests inside
+     `make check`, which runs first in CI.
+  7. **Fixed.** ADR-0036 now names all four fixture hostnames.
+  8. **Fixed.** Stale docs: `server.py`, the task file's file names, and the
+     handoff line above.
+  9. **Left as is.** A field cannot be named `required`. The walk is broad
+     on purpose.
+  10. **No change.** `by_strategy` reports a `static_fallback` page that
+      extracted nothing as `none`, which is the rung that produced fields.
+      That is correct by its own definition.
+
 ## Open questions — for the human
 
 1. The `fixtures` profile service on `egress` (ADR-0036). The alternative,
    running the whole exit inside the render container, cannot exercise the
    worker.
+2. **ADR-0023 has no Linux deployment answer.** Its worker-to-sidecar path
+   (a host-loopback publish reached through `host.docker.internal`) works
+   only on Docker Desktop. On Linux Docker Engine, which is what CI and any
+   Linux host run, the worker cannot reach the sidecar at all. The exit uses
+   a run-scoped override (ADR-0036). A deployment needs a real decision.
+3. **A file cannot resume a paused domain, by design.** There is no resume
+   command until the API (phase 2). Until then, an operator resumes with
+   SQL. That is acceptable for a scaffold, but worth knowing.

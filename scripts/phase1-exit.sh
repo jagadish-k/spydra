@@ -23,11 +23,19 @@ compose() { docker compose "${files[@]}" --profile phase1-exit "$@"; }
 TEST_DB=postgresql+asyncpg://spydra_api:spydra@db:5432/spydra_test
 in_api() { compose run --rm -T -e DATABASE_URL="$TEST_DB" api "$@"; }
 
+# Restore render exactly as ADR-0023 has it: recreated from compose.yaml ALONE
+# (the Linux override's second publish must not outlive the run, or every
+# later crawl on this host inherits it), and only if it was running before.
+render_was_running=$(docker compose -f compose.yaml ps --status running -q render)
 worker=""
 cleanup() {
   [ -n "$worker" ] && docker stop -t 30 "$worker" >/dev/null 2>&1 || true
-  compose up -d render >/dev/null 2>&1 || true
   compose stop fixtures >/dev/null 2>&1 || true
+  if [ -n "$render_was_running" ]; then
+    docker compose -f compose.yaml up -d --force-recreate render >/dev/null 2>&1 || true
+  else
+    docker compose -f compose.yaml rm -sf render >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 

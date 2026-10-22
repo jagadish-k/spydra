@@ -173,7 +173,7 @@ domains:
             fallback: "[itemprop=price]"
     seeds:
       - /p/one
-      - https://elsewhere.test/p/two
+      - http://shop.test:8099/p/two
   - host: plain.test
     seeds: [/p/three]
 """
@@ -210,7 +210,7 @@ def test_a_valid_file_parses_to_the_domains_it_describes() -> None:
 def test_path_seeds_resolve_against_scheme_and_host_and_full_urls_are_kept() -> None:
     shop, plain = parse(_VALID)
 
-    assert shop.seeds == ("http://shop.test:8099/p/one", "https://elsewhere.test/p/two")
+    assert shop.seeds == ("http://shop.test:8099/p/one", "http://shop.test:8099/p/two")
     # No scheme given: https.
     assert plain.seeds == ("https://plain.test/p/three",)
 
@@ -329,3 +329,35 @@ def test_each_exit_template_matches_its_own_seed(name: str, host: str) -> None:
     (config,) = domain.templates
 
     assert re.search(config.url_pattern, urlsplit(seed).path)
+
+
+def test_a_seed_on_another_host_is_refused() -> None:
+    """Review finding 2. The worker reads the robots.txt, delay and pause
+    state of the seed's DOMAIN row, so a seed on another host would be
+    fetched past that host's own rules."""
+    text = """
+domains:
+  - host: shop.test
+    seeds: [https://elsewhere.test/p/two]
+"""
+    with pytest.raises(RefusedConfiguration, match="elsewhere.test"):
+        parse(text)
+
+
+@pytest.mark.parametrize("spelling", ["no", "off", "yes", '"false"', "0"])
+def test_a_boolean_key_that_is_not_a_yaml_boolean_is_refused(spelling: str) -> None:
+    """Review finding 4. YAML 1.2 reads `no` and `off` as strings and
+    `bool("no")` is True, so `many: no` silently meant many."""
+    text = f"""
+domains:
+  - host: shop.test
+    templates:
+      - name: p
+        url_pattern: "/p/.+"
+        extraction:
+          images: {{ selector: img, attr: src, many: {spelling} }}
+"""
+    with pytest.raises(RefusedConfiguration, match="many"):
+        parse(text)
+    with pytest.raises(RefusedConfiguration, match="respect_robots"):
+        parse(f"domains:\n  - host: shop.test\n    respect_robots: {spelling}\n")

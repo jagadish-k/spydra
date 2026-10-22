@@ -50,6 +50,8 @@ async def _wait_for_completion(engine: AsyncEngine, run: int) -> dict[str, Any]:
             ).one()
         if state == "completed":
             return dict(stats)
+        if state in ("failed", "stopped"):
+            raise SystemExit(f"run {run} ended {state}: {stats}")
         await asyncio.sleep(1)
     raise SystemExit(f"run {run} did not complete within {TIMEOUT_S} s")
 

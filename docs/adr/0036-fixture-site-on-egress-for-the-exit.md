@@ -32,13 +32,32 @@ copy):
 The exit run is `make phase1-exit`, which brings the profile up, runs the
 check and takes it down.
 
+**A second, Linux-only exception** (`docker/compose.linux.yaml`). ADR-0023's
+worker-to-sidecar path, a host-loopback publish reached via
+`host.docker.internal`, works only on Docker Desktop. On Linux Docker Engine
+(CI runners, cloud containers) `host-gateway` is the docker0 bridge address,
+a port bound to 127.0.0.1 refuses it, and the worker cannot reach the sidecar
+at all (measured: connection refused). For the exit run only, the override
+adds a publish on the bridge address. `scripts/phase1-exit.sh` recreates
+render from `compose.yaml` alone when it finishes, so the publish does not
+outlive the run.
+
 ## Consequences
 
-- With the profile up, a page in the browser can resolve one more name,
-  `fixtures`, which serves hand-written static HTML and nothing else. It is
-  not a route to `db`, `api` or `bff`. The isolation ADR-0023 exists for is
-  unchanged, because those services are still not on `egress`.
-- Without the profile, the topology is exactly ADR-0023's.
+- With the profile up, a page in the browser can resolve four more names
+  (`fixtures` and the three fixture-domain aliases). They serve hand-written
+  static HTML and 1.4/1.5's generated test routes, and nothing else. None is a
+  route to `db`, `api` or `bff`, which are still not on `egress`.
+- **On Linux, during the exit run, a page in the browser can reach the
+  sidecar's own API** at the bridge address (measured in review), and so
+  could ask it to render other URLs. The pages it loads are the fixtures,
+  which are ours. This is the cost of exercising both fetchers on Linux at
+  all, and it lasts for one script's duration.
+- Without the profile, and outside the exit script, the topology is exactly
+  ADR-0023's on every platform.
+- **ADR-0023 has no answer for a Linux deployment.** Its fetch path does not
+  work on Linux Docker Engine. This ADR only makes the exit runnable; the
+  deployment question is open and raised in `.tasks/feat-1.14-yaml-loader.md`.
 
 ## Alternatives considered
 

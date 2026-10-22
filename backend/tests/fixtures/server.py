@@ -283,9 +283,10 @@ if __name__ == "__main__":
     port = int(os.environ.get("FIXTURE_PORT", "8099"))
     # 0.0.0.0 by default so the operator can look at a page from the host.
     # The render sidecar's suite sets 127.0.0.1: that container is alone on
-    # `egress` (ADR-0023) and a fixture site reachable from the egress
-    # network would be a host the browser can resolve, which is exactly
-    # what that ADR exists to deny.
+    # `egress` (ADR-0023), and a fixture site reachable from the egress
+    # network is a host the browser can resolve. The one sanctioned exception
+    # is the `fixtures` service of `make phase1-exit`, behind a profile
+    # (ADR-0036), which binds 0.0.0.0 inside its own container on purpose.
     host = os.environ.get("FIXTURE_HOST", "0.0.0.0")  # noqa: S104
     srv = ThreadingHTTPServer((host, port), partial(FixtureHandler))
     srv.requests = []  # type: ignore[attr-defined]

@@ -62,7 +62,7 @@ domains:
           title: { selector: "h1" }
     seeds:
       - /p/one
-      - https://elsewhere.test/p/two
+      - http://shop.test:8099/p/two
   - host: plain.test
     render_mode: static
     crawl_delay_ms: 2500
@@ -249,8 +249,8 @@ async def test_a_run_covers_exactly_the_files_domains_with_one_queue_row_per_see
     assert sorted((r.run_id, r.domain_id, r.url, r.depth) for r in queue) == sorted(
         [
             (int(run_id), shop, "http://shop.test:8099/p/one", 0),
-            # A full URL is kept as given.
-            (int(run_id), shop, "https://elsewhere.test/p/two", 0),
+            # A full URL on the domain is kept as given.
+            (int(run_id), shop, "http://shop.test:8099/p/two", 0),
             # No scheme in the file: https.
             (int(run_id), plain, "https://plain.test/item/three", 0),
         ]
@@ -347,16 +347,65 @@ async def test_loading_twice_starts_a_new_run_and_updates_rather_than_duplicates
     assert second_queue == 3
 
 
-async def test_loading_reactivates_a_domain_that_was_paused(clean_crawl: AsyncEngine) -> None:
-    """The file is the operator's approval: what it names is set `active`."""
+@pytest.mark.parametrize("state", ["paused", "broken", "archived"])
+async def test_loading_refuses_to_move_a_domain_only_a_human_may_move(
+    clean_crawl: AsyncEngine, state: str
+) -> None:
+    """Review finding 1. Reloading a file to fix a selector reset a domain
+    that three 403s had paused, which is a retry through a block (AGENTS.md
+    rule 8, ADR-0004). Resume, re-review and un-archive are an operator's
+    decisions about that one domain (spec 001 §2), so the load is refused and
+    nothing is written."""
     configuration = PostgresConfiguration(clean_crawl)
     await load(configuration, _VALID)
     async with clean_crawl.begin() as conn:
-        await conn.execute(sa.text("UPDATE crawl.domains SET state = 'paused'"))
+        await conn.execute(
+            sa.text(
+                "UPDATE crawl.domains SET state = CAST(:s AS crawl.domain_state) "
+                "WHERE host = 'shop.test:8099'"
+            ),
+            {"s": state},
+        )
+    before = await _counts(clean_crawl)
+
+    with pytest.raises(RefusedConfiguration, match=state):
+        await load(configuration, _VALID)
+
+    assert await _counts(clean_crawl) == before
+    assert (await _domains(clean_crawl))["shop.test:8099"]["state"] == state
+
+
+@pytest.mark.parametrize("state", ["discovered", "awaiting_approval"])
+async def test_loading_approves_a_candidate_domain(clean_crawl: AsyncEngine, state: str) -> None:
+    """The file is the operator's approval, so a candidate domain walks the
+    lifecycle's own edges to `active`."""
+    configuration = PostgresConfiguration(clean_crawl)
+    await load(configuration, _VALID)
+    async with clean_crawl.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE crawl.domains SET state = CAST(:s AS crawl.domain_state)"),
+            {"s": state},
+        )
 
     await load(configuration, _VALID)
 
     assert {r["state"] for r in (await _domains(clean_crawl)).values()} == {"active"}
+
+
+async def test_reloading_keeps_a_backoff_in_progress(clean_crawl: AsyncEngine) -> None:
+    """A 429 doubled the delay. Reloading the file sets the operator's floor
+    but must not wipe the backoff the site asked for: the live delay only
+    rises to meet a higher floor (spec 002 §4)."""
+    configuration = PostgresConfiguration(clean_crawl)
+    await load(configuration, _VALID)
+    async with clean_crawl.begin() as conn:
+        await conn.execute(sa.text("UPDATE crawl.domains SET crawl_delay_ms = 600000"))
+
+    await load(configuration, _VALID)
+
+    for row in (await _domains(clean_crawl)).values():
+        assert row["crawl_delay_ms"] == 600000
+        assert row["configured_crawl_delay_ms"] < 600000
 
 
 # ---------------------------------------------------------------------------

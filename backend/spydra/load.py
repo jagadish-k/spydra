@@ -36,6 +36,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from ruamel.yaml import YAML
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -49,11 +50,10 @@ from spydra.adapters.postgres.templates import (
 )
 from spydra.domain.entities import DiscoveryRules, FieldRule
 from spydra.domain.enums import PageKind, RenderMode
+from spydra.domain.errors import RefusedConfiguration
 from spydra.domain.ids import RunId
 
-
-class RefusedConfiguration(ValueError):
-    """The file asks for something the system will not do."""
+__all__ = ["DomainConfig", "RefusedConfiguration", "TemplateConfig", "load", "parse"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,24 +130,49 @@ def _domain(raw: Mapping[str, Any]) -> DomainConfig:
         host=host,
         render_mode=RenderMode(raw.get("render_mode", RenderMode.STATIC.value)),
         crawl_delay_ms=int(raw.get("crawl_delay_ms", 2000)),
-        respect_robots=bool(raw.get("respect_robots", True)),
+        respect_robots=_bool(raw, "respect_robots", True, host),
         templates=tuple(_template(t) for t in raw.get("templates", ())),
         seeds=tuple(_seed(str(s), scheme, host) for s in raw.get("seeds", ())),
     )
 
 
 def _template(raw: Mapping[str, Any]) -> TemplateConfig:
+    extraction = raw.get("extraction", {})
+    for field, spec in extraction.items():
+        if isinstance(spec, Mapping):
+            _bool(spec, "many", False, f"{raw.get('name')}.{field}")
     return TemplateConfig(
         name=str(raw["name"]),
         url_pattern=str(raw["url_pattern"]),
         page_kind=PageKind(raw.get("page_kind", PageKind.PRODUCT.value)),
-        extraction=extraction_from_json(raw.get("extraction", {})),
+        extraction=extraction_from_json(extraction),
         discovery=discovery_from_json(raw.get("discovery", {})),
     )
 
 
 def _seed(seed: str, scheme: str, host: str) -> str:
-    return seed if "://" in seed else f"{scheme}://{host}{seed}"
+    """A path is resolved against the domain. A full URL must BE the domain:
+    the worker reads robots.txt, the delay and the pause state of the seed's
+    domain row, so a seed on another host would be fetched under someone
+    else's politeness, past that host's own robots and any pause it is under."""
+    if "://" not in seed:
+        return f"{scheme}://{host}{seed}"
+    if urlsplit(seed).netloc.lower() != host.lower():
+        raise RefusedConfiguration(
+            f"seed {seed} is not on {host}. Each seed is crawled under its domain's "
+            "robots.txt and politeness, so it belongs under the domain it is on."
+        )
+    return seed
+
+
+def _bool(raw: Mapping[str, Any], key: str, default: bool, where: str) -> bool:
+    """A real YAML boolean, or the default. YAML 1.2 reads `no` and `off` as
+    strings, and `bool("no")` is True, so `many: no` silently meant many
+    (found in review)."""
+    value = raw.get(key, default)
+    if not isinstance(value, bool):
+        raise RefusedConfiguration(f"{where}.{key}: {value!r} is not true or false")
+    return value
 
 
 async def main(path: str) -> None:

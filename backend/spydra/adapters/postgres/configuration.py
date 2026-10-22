@@ -16,30 +16,58 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from spydra.adapters.postgres.frontier import url_hash
+from spydra.domain.enums import DomainEvent, DomainState
+from spydra.domain.errors import RefusedConfiguration
 from spydra.domain.ids import RunId
+from spydra.domain.lifecycle import transition
 
 if TYPE_CHECKING:
     from spydra.load import DomainConfig
 
-# `crawl_delay_ms` is set from the operator's value too: a file that says
-# 5000 means the next request waits 5 s, not whatever backoff the column holds.
-_UPSERT_DOMAIN = sa.text(
+# A new host is inserted `active`: the file is the operator's approval.
+_INSERT_DOMAIN = sa.text(
     """
 INSERT INTO crawl.domains
     (host, state, render_mode, crawl_delay_ms, configured_crawl_delay_ms, respect_robots)
 VALUES (:host, 'active', :render_mode, :delay, :delay, :respect_robots)
-ON CONFLICT (host) DO UPDATE
-SET state = 'active',
-    render_mode = EXCLUDED.render_mode,
-    crawl_delay_ms = EXCLUDED.crawl_delay_ms,
-    configured_crawl_delay_ms = EXCLUDED.configured_crawl_delay_ms,
-    respect_robots = EXCLUDED.respect_robots
+ON CONFLICT (host) DO NOTHING
 RETURNING id
 """
 )
+
+_LOCK_DOMAIN = sa.text(
+    "SELECT id, state::text AS state FROM crawl.domains WHERE host = :host FOR UPDATE"
+)
+
+# An existing domain keeps its politeness state. The floor is the operator's
+# to set, and the live delay is only ever RAISED to meet it: a 429 backoff in
+# progress is the site's answer, and a reload is not a reason to forget it
+# (spec 002 §4 decays it by successes, never by an edit).
+_UPDATE_DOMAIN = sa.text(
+    """
+UPDATE crawl.domains
+SET state = CAST(:state AS crawl.domain_state),
+    render_mode = :render_mode,
+    configured_crawl_delay_ms = :delay,
+    crawl_delay_ms = GREATEST(crawl_delay_ms, :delay),
+    respect_robots = :respect_robots
+WHERE id = :id
+"""
+)
+
+# The edges a file may walk. It is an approval, so it can take a candidate
+# domain to `active`. It cannot resume a pause (ADR-0004: three 403s are the
+# site refusing us, and only a human decides to try again), re-review a
+# broken template, or revive an archived domain: those edges belong to an
+# operator acting on that specific domain (spec 001 §2).
+_APPROVAL_PATH = {
+    DomainState.DISCOVERED: (DomainEvent.PROPOSE, DomainEvent.APPROVE),
+    DomainState.AWAITING_APPROVAL: (DomainEvent.APPROVE,),
+    DomainState.ACTIVE: (),
+}
 
 _DEACTIVATE = sa.text(
     """
@@ -83,19 +111,7 @@ class PostgresConfiguration:
             seeded: list[tuple[int, str]] = []
             domain_ids: list[int] = []
             for domain in domains:
-                domain_id = int(
-                    (
-                        await conn.execute(
-                            _UPSERT_DOMAIN,
-                            {
-                                "host": domain.host,
-                                "render_mode": domain.render_mode.value,
-                                "delay": domain.crawl_delay_ms,
-                                "respect_robots": domain.respect_robots,
-                            },
-                        )
-                    ).scalar_one()
-                )
+                domain_id = await self._domain(conn, domain)
                 for row in domain.template_rows():
                     await conn.execute(
                         _DEACTIVATE, {"domain_id": domain_id, "url_pattern": row["url_pattern"]}
@@ -130,3 +146,29 @@ class PostgresConfiguration:
                     },
                 )
         return run_id
+
+    @staticmethod
+    async def _domain(conn: AsyncConnection, domain: DomainConfig) -> int:
+        settings = {
+            "host": domain.host,
+            "render_mode": domain.render_mode.value,
+            "delay": domain.crawl_delay_ms,
+            "respect_robots": domain.respect_robots,
+        }
+        inserted = (await conn.execute(_INSERT_DOMAIN, settings)).scalar_one_or_none()
+        if inserted is not None:
+            return int(inserted)
+
+        row = (await conn.execute(_LOCK_DOMAIN, {"host": domain.host})).one()
+        state = DomainState(row.state)
+        path = _APPROVAL_PATH.get(state)
+        if path is None:
+            raise RefusedConfiguration(
+                f"{domain.host} is {state.value}. A file cannot move it back to active: "
+                "resume a paused domain, or re-review a broken one, as its own decision "
+                "(spec 001 §2, ADR-0004). Nothing was written."
+            )
+        for event in path:
+            state = transition(state, event)
+        await conn.execute(_UPDATE_DOMAIN, {**settings, "id": row.id, "state": state.value})
+        return int(row.id)
