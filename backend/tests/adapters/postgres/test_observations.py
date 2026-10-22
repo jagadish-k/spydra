@@ -642,6 +642,10 @@ async def test_a_page_with_no_template_is_a_configuration_gap(
     assert row.empty_extraction is True
     health = await PostgresObservations(engine).health(run_id, domain_id)
     assert health.regressions == 0
+    # "Counted neither as empty nor as crawled-successfully": out of the
+    # numerator AND the denominator, or a domain whose crawl is mostly
+    # non-product pages dilutes — or, on a first run, trips — its own ratio.
+    assert (health.pages_crawled, health.empty_pages) == (0, 0)
 
 
 async def test_a_404_is_not_an_empty_extraction_and_is_not_reported(
@@ -916,15 +920,15 @@ async def test_a_page_whose_only_field_is_an_asset_url_is_not_empty(
     """The corner where the hash and the predicate legitimately disagree.
 
     Spec 003 §4 excludes asset URLs from the hash, so a page whose only
-    resolved field is an image URL normalises to `{}` and hashes exactly like
-    a page from which nothing resolved. It is **not** empty — `is_empty` sees
-    a one-element list — and the predicate is what decides whether the page
-    is evidence of a regression.
+    resolved field is an image URL normalises to nothing. It is **not**
+    empty — a field resolved (ADR-0027) — and the predicate, not the hash,
+    decides whether the page is evidence of a regression.
 
-    This is the case that killed the writer's old "inherit the predecessor's
-    verdict" line: it would have copied an empty page's `True` onto this row
-    and reported a page with content as a regression. The verdict is computed
-    from the extraction, never re-derived from the stored row.
+    But nothing survives normalisation, so it has **no hash** (spec 003 §4):
+    `content_hash` is NULL and a repeat of it is never `unchanged`. A shared
+    digest of `{}` would make every image-only page "the same as before"
+    from its second crawl, and `page_current` would then skip the row that
+    carries its gallery.
     """
     engine = clean_crawl
     domain_id, _, template = await a_domain_with_a_template(engine)
@@ -945,11 +949,25 @@ async def test_a_page_whose_only_field_is_an_asset_url_is_not_empty(
         observed_at=tick(),
     )
 
-    (row,) = await observation_rows(engine, page_id)
-    assert row.empty_extraction is False
+    await writer(engine).record(
+        page=CrawledPage(id=page_id, domain_id=domain_id, url=url),
+        run_id=run_id,
+        fetched=fetched,
+        result=ChainResult(
+            fields={"images": ["https://cdn.vantage-abrasives.test/a.jpg"]},
+            strategy=Strategy.SELECTOR,
+        ),
+        template=template,
+        observed_at=tick(),
+    )
+
+    first, repeat = await observation_rows(engine, page_id)
+    assert first.empty_extraction is False
     assert outcome.unknown_reason is None
-    # Stated, not hidden: the hash cannot tell this page from an empty one.
-    assert row.content_hash == content_hash({})
+    assert first.content_hash is None
+    assert repeat.content_hash is None
+    assert repeat.unchanged is False, "nothing to compare is not 'the same as before'"
+    assert repeat.empty_extraction is False
 
 
 async def test_a_404_with_no_template_is_not_reported_either(
@@ -1169,3 +1187,632 @@ async def test_an_unchanged_page_still_enqueues_its_gallery(
         first.observation_id,
         second.observation_id,
     }
+
+
+# ---------------------------------------------------------------------------
+# Review of 1.10/1.11. Each test below pins one acceptance line of
+# `.tasks/fix-1.11-review-findings.md`, and is written from the spec line it
+# names rather than from the fix.
+# ---------------------------------------------------------------------------
+
+IMAGE_STUB = "vantage-abrasives/product-image-stub.html"
+
+
+async def current_rows(
+    engine: AsyncEngine, domain_id: DomainId
+) -> list[sa.Row[tuple[object, ...]]]:
+    """`crawl.page_current` for one domain's pages — what every reader of
+    current state sees (spec 001 §1)."""
+    async with engine.connect() as conn:
+        return list(
+            (
+                await conn.execute(
+                    sa.text(
+                        """
+                        SELECT c.page_id, c.title, c.price_amount, c.price_currency,
+                               c.unchanged
+                        FROM crawl.page_current c
+                        JOIN crawl.pages p ON p.id = c.page_id
+                        WHERE p.domain_id = :dom
+                        ORDER BY c.page_id
+                        """
+                    ),
+                    {"dom": int(domain_id)},
+                )
+            ).all()
+        )
+
+
+async def record_markup(
+    engine: AsyncEngine,
+    *,
+    body: str,
+    url: str,
+    page_id: PageId,
+    domain_id: DomainId,
+    run_id: RunId,
+    template: Template | None,
+) -> WriteOutcome:
+    """`crawl()` for markup that is a variation of a fixture rather than a
+    file: the real chain and the real writer, with the body swapped."""
+    fetched = replace(page(GOOD, url), body=body)
+    result = await chain().extract(fetched, template)
+    return await writer(engine).record(
+        page=CrawledPage(id=page_id, domain_id=domain_id, url=url),
+        run_id=run_id,
+        fetched=fetched,
+        result=result,
+        template=template,
+        observed_at=tick(),
+    )
+
+
+# --- B1: current state survives a stable page --------------------------------
+
+
+async def test_a_stable_page_reads_its_full_content_through_page_current(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Spec 001 §1: `page_current` skips `unchanged` rows, "so the newest
+    full row IS the current content".
+
+    The second crawl writes the lightweight row (asserted, so the test cannot
+    pass because the page happened to be re-written in full). Read naively as
+    "the newest row", every stable product would show no title and no price
+    from its second run onward — the whole catalogue blank in the UI, with
+    the data sitting one row down.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    url = "https://vantage-abrasives.test/catalog/rfd-115-060"
+    page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+
+    for _ in range(2):
+        await crawl(
+            engine,
+            fixture=GOOD,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=run_id,
+            template=template,
+            observed_at=tick(),
+        )
+
+    _, lightweight = await observation_rows(engine, page_id)
+    assert lightweight.unchanged is True
+    (current,) = await current_rows(engine, domain_id)
+    assert current.title == "Resin Fibre Disc 115mm P60"
+    assert current.price_amount == Decimal("14.7500")
+    assert current.price_currency == "GBP"
+    assert current.unchanged is False
+
+
+async def test_a_changed_page_reads_its_new_content_through_page_current(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The other half of the same rule. Skipping `unchanged` rows must not
+    pin current state to the FIRST full row: a price change is a new full
+    row, and it is current — including after it, too, has been re-crawled
+    unchanged. Two pages, so "exactly one row per page" is asserted across
+    pages and not merely for one.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    original = page(GOOD, "https://vantage-abrasives.test/catalog/x").body
+    repriced = original.replace("£14.75", "£15.25")
+    assert repriced != original
+
+    pages = []
+    for i in range(2):
+        url = f"https://vantage-abrasives.test/catalog/rfd-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        pages.append(page_id)
+        for body in (original, original, repriced, repriced):
+            await record_markup(
+                engine,
+                body=body,
+                url=url,
+                page_id=page_id,
+                domain_id=domain_id,
+                run_id=run_id,
+                template=template,
+            )
+
+    rows = await observation_rows(engine, pages[0])
+    assert [r.unchanged for r in rows] == [False, True, False, True]
+    current = await current_rows(engine, domain_id)
+    assert [r.page_id for r in current] == pages, "exactly one current row per page"
+    assert {r.price_amount for r in current} == {Decimal("15.2500")}
+    assert {r.title for r in current} == {"Resin Fibre Disc 115mm P60"}
+
+
+# --- B2: no-template pages are outside the threshold --------------------------
+
+
+async def test_no_template_pages_on_a_first_run_do_not_move_the_domain(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """ADR-0027 §3: a page with no matching template is "counted neither as
+    empty nor as crawled-successfully".
+
+    Six of them on a first run — every one empty on a 200, enough to clear
+    the minimum sample on their own. Counted, that is a first run 100%
+    empty and the domain goes back to review for a template that was never
+    asked to match those pages.
+    """
+    engine = clean_crawl
+    domain_id, _, _ = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    outcomes = []
+
+    for i in range(6):
+        url = f"https://vantage-abrasives.test/info/page-{i}"
+        page_id = await seed_page(engine, domain_id, url)
+        outcomes.append(
+            await crawl(
+                engine,
+                fixture=REDESIGNED,
+                url=url,
+                page_id=page_id,
+                domain_id=domain_id,
+                run_id=run_id,
+                template=None,
+            )
+        )
+
+    # Anti-vacuity: these really were reported as configuration gaps.
+    assert {o.unknown_reason for o in outcomes} == {UnknownReason.NO_TEMPLATE}
+    health = await PostgresObservations(engine).health(run_id, domain_id)
+    assert health.first_run is True
+    assert (health.pages_crawled, health.empty_pages) == (0, 0)
+    assert [o.event for o in outcomes] == [None] * 6
+    assert await domain_state(engine, domain_id) == "active"
+
+
+async def test_no_template_pages_do_not_dilute_the_denominator(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The same exclusion from the other side: out of `pages_crawled` too.
+
+    Five product pages with priors, two of them redesigned — 40%, a redesign.
+    Add eight no-template pages and, counted, the ratio is 2/13 = 15% and the
+    redesign goes uncaught. The verdict must be the product pages' alone.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    earlier_run = await seed_run(engine, [int(domain_id)])
+    run_id = await seed_run(engine, [int(domain_id)])
+
+    # The no-template pages first, so a domain that had already been read
+    # as diluted would have to un-dilute itself to be caught.
+    for i in range(8):
+        url = f"https://vantage-abrasives.test/info/page-{i}"
+        page_id = await seed_page(engine, domain_id, url)
+        await crawl(
+            engine,
+            fixture=GOOD,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=run_id,
+            template=None,
+        )
+    for i in range(5):
+        url = f"https://vantage-abrasives.test/catalog/part-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        await seed_observation(engine, page_id, earlier_run, empty=False)
+        await crawl(
+            engine,
+            fixture=REDESIGNED if i < 2 else GOOD,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=run_id,
+            template=template,
+        )
+
+    health = await PostgresObservations(engine).health(run_id, domain_id)
+    assert (health.pages_crawled, health.regressions) == (5, 2)
+    assert await domain_state(engine, domain_id) == "broken"
+
+
+# --- B3: an image-only stub, through the chain and into the row ---------------
+
+
+async def test_an_image_only_stub_with_a_template_writes_the_templates_fields(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Spec 003 §1, end to end: a `schema.org/Product` carrying only a share
+    image must not stop the chain above the approved template. What lands in
+    the row — and so in `page_current` — is the template's title and price.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    url = "https://vantage-abrasives.test/catalog/rfd-115-060"
+    page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+
+    await crawl(
+        engine,
+        fixture=IMAGE_STUB,
+        url=url,
+        page_id=page_id,
+        domain_id=domain_id,
+        run_id=run_id,
+        template=template,
+    )
+
+    (row,) = await observation_rows(engine, page_id)
+    assert row.strategy == Strategy.SELECTOR.value
+    assert row.title == "Resin Fibre Disc 115mm P60"
+    assert row.price_amount == Decimal("14.7500")
+    assert row.price_currency == "GBP"
+    assert row.content_hash is not None
+
+
+async def test_an_image_only_stub_has_no_hash_and_is_never_unchanged(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Spec 003 §4: when nothing survives normalisation "there is **no
+    hash** ... and the row is never `unchanged`".
+
+    With no template the stub's image is all there is: the row is written
+    from rung 1, is not an empty extraction (a field resolved), and has
+    nothing to compare. Crawled twice, the second row must be a full row —
+    read as "unchanged", it would be skipped by `page_current` and its
+    gallery attached to a row nobody reads.
+    """
+    engine = clean_crawl
+    domain_id, _, _ = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    url = "https://vantage-abrasives.test/catalog/rfd-115-060"
+    page_id = await seed_page(engine, domain_id, url)
+
+    for _ in range(2):
+        await crawl(
+            engine,
+            fixture=IMAGE_STUB,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=run_id,
+            template=None,
+        )
+
+    first, second = await observation_rows(engine, page_id)
+    assert first.strategy == Strategy.STRUCTURED.value
+    assert first.empty_extraction is False
+    assert (first.content_hash, second.content_hash) == (None, None)
+    assert second.unchanged is False
+
+
+async def test_a_row_is_never_both_unchanged_and_empty(clean_crawl: AsyncEngine) -> None:
+    """The two flags are contradictory: `unchanged` says "the same content as
+    before", `empty_extraction` says "there was no content". A page that is
+    empty twice — the redesigned fixture and the soft 404, each crawled on
+    two runs — has nothing to be the same AS, so its second row is a full,
+    empty row and never a lightweight one. Read the other way, a redesign
+    that persists across runs would vanish from `page_current`'s view of
+    the page's history as "unchanged".
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    runs = [await seed_run(engine, [int(domain_id)]) for _ in range(2)]
+
+    for fixture in (REDESIGNED, SOFT_404):
+        url = f"https://vantage-abrasives.test/catalog/{fixture.split('/')[0]}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        for run_id in runs:
+            await crawl(
+                engine,
+                fixture=fixture,
+                url=url,
+                page_id=page_id,
+                domain_id=domain_id,
+                run_id=run_id,
+                template=template,
+            )
+        rows = await observation_rows(engine, page_id)
+        assert [r.empty_extraction for r in rows] == [True, True], fixture
+        assert [r.unchanged for r in rows] == [False, False], fixture
+        assert [r.content_hash for r in rows] == [None, None], fixture
+
+
+# --- 4: one open inbox row per page -------------------------------------------
+
+
+async def inbox_rows(engine: AsyncEngine, domain_id: DomainId) -> list[sa.Row[tuple[object, ...]]]:
+    async with engine.connect() as conn:
+        return list(
+            (
+                await conn.execute(
+                    sa.text(
+                        """
+                        SELECT id, url, reason, resolved_at FROM crawl.unknown_pages
+                        WHERE domain_id = :dom ORDER BY id
+                        """
+                    ),
+                    {"dom": int(domain_id)},
+                )
+            ).all()
+        )
+
+
+async def test_a_page_empty_on_every_run_is_one_open_inbox_item(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Spec 001 §1: `unknown_pages` is the review inbox, and an inbox item is
+    a page to look at — not a page per run. A dead link crawled nightly would
+    otherwise add a row a night, and a large catalogue's handful of dead
+    links becomes an inbox nobody can read.
+
+    Resolving it closes the item; the page going empty AGAIN after that is
+    new information and opens a new one.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine, host="mertens.test")
+    url = "https://mertens.test/catalog/discontinued-item"
+    page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+
+    async def a_run() -> WriteOutcome:
+        return await crawl(
+            engine,
+            fixture=SOFT_404,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=await seed_run(engine, [int(domain_id)]),
+            template=template,
+        )
+
+    for _ in range(2):
+        outcome = await a_run()
+        assert outcome.unknown_reason is UnknownReason.EMPTY_EXTRACTION
+
+    (only,) = await inbox_rows(engine, domain_id)
+    assert only.resolved_at is None
+    assert only.reason == UnknownReason.EMPTY_EXTRACTION.value
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE crawl.unknown_pages SET resolved_at = now() WHERE id = :id"),
+            {"id": only.id},
+        )
+    await a_run()
+
+    resolved, reopened = await inbox_rows(engine, domain_id)
+    assert resolved.id == only.id and resolved.resolved_at is not None
+    assert reopened.url == url and reopened.resolved_at is None
+
+
+# --- 5: the verdict is reached on the page that crosses the threshold ---------
+
+
+async def test_the_page_that_completes_the_minimum_sample_can_halt_the_domain(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Spec 003 §3: past the threshold, crawling "stops for it mid-run".
+
+    Four redesigned pages are too few for a verdict. The fifth page EXTRACTS
+    — and it is the page that makes the sample big enough, at which point
+    the run reads 4/5 = 80% regressions. A detector that only re-reads the
+    ratio when the current page is empty would let this domain carry on
+    until its next empty page, however long that took.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    earlier_run = await seed_run(engine, [int(domain_id)])
+    run_id = await seed_run(engine, [int(domain_id)])
+    outcomes = []
+
+    for i in range(5):
+        url = f"https://vantage-abrasives.test/catalog/part-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        await seed_observation(engine, page_id, earlier_run, empty=False)
+        outcomes.append(
+            await crawl(
+                engine,
+                fixture=REDESIGNED if i < 4 else GOOD,
+                url=url,
+                page_id=page_id,
+                domain_id=domain_id,
+                run_id=run_id,
+                template=template,
+            )
+        )
+
+    assert [o.event for o in outcomes] == [None] * 4 + [DomainEvent.BREAK]
+    assert [o.halted for o in outcomes] == [False] * 4 + [True]
+    assert await domain_state(engine, domain_id) == "broken"
+
+
+async def test_on_a_first_run_the_fifth_page_can_send_the_domain_back(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The first-run mirror of the test above (ADR-0030): four pages that
+    never extracted, then one that does. 4/5 empty on a first run is a
+    template that never worked, and the verdict is due on page five."""
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    outcomes = []
+
+    for i in range(5):
+        url = f"https://vantage-abrasives.test/catalog/new-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        outcomes.append(
+            await crawl(
+                engine,
+                fixture=REDESIGNED if i < 4 else GOOD,
+                url=url,
+                page_id=page_id,
+                domain_id=domain_id,
+                run_id=run_id,
+                template=template,
+            )
+        )
+
+    assert [o.event for o in outcomes] == [None] * 4 + [DomainEvent.NEVER_MATCHED]
+    assert outcomes[-1].halted is True
+    assert await domain_state(engine, domain_id) == "awaiting_approval"
+
+
+async def test_no_template_pages_do_not_count_toward_the_minimum_sample(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """ADR-0027 §3's exclusion applies to the minimum sample as much as to
+    the ratio. Six no-template pages, then four redesigned product pages,
+    then one that extracts: the product pages reach five on the last page,
+    and that page is where 4/5 regressions becomes a verdict. Counting the
+    no-template pages toward "enough pages yet?" would declare the sample
+    complete long before it is, and the extracting page would be waved
+    through unassessed.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    earlier_run = await seed_run(engine, [int(domain_id)])
+    run_id = await seed_run(engine, [int(domain_id)])
+
+    for i in range(6):
+        url = f"https://vantage-abrasives.test/info/page-{i}"
+        page_id = await seed_page(engine, domain_id, url)
+        await crawl(
+            engine,
+            fixture=GOOD,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=run_id,
+            template=None,
+        )
+    outcomes = []
+    for i in range(5):
+        url = f"https://vantage-abrasives.test/catalog/part-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        await seed_observation(engine, page_id, earlier_run, empty=False)
+        outcomes.append(
+            await crawl(
+                engine,
+                fixture=REDESIGNED if i < 4 else GOOD,
+                url=url,
+                page_id=page_id,
+                domain_id=domain_id,
+                run_id=run_id,
+                template=template,
+            )
+        )
+
+    assert [o.event for o in outcomes] == [None] * 4 + [DomainEvent.BREAK]
+    assert await domain_state(engine, domain_id) == "broken"
+
+
+async def test_past_the_minimum_the_page_that_crosses_the_threshold_halts(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Mid-run, past the minimum sample: five good pages, then redesigned
+    ones. The sixth page is 1/6 regressions (under a fifth); the seventh is
+    2/7 (over). The halt belongs to the seventh page and to no earlier one.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    earlier_run = await seed_run(engine, [int(domain_id)])
+    run_id = await seed_run(engine, [int(domain_id)])
+    outcomes = []
+
+    for i in range(7):
+        url = f"https://vantage-abrasives.test/catalog/part-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        await seed_observation(engine, page_id, earlier_run, empty=False)
+        outcomes.append(
+            await crawl(
+                engine,
+                fixture=GOOD if i < 5 else REDESIGNED,
+                url=url,
+                page_id=page_id,
+                domain_id=domain_id,
+                run_id=run_id,
+                template=template,
+            )
+        )
+
+    assert [o.event for o in outcomes] == [None] * 6 + [DomainEvent.BREAK]
+    assert [o.halted for o in outcomes] == [False] * 6 + [True]
+
+
+async def test_past_the_minimum_pages_that_extract_never_move_the_domain(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The other side of the boundary: a domain sitting exactly at it — one
+    regression in five, which is not over a fifth — followed by pages that
+    extract. Each of them can only lower the ratio, so none of them may
+    produce an event."""
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    earlier_run = await seed_run(engine, [int(domain_id)])
+    run_id = await seed_run(engine, [int(domain_id)])
+    outcomes = []
+
+    for i in range(10):
+        url = f"https://vantage-abrasives.test/catalog/part-{i}"
+        page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+        await seed_observation(engine, page_id, earlier_run, empty=False)
+        outcomes.append(
+            await crawl(
+                engine,
+                fixture=REDESIGNED if i == 0 else GOOD,
+                url=url,
+                page_id=page_id,
+                domain_id=domain_id,
+                run_id=run_id,
+                template=template,
+            )
+        )
+
+    health = await PostgresObservations(engine).health(run_id, domain_id)
+    assert (health.regressions, health.pages_crawled) == (1, 10)
+    assert [o.event for o in outcomes] == [None] * 10
+    assert await domain_state(engine, domain_id) == "active"
+
+
+# --- 6a: the crawl stamp only moves forward -----------------------------------
+
+
+async def test_an_older_observation_does_not_move_last_crawled_at_backwards(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """`pages.last_crawled_at` is when the page was last seen (spec 001 §1),
+    and it is what recency is read from now that `page_current` skips
+    lightweight rows. Observations can land out of order — a retry, a slow
+    worker finishing after a faster one — and an older write that overwrote
+    the stamp would make a fresh page look stale and be re-crawled early."""
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    url = "https://vantage-abrasives.test/catalog/rfd-115-060"
+    page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+    newer = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+    older = newer - timedelta(hours=1)
+
+    for at in (newer, older):
+        await crawl(
+            engine,
+            fixture=GOOD,
+            url=url,
+            page_id=page_id,
+            domain_id=domain_id,
+            run_id=run_id,
+            template=template,
+            observed_at=at,
+        )
+
+    async with engine.connect() as conn:
+        stamped = (
+            await conn.execute(
+                sa.text("SELECT last_crawled_at FROM crawl.pages WHERE id = :id"),
+                {"id": int(page_id)},
+            )
+        ).scalar_one()
+    assert stamped == newer

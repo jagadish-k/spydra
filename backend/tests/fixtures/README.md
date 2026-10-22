@@ -9,18 +9,19 @@ One file per **shape** the extraction chain must handle. The host names are
 invented — nothing here is a copy of a real page and a reader should not go
 looking for the original.
 
-| Page                                     | Shape it exists to exercise                      |
-| ---------------------------------------- | ------------------------------------------------ |
-| `vantage-abrasives/product.html`         | well-formed, selector path (spec 003 §2)         |
-| `vantage-abrasives/listing.html`         | product links + next page (spec 004 §1)          |
-| `orbis-components/product-jsonld.html`   | `schema.org/Product`, structured rung 1          |
-| `orbis-components/product-stripped.html` | the same page, JSON-LD removed → falls to rung 2 |
-| `northfield/product-redesigned.html`     | same URL, selectors no longer match → redesign   |
-| `mertens/product-rendered.html`          | content only after JavaScript (spec 012)         |
-| `mertens/product-missing.html`           | soft 404: HTTP 200, no product (ADR-0030)        |
-| `mertens/product-dialog.html`            | opens `alert()` before writing (spec 012 §3)     |
-| `vantage-abrasives/product-images.html`  | 24 delayed images, for `block_resources`         |
-| `robots/*.txt`                           | permissive · `Crawl-delay` · disallow-all        |
+| Page                                        | Shape it exists to exercise                      |
+| ------------------------------------------- | ------------------------------------------------ |
+| `vantage-abrasives/product.html`            | well-formed, selector path (spec 003 §2)         |
+| `vantage-abrasives/listing.html`            | product links + next page (spec 004 §1)          |
+| `orbis-components/product-jsonld.html`      | `schema.org/Product`, structured rung 1          |
+| `orbis-components/product-stripped.html`    | the same page, JSON-LD removed → falls to rung 2 |
+| `northfield/product-redesigned.html`        | same URL, selectors no longer match → redesign   |
+| `mertens/product-rendered.html`             | content only after JavaScript (spec 012)         |
+| `mertens/product-missing.html`              | soft 404: HTTP 200, no product (ADR-0030)        |
+| `mertens/product-dialog.html`               | opens `alert()` before writing (spec 012 §3)     |
+| `vantage-abrasives/product-images.html`     | 24 delayed images, for `block_resources`         |
+| `vantage-abrasives/product-image-stub.html` | image-only JSON-LD stub over `product.html` (B3) |
+| `robots/*.txt`                              | permissive · `Crawl-delay` · disallow-all        |
 
 ## Generated responses
 
@@ -40,6 +41,15 @@ So `server.py` synthesizes them, with the shape as a URL parameter.
 **The delay on the images is not incidental.** Served instantly, a 24-image
 gallery renders at the same speed whether images are blocked or not, and
 spec 012 §6's `block_resources` criterion becomes unfalsifiable.
+
+**`vantage-abrasives/product-image-stub.html` is `product.html` plus a
+`schema.org/Product` block whose only property is `image`.** Rung 1 finds a
+Product and extracts one asset URL: not empty (ADR-0027), but nothing the
+content hash can compare (spec 003 §4). With the approved template the
+selector rung must still win; without one the stub's image must still come
+back. The share image's path is one the gallery does not use, so a test can
+tell which rung produced the result. Not routed by `server.py`: only the
+chain and writer tests read it, straight from disk.
 
 **`mertens/product-dialog.html` opens its dialogs before it writes the
 product**, on purpose. With the product written first, a sidecar that hung on

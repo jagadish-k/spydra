@@ -113,26 +113,69 @@ resolved_at IS NULL` plus `ON CONFLICT DO NOTHING`. Spec 001 §1 is
 
 ## Acceptance
 
-- [ ] B1: a stable page crawled twice reads its full content through
+- [x] B1: a stable page crawled twice reads its full content through
       `page_current`; a changed page reads the new content.
-- [ ] B2: no-template pages contribute `(0, 0)` to `pages_crawled` and
+- [x] B2: no-template pages contribute `(0, 0)` to `pages_crawled` and
       `empty_pages`, and five of them on a first run do not move the domain.
-- [ ] B3: an image-only JSON-LD stub plus a working template yields the
+- [x] B3: an image-only JSON-LD stub plus a working template yields the
       template's fields, through the real chain; a stub alone still yields
       its images; a non-substantive extraction has `content_hash IS NULL`
       and is never `unchanged`.
-- [ ] 1: a template with `strip_currency` on the price records the currency.
-- [ ] 4: the same empty page on two runs leaves one open `unknown_pages` row;
+- [x] 1: a template with `strip_currency` on the price records the currency.
+- [x] 4: the same empty page on two runs leaves one open `unknown_pages` row;
       after resolving it, a third run opens a new one.
-- [ ] 5: assessment still trips on the page that crosses the threshold,
+- [x] 5: assessment still trips on the page that crosses the threshold,
       including the page that brings the run to the minimum.
-- [ ] 6a–c each pinned by a test.
+- [x] 6a–c each pinned by a test.
 - [ ] Migration up/down/up. `make check` green. Mutation: each guard broken
       on purpose goes red.
 
 ## Handoff log
 
 - planner: measured B1–B3 (table above), decisions above.
+- test — 37 new test cases + 3 existing tests changed, written from the
+  Acceptance list. Files: `tests/adapters/postgres/test_observations.py`
+  (B1 x2, B2 x2 + strengthened `..._configuration_gap` to `(0, 0)`, B3 x2 +
+  flipped `..._asset_url_is_not_empty` to `content_hash IS NULL` and a
+  non-`unchanged` repeat, 6d, 4, 5 x5 incl. no-template pages not counting
+  toward the minimum sample, 6a), `test_schema.py` (view skips `unchanged`;
+  the existing test renamed to "newest full observation"),
+  `extraction/test_chain.py` (B3 x2 through the real chain, 1 x4, 6c x3),
+  `test_hashing.py` (`is_substantive`/`content_hash` None, 7),
+  `test_transforms.py` (6b, 6). New hand-written fixture
+  `fixtures/pages/vantage-abrasives/product-image-stub.html`, documented in
+  `fixtures/README.md`. Against the pre-fix tree (f5ac1f0) 25 fail plus
+  `test_hashing.py` fails to import; the item-5 tests and the stub-alone /
+  `$12.50` cases pass there by design (they guard the new optimisation and
+  existing behaviour). Mutations M1 writer assesses only empties, M2/M3
+  template filter dropped from `_PAST_MINIMUM`/`_RUN_PAGES`, M4 no
+  `GREATEST`, M6 hash of `{}`, M9 currency from post-transform text: each
+  goes red. Full suite: 490 passed, 2 skipped, **1 failed**:
+  `test_a_primary_that_matches_a_node_with_no_value_falls_back[whitespace-text]`.
+  **Production defect (6c incomplete):** `SelectorStrategy._value` returns
+  `trim(text)`, so a whitespace-only node yields `""`, which is "a value", and
+  `fallback` never fires. Spec 003 §3's `non_empty` is "after trim, length >
+  0". Left red for the implementer. `make lint-api` green.
+- backend: fixed 6c's whitespace case (`_value` returns `None` when the
+  trimmed text is empty). Mutation pass over the whole slice, **20 chosen
+  mutations, 16 red**:
+  - **The 4 survivors are equivalent**, with nothing observable to test:
+    - the assessment skip is a pure optimisation;
+    - bare `ON CONFLICT DO NOTHING` also arbitrates the partial index;
+    - `structured._text` already strips, so the weaker empty filter changes
+      nothing;
+    - re-parsing a `Decimal` price only differs for shapes `parse_decimal`
+      already refuses.
+  - **First pass had 4 more survivors**, all now red:
+    - two were currency-order mutants that only survived because I had
+      listed `US$`/`CA$`/… before `$`. I moved `$` back so insertion order
+      is wrong and only `_BY_LENGTH` makes it right;
+    - two were real gaps, fixed with two new tests: the chain keeps the
+      _first_ non-substantive rung, and `structured` drops a hollow
+      `offers: {"price": ""}`.
+  - The B1 view mutant (`WHERE NOT unchanged` removed from the migration,
+    the test DB re-migrated) turns 3 tests red.
+  - Suite: 493 passed, 2 skipped. Lint green.
 
 ## Open questions — for the human
 

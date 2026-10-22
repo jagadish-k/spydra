@@ -12,14 +12,20 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
+
 from spydra.domain.entities import (
+    ExtractedFields,
     FieldRule,
     Rule,
+    Template,
+    Transform,
 )
 from spydra.domain.enums import (
     FetchPath,
     RuleName,
     Strategy,
+    TransformName,
 )
 from spydra.domain.fetch import FetchedPage
 from spydra.extraction import ExtractionChain, SelectorStrategy, StructuredStrategy
@@ -335,6 +341,189 @@ async def test_a_fallback_selector_is_used_when_the_primary_resolves_nothing() -
 
     assert result.fields["title"] == "Renamed But Found"
     assert result.strategy is Strategy.SELECTOR
+
+
+def _inline(html: str) -> FetchedPage:
+    return FetchedPage(
+        request_url="https://x.test/p",
+        final_url="https://x.test/p",
+        http_status=200,
+        body=html,
+        headers={},
+        fetched_at=datetime(2026, 10, 21, 15, 0, tzinfo=UTC),
+        elapsed_ms=10,
+        fetch_path=FetchPath.STATIC,
+    )
+
+
+@pytest.mark.parametrize(
+    ("html", "attr"),
+    [
+        (
+            '<main><h1 class="product__title"></h1>'
+            '<h1 class="legacy__title">Found Through The Fallback</h1></main>',
+            "text",
+        ),
+        # Whitespace only is empty too: spec 003 §3's `non_empty` is "after
+        # trim, length > 0", and an emptied element in real markup is rarely
+        # literally empty — the template engine leaves its indentation.
+        (
+            '<main><h1 class="product__title">\n      </h1>'
+            '<h1 class="legacy__title">Found Through The Fallback</h1></main>',
+            "text",
+        ),
+        (
+            '<main><a class="product__title">no title attribute</a>'
+            '<a class="legacy__title" title="Found Through The Fallback">x</a></main>',
+            "title",
+        ),
+    ],
+    ids=["empty-text", "whitespace-text", "missing-attribute"],
+)
+async def test_a_primary_that_matches_a_node_with_no_value_falls_back(html: str, attr: str) -> None:
+    """The partial redesign that keeps the old element and empties it: the
+    class still exists, so the primary selector *matches*, but it yields no
+    value. A fallback that only fires on "no node" stays silent here and the
+    field is lost, though the template's author wrote down exactly where the
+    value moved to."""
+    template = vantage_template()
+    rules = dict(template.extraction)
+    rules["title"] = FieldRule(selector=".product__title", attr=attr, fallback=".legacy__title")
+
+    result = await chain("GBP").extract(_inline(html), template=replace(template, extraction=rules))
+
+    assert result.fields["title"] == "Found Through The Fallback"
+
+
+# ---------------------------------------------------------------------------
+# Review finding 1: a price transform must not erase the currency
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "transforms",
+    [
+        (TransformName.STRIP_CURRENCY,),
+        (TransformName.STRIP_CURRENCY, TransformName.PARSE_DECIMAL),
+    ],
+    ids=["strip_currency", "strip_currency+parse_decimal"],
+)
+@pytest.mark.parametrize("domain_currency", [None, "EUR"], ids=["no-default", "eur-default"])
+async def test_a_price_rule_that_strips_the_symbol_still_records_its_currency(
+    transforms: tuple[TransformName, ...], domain_currency: str | None
+) -> None:
+    """Spec 003 §2 lists `strip_currency` as a transform an operator may put
+    on a price, and also says currency detection is "symbol first". Both
+    have to hold at once: if detection reads the text AFTER the symbol was
+    stripped, a `£14.75` page is recorded with no currency (a validation
+    failure on every page of the domain) or, with a domain default, under
+    the wrong one. `raw` is what the page said, for the validation record's
+    `saw`."""
+    template = vantage_template()
+    rules = dict(template.extraction)
+    rules["price"] = FieldRule(
+        selector=".product__price",
+        transform=tuple(Transform(name) for name in transforms),
+        validation=(Rule(RuleName.CURRENCY),),
+    )
+
+    result = await chain(domain_currency).extract(
+        page("vantage-abrasives/product.html", "https://vantage-abrasives.test/catalog/x"),
+        template=replace(template, extraction=rules),
+    )
+
+    assert result.fields["price"] == {
+        "amount": Decimal("14.75"),
+        "currency": "GBP",
+        "raw": "£14.75",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Review finding B3: an image-only JSON-LD stub must not hide the template
+# ---------------------------------------------------------------------------
+
+IMAGE_STUB = "vantage-abrasives/product-image-stub.html"
+STUB_URL = "https://vantage-abrasives.test/catalog/rfd-115-060"
+
+
+async def test_an_image_only_jsonld_stub_does_not_shadow_a_working_template() -> None:
+    """Spec 003 §1: a rung is passed over when it "produced nothing usable".
+    A `schema.org/Product` whose only property is a share image produced an
+    asset URL, and nothing the content hash can compare (§4). Stopping there
+    records a product page with no title and no price on every run, while
+    the approved template sits one rung down and would have read all of it.
+    """
+    result = await chain("GBP").extract(page(IMAGE_STUB, STUB_URL), template=vantage_template())
+
+    assert result.strategy is Strategy.SELECTOR
+    assert result.fields["title"] == "Resin Fibre Disc 115mm P60"
+    assert result.fields["price"] == {
+        "amount": Decimal("14.75"),
+        "currency": "GBP",
+        "raw": "£14.75",
+    }
+
+
+async def test_an_image_only_jsonld_stub_alone_still_yields_its_images() -> None:
+    """The mirror: with no template there is no better rung, and the stub's
+    image is a field that resolved (ADR-0027). Discarding it would make the
+    page an empty extraction it is not, and lose the one URL the asset queue
+    could have fetched."""
+    fetched = page(IMAGE_STUB, STUB_URL)
+
+    result = await chain("GBP").extract(fetched, template=None)
+
+    assert result.strategy is Strategy.STRUCTURED
+    assert result.fields["images"] == ["https://vantage-abrasives.test/img/rfd-115-060-share.jpg"]
+    assert empty_extraction(fetched.http_status, result.fields) is False
+
+
+class _Fixed:
+    """A rung that always answers the same thing. A plain class, not a mock
+    (ADR-0028): the chain only ever reads `name` and calls `extract`."""
+
+    def __init__(self, name: Strategy, fields: ExtractedFields) -> None:
+        self.name = name
+        self._fields = fields
+
+    async def extract(
+        self, page: FetchedPage, template: Template | None = None
+    ) -> ExtractedFields | None:
+        return self._fields
+
+
+async def test_when_no_rung_is_substantive_the_cheapest_non_empty_one_wins() -> None:
+    """Two rungs that each found only an image: neither is substantive, and
+    the chain falls back to the FIRST, which is spec 003 §1's cheapest-first
+    order applied to the fallback too. Remembering the last one instead would
+    let a more expensive rung override a cheaper answer that was no worse."""
+    first = _Fixed(Strategy.STRUCTURED, {"images": ["https://cdn.x.test/a.jpg"]})
+    second = _Fixed(Strategy.SELECTOR, {"images": ["https://cdn.x.test/b.jpg"]})
+
+    result = await ExtractionChain([first, second]).extract(page(IMAGE_STUB, STUB_URL))
+
+    assert result.strategy is Strategy.STRUCTURED
+    assert result.fields == {"images": ["https://cdn.x.test/a.jpg"]}
+
+
+async def test_a_jsonld_offer_with_no_price_and_no_currency_is_not_a_price() -> None:
+    """`offers: {"price": ""}` is a real SEO-plugin shape. Its composite would
+    carry only `raw`, which is evidence rather than a value, so it is not a
+    price, and a price field on the observation would claim one was found."""
+    html = (
+        '<html><head><script type="application/ld+json">'
+        '{"@context":"https://schema.org","@type":"Product","name":"Disc",'
+        '"offers":{"@type":"Offer","price":""}}'
+        "</script></head><body></body></html>"
+    )
+    fetched = replace(page(IMAGE_STUB, STUB_URL), body=html)
+
+    fields = await StructuredStrategy().extract(fetched)
+
+    assert fields is not None
+    assert fields["title"] == "Disc"
+    assert "price" not in fields
 
 
 def test_the_chain_cannot_reach_a_model_at_crawl_time() -> None:

@@ -93,11 +93,15 @@ class SelectorStrategy:
 
     @staticmethod
     def _value(node: LexborNode, attr: str) -> str | None:
-        if attr == "text":
-            text = node.text(deep=True)
-            return trim(text) if text else None
-        value = node.attributes.get(attr)
-        return trim(value) if value else None
+        """The node's value, or `None` when it holds nothing but whitespace.
+
+        Checked AFTER the trim: a node left behind by a redesign usually still
+        carries its indentation, and `""` would count as a value, so neither
+        `fallback` nor the empty-page predicate would see it as missing.
+        """
+        raw = node.text(deep=True) if attr == "text" else node.attributes.get(attr)
+        value = trim(raw) if raw else ""
+        return value or None
 
     def _price(
         self, value: FieldValue, raw: FieldValue, page_currency: str | None

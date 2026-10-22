@@ -10,8 +10,10 @@ pair is what has content.
 
 from decimal import Decimal
 
+import pytest
+
 from spydra.domain.entities import ExtractedFields
-from spydra.extraction.hashing import content_hash, normalise
+from spydra.extraction.hashing import content_hash, is_substantive, normalise
 from spydra.extraction.strategies.selector import SelectorStrategy
 from tests.extraction.pages import page, vantage_template
 
@@ -186,3 +188,48 @@ def test_nested_values_are_normalised_all_the_way_down() -> None:
 
     assert content_hash(reflowed) == content_hash(tidy)
     assert content_hash(tidy) != content_hash({"specs": {"Max RPM": "13300", "Grit": "P80"}})
+
+
+# ---------------------------------------------------------------------------
+# Nothing to compare is not "the same" (spec 003 §4, review finding B3)
+# ---------------------------------------------------------------------------
+
+IMAGE_ONLY: ExtractedFields = {"images": ["https://cdn.vantage-abrasives.test/a.jpg"]}
+
+
+def test_an_extraction_with_nothing_comparable_has_no_hash() -> None:
+    """Spec 003 §4: "When nothing survives normalisation ... there is **no
+    hash**".
+
+    A digest of `{}` would be one value shared by every empty page and every
+    image-only page in the database, and equal digests are what `unchanged`
+    is decided on — so each of those pages would read as "same as last time"
+    from its second crawl onward. The third assertion is the pair: one real
+    field and there is a hash again.
+    """
+    assert content_hash({}) is None
+    assert content_hash(IMAGE_ONLY) is None
+    assert content_hash({**IMAGE_ONLY, "title": "Resin Fibre Disc"}) is not None
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected", "why"),
+    [
+        ({}, False, "nothing extracted"),
+        (IMAGE_ONLY, False, "asset URLs are excluded from the comparison"),
+        ({"title": "  ", "images": []}, False, "values that are empty after trim"),
+        ({"title": "Resin Fibre Disc"}, True, "one real field"),
+        ({**IMAGE_ONLY, "title": "Resin Fibre Disc"}, True, "content beside the images"),
+        ({"stock": 0}, True, "a genuine zero is content"),
+    ],
+    ids=["nothing", "image-only", "blank", "title", "title-and-images", "zero"],
+)
+def test_substantive_means_something_survives_normalisation(
+    fields: ExtractedFields, expected: bool, why: str
+) -> None:
+    """`is_substantive` and `content_hash` answer one question from two
+    sides — "is there anything to compare?" — so they are asserted together.
+    If they drifted, the chain could stop on a rung whose result the writer
+    then refuses to hash, or keep looking past one it would have hashed."""
+    assert is_substantive(fields) is expected, why
+    assert (content_hash(fields) is not None) is expected, why

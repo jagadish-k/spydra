@@ -36,17 +36,20 @@ _WHITESPACE = re.compile(r"\s+")
 # order problem from the other side: removing `$` first leaves `CA10.00`.
 CURRENCY_SYMBOLS: Mapping[str, str] = {
     "£": "GBP",
-    "US$": "USD",
-    "CA$": "CAD",
-    "A$": "AUD",
-    "NZ$": "NZD",
-    "HK$": "HKD",
     "$": "USD",
     "€": "EUR",
     "¥": "JPY",
     "CHF": "CHF",
     "SEK": "SEK",
     "PLN": "PLN",
+    # After `$` on purpose: the table is read through `_BY_LENGTH`, and an
+    # insertion order that happened to be correct would hide a reader that
+    # stopped sorting.
+    "US$": "USD",
+    "CA$": "CAD",
+    "A$": "AUD",
+    "NZ$": "NZD",
+    "HK$": "HKD",
 }
 
 _BY_LENGTH: tuple[tuple[str, str], ...] = tuple(
