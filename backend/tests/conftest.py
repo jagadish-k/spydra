@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
@@ -135,6 +136,64 @@ async def engine(database_url: str, migrated: None) -> AsyncIterator[AsyncEngine
         yield eng
     finally:
         await eng.dispose()
+
+
+@pytest.fixture
+async def clean_crawl(engine: AsyncEngine) -> AsyncIterator[AsyncEngine]:
+    """An engine against a crawl schema emptied before and after the test.
+
+    **Why this exists alongside `conn`.** `PostgresFrontier` takes an engine
+    and opens its own transaction per call, because ADR-0026 requires the
+    claim to be one short transaction that is *not* held across a fetch. So
+    its tests cannot run inside the rolled-back `conn` transaction — the
+    adapter would commit outside it, and the rollback would leave rows
+    behind. They commit, and this truncates instead.
+
+    That is the same reason `conn`'s docstring gives for the concurrency
+    tests, arrived at from the other direction: there, two workers cannot see
+    each other's uncommitted work; here, the adapter cannot see the test's.
+
+    TRUNCATE rather than DELETE, and `RESTART IDENTITY` so a test asserting
+    on ordering by `id` is not reading ids left by the previous one.
+    """
+    tables = "crawl.crawl_queue, crawl.page_observations, crawl.pages, crawl.unknown_pages"
+    owners = "crawl.templates, crawl.runs, crawl.domains"
+    truncate = sa.text(f"TRUNCATE {tables}, {owners} RESTART IDENTITY CASCADE")
+
+    # Serialise against any OTHER pytest session pointed at this database.
+    #
+    # Measured: two concurrent sessions produce six failures each, and they
+    # are the worst possible failures to get — `two_workers_never_fetch_one
+    # _domain_concurrently` among them. Someone would read that as a
+    # politeness bug in the claim query and go looking for a race in
+    # ADR-0026's SQL, when the real cause is a TRUNCATE from the other
+    # session deleting the rows this one just seeded.
+    #
+    # It happens easily: a `make test-api` while a `git push` hook is running
+    # the same thing, or two CI jobs on one database. The rollback-based
+    # `conn` fixture is immune, so this hazard arrived with the committed
+    # rows ADR-0026's guarantee needs — and TESTING.md §1's "the concurrency
+    # tests clean up after themselves" anticipated committed rows, not two
+    # sessions.
+    #
+    # An advisory lock turns the corruption into a wait. Session-level and
+    # held on its own connection for the whole test, so the two TRUNCATEs
+    # and everything between them are inside it.
+    lock_key = 0x5DA_C4A4  # arbitrary, fixed: "spydra crawl"
+    async with engine.connect() as guard:
+        await guard.execute(sa.text("SELECT pg_advisory_lock(:k)"), {"k": lock_key})
+        await guard.commit()
+        try:
+            async with engine.begin() as connection:
+                await connection.execute(truncate)
+            try:
+                yield engine
+            finally:
+                async with engine.begin() as connection:
+                    await connection.execute(truncate)
+        finally:
+            await guard.execute(sa.text("SELECT pg_advisory_unlock(:k)"), {"k": lock_key})
+            await guard.commit()
 
 
 @pytest.fixture

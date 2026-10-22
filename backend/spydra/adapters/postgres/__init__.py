@@ -1,8 +1,9 @@
-"""Postgres adapters: repositories, and raw SQL where the query is the point.
+"""Postgres adapters. Raw SQL where the query is the point (AGENTS.md).
 
-**Deliberately empty.** Nothing is re-exported here. Phase 1 adds `frontier.py`
-and `domains.py` from lane A and `observations.py` from lane C, in parallel —
-a package that re-exported its modules would make all three lanes edit this
-one file, which is the conflict ADR-0022 §5 exists to prevent. Import by
-module path.
+`PostgresFrontier` is the queue (ADR-0002), and its claim query carries the
+politeness guarantee in SQL rather than in process memory (ADR-0026).
 """
+
+from .frontier import PostgresFrontier
+
+__all__ = ["PostgresFrontier"]

@@ -1,11 +1,11 @@
 """The Frontier port (ADR-0002, ADR-0008).
 
 The queue lives in Postgres, and this port is the thing that makes that
-decision reversible. `PostgresFrontier` (1.5) is the only adapter.
+decision reversible. `PostgresFrontier` (1.8) is the only adapter.
 
 **The division of labour matters here.** The frontier persists; it does not
 decide politeness. `next_eligible_at`, the backoff and the failure count are
-computed by the politeness gate (1.6, spec 002 §2 and §4) and handed over in
+computed by the politeness gate (1.9, spec 002 §2 and §4) and handed over in
 a `Completion` so the frontier can write them in the *same transaction* that
 closes the queue row. Splitting them across two transactions is the
 dual-write problem ADR-0002 chose Postgres to avoid.
