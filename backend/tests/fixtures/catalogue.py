@@ -138,9 +138,43 @@ BY_PATH: dict[str, Node] = {n.path: n for n in NODES}
 LEAVES: tuple[Node, ...] = tuple(n for n in NODES if n.products)
 SKU_LEAF: dict[str, Node] = {sku: leaf for leaf in LEAVES for sku in leaf.skus}
 
-# The exact product set: what a category seed must yield (phase-2 exit).
+# The whole product set, reached only from the root.
 PRODUCTS: tuple[str, ...] = tuple(SKU_LEAF)
 PRODUCT_URLS: tuple[str, ...] = tuple(f"{PREFIX}p/{sku}" for sku in PRODUCTS)
+
+
+def products_under(path: str) -> tuple[str, ...]:
+    """The exact product set a seed at `path` must yield: every SKU in a leaf
+    at or below it."""
+    return tuple(sku for leaf in LEAVES if leaf.path.startswith(path) for sku in leaf.skus)
+
+
+# The phase-2 exit: "a category seed yields the full product set … without
+# leaving the host and without a facet explosion". The seed, the rules an
+# operator would plausibly write for this site, and what they must yield.
+# The subcategory rule deliberately also matches the facet form, so the
+# facet trap is in reach and only `deny_patterns` (spec 004 §1's example)
+# keeps it out.
+EXIT_SEED = f"{PREFIX}cutting/"
+EXIT_DISCOVERY: dict[str, object] = {
+    "product_links": "a.product-card__link",
+    "next_page": "a[rel='next']",
+    "subcategory_links": "section.subcategories a, form.facets a",
+    "deny_patterns": [r"\?(colour|grit|sort|view|per_page)="],
+    "max_depth": 5,
+}
+EXIT_PRODUCTS: tuple[str, ...] = products_under(EXIT_SEED)
+
+# Off-host product cards on the first page of the discs leaf: a marketplace
+# partner's listing, in the container a product rule matches. Leaving the
+# domain, a configurable subdomain, and two look-alikes a naive
+# `endswith("halden.test")` check would wrongly keep.
+PARTNER_CARDS: tuple[str, ...] = (
+    "https://elsewhere.test/p/EW-001",
+    f"https://cdn.{HOST}/p/HT-CDN-001",
+    f"https://x{HOST}/p/XH-001",
+    f"https://{HOST}.elsewhere.test/p/HE-001",
+)
 
 # Multi-select facets. Each link ADDS one value to the current query, so the
 # reachable space is every subset of every dimension: 2^5 · 2^5 · 2^3 · 2^3
@@ -154,13 +188,18 @@ FACETS: dict[str, tuple[str, ...]] = {
     "per_page": ("10", "25", "50"),
 }
 
-# A chain of plain listing pages from the root, one tile each, for the depth
-# cap (2.3): `/shop/deep/6/` is depth 6 from `/shop/`.
+# A chain of plain listing pages hanging off `/shop/cutting/`'s tiles, one
+# tile each, for the depth cap (2.3): from the exit seed `/shop/deep/N/` is
+# depth N, so `/shop/deep/6/` is the first page `max_depth = 5` must refuse.
 DEEP_PREFIX = f"{PREFIX}deep/"
 DEEP_LEVELS = 8
 
 # Unbounded traps of two more shapes (2.5); 1.4's `/trap/` is the third.
-LOOP_PREFIX = f"{PREFIX}loop/"  # relative-link bug: …/loop/x/loop/x/…
+# Relative-link bug: …/loop/x/page → …/loop/x/loop/x/page. The last segment
+# is a file name, so 2.2's trailing-slash strip cannot change the base the
+# relative link resolves against, and the pair keeps repeating.
+LOOP_PREFIX = f"{PREFIX}loop/"
+LOOP_PAGE = "page"
 NEWS_PREFIX = f"{PREFIX}news/"  # calendar: /shop/news/2026/10/ → next month
 
 LONG_URL_LENGTH = 2100
@@ -182,7 +221,7 @@ def render(path: str, query: str, host: str) -> tuple[int, bytes] | None:
     if slashed.startswith(f"{PREFIX}p/"):
         return _product(slashed[len(PREFIX) + 2 :].strip("/"), host)
     if slashed.startswith(LOOP_PREFIX):
-        return 200, _loop(slashed)
+        return _loop(slashed)
     if slashed.startswith(NEWS_PREFIX):
         return _news(slashed)
     if slashed.startswith(DEEP_PREFIX):
@@ -191,8 +230,9 @@ def render(path: str, query: str, host: str) -> tuple[int, bytes] | None:
         # Category context: /shop/cutting/blades/p/HT-SB-001
         listing, _, sku = slashed.rpartition("/p/")
         leaf = BY_PATH.get(listing + "/")
-        if leaf is not None and leaf.context_links:
-            return _product(sku.strip("/"), host)
+        sku = sku.strip("/")
+        if leaf is not None and leaf.context_links and sku in leaf.skus:
+            return _product(sku, host)
         return None
     node = BY_PATH.get(slashed)
     if node is None:
@@ -244,10 +284,9 @@ def _listing_page(title: str, **slots: str) -> bytes:
 
 
 def _root(host: str) -> bytes:
-    archive = Node(path=f"{DEEP_PREFIX}1/", title="Archive 1", code="DEEP")
     return _listing_page(
         "All tools",
-        tiles=_tiles((*TREE, archive), hidden=False),
+        tiles=_tiles(TREE, hidden=False),
         extra=_promo(host) + _rejects(),
     )
 
@@ -284,15 +323,32 @@ def _rejects() -> str:
         "javascript:void(0)",
         f"{PREFIX}search?q=" + "x" * LONG_URL_LENGTH,
         f"{NEWS_PREFIX}2026/10/",
-        f"{LOOP_PREFIX}x/",
+        f"{LOOP_PREFIX}x/{LOOP_PAGE}",
     ]
     links = "".join(_a(href, "more", "footer__link") for href in hrefs)
     return f'<footer class="site-footer">{links}</footer>'
 
 
+# Category pages that carry more than their tiles: `/shop/cutting/` links the
+# depth chain and features one product by its canonical URL, so a crawl from
+# the exit seed meets both URLs of the canonical pair (spec 004 §5).
+ARCHIVE = Node(path=f"{DEEP_PREFIX}1/", title="Archive 1", code="DEEP")
+FEATURED = {f"{PREFIX}cutting/": f"{PREFIX}p/HT-SB-001"}
+
+
 def _listing(node: Node, params: list[tuple[str, str]]) -> bytes:
     if not node.products:
-        return _listing_page(node.title, tiles=_tiles(node.children, node.hidden_tiles))
+        children = (*node.children, ARCHIVE) if node.path == EXIT_SEED else node.children
+        featured = FEATURED.get(node.path)
+        products = (
+            "<li>" + _a(featured, "Featured", "product-card__link") + "</li>" if featured else ""
+        )
+        return _listing_page(
+            node.title,
+            tiles=_tiles(children, node.hidden_tiles),
+            products=products,
+            extra=_rejects(),
+        )
 
     page = _page_number(params)
     pages = max(1, -(-node.products // PER_PAGE))
@@ -301,11 +357,16 @@ def _listing(node: Node, params: list[tuple[str, str]]) -> bytes:
     products = "".join(
         "<li>" + _a(_product_href(node, sku), sku, "product-card__link") + "</li>" for sku in skus
     )
+    if node.path == f"{PREFIX}cutting/discs/" and page == 1:
+        products += "".join(
+            "<li>" + _a(href, "Partner", "product-card__link") + "</li>" for href in PARTNER_CARDS
+        )
     return _listing_page(
         node.title,
         facets=_facets(base, params),
         products=products,
         pagination=_pagination(base, params, page, pages),
+        extra=_rejects(),
     )
 
 
@@ -378,11 +439,13 @@ def _product(sku: str, host: str) -> tuple[int, bytes] | None:
     return 200, body
 
 
-def _loop(path: str) -> bytes:
-    """A relative-link bug: every page links `loop/x/` relative to itself, so
-    the path grows by one `loop/x/` pair per hop, for ever."""
+def _loop(path: str) -> tuple[int, bytes] | None:
+    """A relative-link bug: every page links `loop/x/page` relative to
+    itself, so the path grows by one `loop/x/` pair per hop, for ever."""
+    if not path.rstrip("/").endswith(f"/x/{LOOP_PAGE}"):
+        return None
     depth = path.count("loop/x/")
-    return _listing_page(f"Loop {depth}", tiles=_tiles_raw(["loop/x/"]))
+    return 200, _listing_page(f"Loop {depth}", tiles=_tiles_raw([f"loop/x/{LOOP_PAGE}"]))
 
 
 def _news(path: str) -> tuple[int, bytes] | None:
