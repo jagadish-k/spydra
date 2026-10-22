@@ -125,6 +125,65 @@ domain_deny) -> Discovery`.
     collapsed); 0 facet URLs, 0 off-host; `/shop/deep/5/` queued,
     `/shop/deep/6/` not, max depth 5; domain stays `active`. Full suite
     986 passed before the `_path` fix.
+- test (spydra-test): written from Contract, Decided and Acceptance; the
+  backend entry read for orientation only. 37 tests in three files:
+  - `tests/discovery/test_links.py` (26, unit, Halden pages served by
+    `FixtureSite` as `halden.test`): per-rule groups; per-reason rejects
+    with counts and samples; deny tallied per pattern; domain deny with and
+    without the template's; `scheme` for `mailto:`/`tel:`/`javascript:`;
+    all four `PARTNER_CARDS` `off_host` (look-alikes included, against the
+    real host name); `not_allowed`; patterns on canonical path + query;
+    depth (`/shop/deep/4/` yields `/5/` at depth 5, `/shop/deep/5/` yields
+    nothing and counts `/6` as `depth`); unparseable counted, not raised
+    (two broken hrefs spliced into the served root: Halden has none, and
+    adding them to the catalogue footer would touch every suite); dedupe by
+    canonical hash, first spelling kept (the promo's 11 spellings are 3
+    links); fragment dropped; product > next > subcategory attribution;
+    pure (no I/O imports, not async, no request, same answer twice).
+  - `tests/adapters/postgres/test_listing_verdict.py` (6, ADR-0039): an empty
+    listing opens no inbox row and is not in the counts; an empty product
+    page still is; a first run of 10 empty listings and 5 good products
+    leaves the domain `active`; listings that extract do not dilute a 40%
+    redesign; listings do not count toward the minimum sample; a listing
+    write after a `broken` verdict reports no event of its own.
+  - `tests/scheduler/test_link_discovery.py` (5): the worker process from
+    `EXIT_SEED` with `EXIT_DISCOVERY` (20 ms delay, one connection):
+    exactly `EXIT_PRODUCTS` observed as product pages, nothing off-host and
+    no facet URL ever queued or requested, `/shop/deep/5/` done at depth 5
+    and `/6/` never queued or requested, run `completed`, domain `active`,
+    empty inbox. Through `PageCrawler`: `/shop/cutting/` matches
+    `^/shop/cutting$`; the domain's `deny_patterns` reach the crawl; a page
+    whose observation halts its domain enqueues nothing (plus its control).
+  - **Defect 1, test left red:**
+    `test_a_rejected_link_two_rules_match_is_counted_once`. The contract
+    says a link "and a reject reason are recorded once, under the first
+    rule that matched it". `discover` tallies `scheme` (and `unparseable`)
+    before the within-page dedupe, so the root footer's `mailto:` under two
+    rules counts `scheme` 6, not 3, with duplicate samples. `off_host`,
+    tallied after dedupe, is right (2).
+  - **Defect 2, test left red, pre-existing since 1.13 (`600d912`):**
+    `test_a_page_whose_observation_halts_its_domain_enqueues_nothing[halted]`.
+    `PageCrawler._observe` calls `log.error("domain_halted",
+event=outcome.event, ...)`; `event` is structlog's positional, so every
+    mid-run halt raises `TypeError` after `abandon_domain` and before the
+    row is closed. In the worker, `abort` then retries the row. No earlier
+    test drove a real halt through `PageCrawler`. It also masks the 2.3
+    halted-domain guard, so that guard's mutant was run on top of the
+    one-line log fix (`event=` → another key), and the baseline with only
+    that fix is fully green.
+  - **Mutation: 21 chosen, 21 red.** `discover`: each filter rule
+    (off-host, scheme, allow, deny), `>=` → `>`, `depth + 1` → `depth`, the
+    deny merge both ways, `except ValueError`, the dedupe, rule order,
+    canonical instead of fetchable. Crawler: `max_depth` not the domain's,
+    domain deny dropped, nothing enqueued, the halted guard, `_path`
+    without canonicalisation. ADR-0039: `_extracted` in `_reason` and in the
+    health guard, and the `page_kind` filter in `_RUN_PAGES` and in
+    `_PAST_MINIMUM` separately. `git diff -- backend/spydra` empty after.
+  - Full backend suite: 1021 passed, 2 skipped, 2 failed (the two defects
+    above). `make lint-api` clean.
+  - Not tested: the one `debug` line per page (spec 009 §1). The crawl's
+    "politely" is the real gate at one connection and a 20 ms delay, not
+    an assertion on request timing; `test_politeness_observed.py` owns that.
 
 ## Open questions — for the human
 
