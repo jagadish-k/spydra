@@ -120,6 +120,38 @@ its fixtures) unless trivially useful.
   to a bare import when the render suite runs it as `python3 server.py` from
   `/fixtures` (checked in the render container: `/shop/p/HT-CD-001` serves).
   Lint and mypy clean.
+- spydra-test: `backend/tests/test_catalogue.py` (new, 29 tests incl. 5
+  parametrised 404s), all through `FixtureSite` with `Host: halden.test`,
+  parsed with selectolax lexbor; only `PRODUCTS` is read from the table, as
+  the expected set. Pins: exact product set by a tiles + product-link +
+  `rel=next` BFS from `/shop/` (facets and mega-menu ignored), product
+  extraction markers, the 3×2 + one-nest tree shape, pagination (3+ pages,
+  no next on the last, numbered links, `?page=2` lists other products),
+  facets add one value and change nothing, facet space (BFS over raw hrefs
+  passes 20,000 after ~1,500 fetches; a second test walks the lattice to
+  every value chosen, checking each page offers every unchosen value, so the
+  space survives 2.2's query sort as 2^16 subsets), mega-menu on product and
+  every listing page ⊇ the tile-discovered tree, scoped tiles are direct
+  children only and narrower than the mega-menu, exactly one category hides
+  non-empty tiles under `display:none` with no script, canonical pair (both
+  200, both name `/shop/p/<sku>`), an off-host canonical, the promo's
+  spellings (utm/gclid/ref/fragment/dot segments/`//`/trailing slash/
+  unsorted pair/`HALDEN.TEST:80`) all canonicalising to one listing, the
+  footer's rejects, permissive robots, depth chain ≥ 6 with no shortcut
+  anchor, loop/news/`/trap/` 50 hops of new 200s, byte-identical refetch,
+  trailing-slash equivalence, unknown `/shop/…` 404. File runs in ~4 s.
+  Mutation: 18 chosen, 18 red (facets capped at 3 and at 4 selections —
+  the 4-cap passes the raw count and is caught only by the lattice walk;
+  loop, news and `/trap/` bounded; a product dropped from its leaf; hidden
+  style removed; a second hidden category; mega-menu scoped to top level;
+  context and off-host canonicals dropped; a timestamp in every page; deep
+  chain cut to 4; bare paths 404; unknown paths served as the root;
+  upper-case host link and `mailto:` removed; `rel=next` on the last page).
+  `catalogue.py` and `server.py` restored, `git diff` empty. `make lint-api`
+  clean; full backend suite 668 passed, 2 skipped. No fixture defect.
+  Note for 2.2: the raw promo href `/shop//cutting//discs/` serves 404 if
+  fetched un-normalised; only its canonical form is fetchable, which the
+  contract allows.
 
 ## Open questions — for the human
 
