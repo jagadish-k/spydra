@@ -195,13 +195,32 @@ choosing or reaching one.
       network-isolation criterion — has **no owning task** and is raised
       there rather than resolved.
 
-- [ ] `1.6` **`HttpxFetcher`** behind the `Fetcher` port from `1.2`. An HTTP
+- [x] `1.6` **`HttpxFetcher`** behind the `Fetcher` port from `1.2`. An HTTP
       error status is a successful fetch — deciding what a 403 or 429 means
       belongs to `1.9` (ADR-0004). Tested with `httpx2.MockTransport`
       (ADR-0028), no mocking library and no network.
       **Done when:** the status table, timeout, redirect and `FetchFailed`
       paths are covered, and the user-agent from `.env.example` is asserted
       on the outgoing request (ADR-0004).
+      **Done:** 30 tests; 22 chosen mutations applied, all red. The port,
+      `FetchRequest` and `FetchedPage` are unchanged — only
+      two stale task numbers in their docstrings. Three defects found while
+      writing it, each by measurement rather than reading: **`httpx2` was a
+      `dev` dependency** and imported only because `uv sync --frozen`
+      installs uv's default groups (so the shipped images carry ruff, mypy
+      and pytest — raised, not fixed); **`httpx2.InvalidURL` does not inherit
+      from `HTTPError`**, so a junk URL escaped the port's vocabulary; and
+      **a caller-supplied `user-agent` header survived alongside ours**,
+      sending two header lines with the caller's value first, which is the
+      one thing ADR-0004 asks that required field to prevent.
+      Review then found a fourth of the same family: a non-ASCII header
+      value — an operator typing `Müller-Abrasives Crawler/1.0`, exactly the
+      honest identification ADR-0004 asks for — raises a **builtin**
+      `UnicodeEncodeError` out of `fetch()`, stalling that domain until its
+      lease expires. Caught now. Review also found four guards the first
+      matrix did not cover (`fetched_at`, a constant `elapsed_ms`, three of
+      four timeout phases, and the redirect budget, which was asserted
+      against its own constant); all four are covered and red.
 
 - [ ] `1.7` **`RenderServiceFetcher`** behind the same port — HTTP to the
       sidecar, 503 as `Backpressure` rather than a fetch failure, 504
