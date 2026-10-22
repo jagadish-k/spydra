@@ -275,3 +275,42 @@ async def test_crawl_queue_dedupes_within_a_run(conn: AsyncConnection) -> None:
 
     with pytest.raises(IntegrityError):
         await conn.execute(insert(run_ids[0]))  # same run: rejected
+
+
+async def test_page_current_carries_every_column_of_the_table(
+    conn: AsyncConnection,
+) -> None:
+    """ADR-0007 makes this view the only way anything reads current state,
+    and Postgres expands `SELECT *` **at CREATE time**.
+
+    So a migration that adds a column to `page_observations` and does not
+    recreate the view leaves a view that silently lacks it — no error, no
+    warning, and every reader (the review inbox, phase 5's extraction-health
+    and broken-template reports) querying a shape that is missing the column
+    the report is about. Measured on this database during `1.11`: three
+    columns added, the view still carried twenty.
+
+    This is the guard for the next one, not for that one.
+    """
+    columns = sa.text(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = :schema AND table_name = :table
+        """
+    )
+    table = {
+        row[0]
+        for row in (await conn.execute(columns, {"schema": SCHEMA, "table": "page_observations"}))
+    }
+    view = {
+        row[0] for row in (await conn.execute(columns, {"schema": SCHEMA, "table": "page_current"}))
+    }
+
+    assert table, "page_observations has no columns — the migration did not run"
+    assert table == view, (
+        "page_current is stale. A migration added or dropped a column on "
+        "page_observations without recreating the view: DROP VIEW then "
+        "PAGE_CURRENT_SQL, as migration 156197f778f8 does. Missing from the "
+        f"view: {sorted(table - view)}; extra: {sorted(view - table)}"
+    )

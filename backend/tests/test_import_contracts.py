@@ -23,6 +23,7 @@ FORBIDDEN_PREFIXES = (
     "spydra.adapters",  # domain never knows how work is performed (AGENTS.md)
     "spydra.api",  # HTTP is an edge concern, not a domain one
     "spydra.extraction",
+    "spydra.observations",  # 1.11: the write path is above the domain, not in it
     "spydra.scheduler",
     "spydra.worker",
 )

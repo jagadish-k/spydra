@@ -349,7 +349,7 @@ choosing or reaching one.
       which would have made `1.11` handle both while the currency rule
       checked only one of them.
 
-- [ ] `1.11` **Observation writes** with `content_hash` over the **normalised
+- [x] `1.11` **Observation writes** with `content_hash` over the **normalised
       extracted fields**, never the raw markup (spec 003 §4, ADR-0007).
       Routes `empty_extraction` to `unknown_pages` and moves a domain to
       `broken` past 20% — ADR-0027's predicate on the final observation after
@@ -360,6 +360,23 @@ choosing or reaching one.
       hash; the redesigned fixture trips `broken` while the soft-404 fixture
       does not, however many of them there are; and 21% trips it while 19%
       does not.
+      **Done:** 421 tests, 33 mutations, all red. Four findings worth
+      carrying: **`page_current` goes stale on any column-adding migration**
+      — Postgres expands `SELECT *` at CREATE time, so the view carried 20
+      columns while the table carried 23, silently, and every reader of
+      current state would have queried a shape missing the regression flag
+      (the migration recreates it; a schema test now holds the two column
+      lists equal). **A mid-run verdict on the first page of a run is a ratio
+      of one**, so a five-page run whose first page was its one redesigned
+      page halted the domain at 100%; `MINIMUM_PAGES_FOR_A_VERDICT = 5` is
+      derived from `1/n > 0.20`, and spec 003 §3 names no minimum — raised.
+      **ADR-0030's own prescription had no lifecycle edge**: `active ->
+    awaiting_approval` is in neither `lifecycle.py` nor spec 001 §2's
+      diagram, so a first run that never matched would have raised
+      `InvalidTransition` instead of going back to review. And the inherited
+      emptiness verdict **was production code that could not fail** —
+      mutation showed it agreed with the computed verdict everywhere
+      reachable and was wrong in the one corner where they differ.
 
 - [ ] `1.12` **Asset enqueue and backpressure** — the scheduler half only
       (spec 002 §7, ADR-0003): a page worker resolves image URLs, inserts

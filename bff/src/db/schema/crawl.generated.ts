@@ -160,6 +160,9 @@ export const pageObservationsInCrawl = crawl.table("page_observations", {
 	validation: jsonb().default({}).notNull(),
 	rawHtmlPath: text("raw_html_path"),
 	rawHtmlExpiresAt: timestamp("raw_html_expires_at", { withTimezone: true, mode: 'string' }),
+	extractionRung: text("extraction_rung"),
+	unchanged: boolean().default(false).notNull(),
+	emptyExtraction: boolean("empty_extraction").default(false).notNull(),
 }, (table) => [
 	index("ix_page_observations_page_observed").using("btree", table.pageId.asc().nullsLast(), table.observedAt.desc().nullsFirst()),
 	foreignKey({
@@ -325,4 +328,7 @@ export const pageCurrentInCrawl = crawl.view("page_current", {	// You can use { 
 	validation: jsonb(),
 	rawHtmlPath: text("raw_html_path"),
 	rawHtmlExpiresAt: timestamp("raw_html_expires_at", { withTimezone: true, mode: 'string' }),
-}).as(sql`SELECT DISTINCT ON (page_id) id, page_id, run_id, template_id, observed_at, http_status, content_hash, strategy, title, price_amount, price_currency, availability, vendor, category_path, description, attributes, supplier, validation, raw_html_path, raw_html_expires_at FROM crawl.page_observations ORDER BY page_id, observed_at DESC`);
+	extractionRung: text("extraction_rung"),
+	unchanged: boolean(),
+	emptyExtraction: boolean("empty_extraction"),
+}).as(sql`SELECT DISTINCT ON (page_id) id, page_id, run_id, template_id, observed_at, http_status, content_hash, strategy, title, price_amount, price_currency, availability, vendor, category_path, description, attributes, supplier, validation, raw_html_path, raw_html_expires_at, extraction_rung, unchanged, empty_extraction FROM crawl.page_observations ORDER BY page_id, observed_at DESC`);
