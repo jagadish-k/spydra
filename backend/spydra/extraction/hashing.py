@@ -60,6 +60,7 @@ from decimal import Decimal
 from typing import Final
 
 from spydra.domain.entities import ExtractedFields
+from spydra.extraction.assets import is_asset_url
 from spydra.extraction.validation import is_empty
 
 # A mapping carrying either of these is the price composite (spec 003 §2),
@@ -67,10 +68,6 @@ from spydra.extraction.validation import is_empty
 _PRICE_KEYS: Final[frozenset[str]] = frozenset({"amount", "currency"})
 
 _EVIDENCE_KEY: Final[str] = "raw"
-
-# Spec 003 §4's "asset URLs excluded". Matched on the value rather than on a
-# field name — see the module docstring for why, and for what it costs.
-_ASSET_SCHEMES: Final[tuple[str, ...]] = ("http://", "https://")
 
 type Normalised = str | list["Normalised"] | dict[str, "Normalised"]
 
@@ -123,7 +120,7 @@ def _value(value: object) -> Normalised | None:
         return _number(value)
     if isinstance(value, str):
         text = _text(value)
-        return None if _is_asset_url(text) else text
+        return None if is_asset_url(text) else text
     if isinstance(value, Mapping):
         return _mapping(value)
     if isinstance(value, Sequence):
@@ -147,18 +144,6 @@ def _number(value: Decimal | int) -> str:
 def _text(value: str) -> str:
     """Whitespace collapsed (spec 003 §4): a reflowed template is not news."""
     return " ".join(value.split())
-
-
-def _is_asset_url(text: str) -> bool:
-    """Spec 003 §4's exclusion. A URL is the asset's address, not its content.
-
-    Lowercased before the comparison so `HTTPS://cdn...` — which an
-    `absolute_url` transform will happily produce from a page that shouts its
-    scheme — is excluded too. A relative path is not matched: the transform
-    makes asset URLs absolute (spec 003 §2), and a bare `/img/a.jpg` in a
-    field that skipped it is as likely to be a product code as an asset.
-    """
-    return text.lower().startswith(_ASSET_SCHEMES)
 
 
 def _mapping(value: Mapping[object, object]) -> dict[str, Normalised] | None:

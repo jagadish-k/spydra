@@ -28,6 +28,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from spydra.adapters.postgres.assets import PostgresAssets
 from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.domain.entities import Observation, Template
 from spydra.domain.enums import DomainEvent, FetchPath, Strategy, UnknownReason
@@ -82,7 +83,7 @@ def chain() -> ExtractionChain:
 
 
 def writer(engine: AsyncEngine) -> ObservationWriter:
-    return ObservationWriter(PostgresObservations(engine))
+    return ObservationWriter(PostgresObservations(engine), PostgresAssets(engine))
 
 
 async def crawl(
@@ -1069,3 +1070,102 @@ async def test_one_domains_regressions_do_not_halt_another(
     assert (await observations.health(run_id, healthy_id)).pages_crawled == 5
     assert await domain_state(engine, healthy_id) == "active"
     assert await domain_state(engine, broken_id) == "broken"
+
+
+# ---------------------------------------------------------------------------
+# 1.12: the page path enqueues its own images
+# ---------------------------------------------------------------------------
+
+
+async def asset_queue_rows(engine: AsyncEngine) -> list[sa.Row[tuple[object, ...]]]:
+    async with engine.connect() as conn:
+        return list(
+            (
+                await conn.execute(
+                    sa.text(
+                        "SELECT observation_id, source_url, position FROM crawl.asset_queue "
+                        "ORDER BY observation_id, position"
+                    )
+                )
+            ).all()
+        )
+
+
+async def test_crawling_a_page_enqueues_its_gallery(clean_crawl: AsyncEngine) -> None:
+    """ADR-0003 step 1, through the writer rather than through the adapter:
+    `1.13` calls `record()` and nothing else, so if the enqueue were the
+    caller's job to remember, the symptom would be an empty asset queue
+    noticed months later."""
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    url = "https://vantage-abrasives.test/catalog/rfd-115-060"
+    page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+
+    outcome = await crawl(
+        engine,
+        fixture=GOOD,
+        url=url,
+        page_id=page_id,
+        domain_id=domain_id,
+        run_id=run_id,
+        template=template,
+    )
+
+    rows = await asset_queue_rows(engine)
+    assert outcome.assets_enqueued == 2
+    assert [r.source_url for r in rows] == [
+        "https://vantage-abrasives.test/img/rfd-115-060-a.jpg",
+        "https://vantage-abrasives.test/img/rfd-115-060-b.jpg",
+    ]
+    assert [r.position for r in rows] == [0, 1]
+    assert {r.observation_id for r in rows} == {outcome.observation_id}
+
+
+async def test_an_unchanged_page_still_enqueues_its_gallery(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The lightweight row has no fields, and its images still have to be
+    linked.
+
+    `page_current` is the newest observation (ADR-0007), and `5.2` links
+    assets to the observation that enqueued them — so skipping this would
+    show an unchanged product with no images in the UI. The cost is a
+    re-fetch of an unchanged gallery every run, which `5.2` should fix by
+    copying the previous observation's links; raised in the task file.
+    """
+    engine = clean_crawl
+    domain_id, _, template = await a_domain_with_a_template(engine)
+    run_id = await seed_run(engine, [int(domain_id)])
+    url = "https://vantage-abrasives.test/catalog/rfd-115-060"
+    page_id = await seed_page(engine, domain_id, url, template_id=template.id)
+
+    first = await crawl(
+        engine,
+        fixture=GOOD,
+        url=url,
+        page_id=page_id,
+        domain_id=domain_id,
+        run_id=run_id,
+        template=template,
+    )
+    second = await crawl(
+        engine,
+        fixture=GOOD,
+        url=url,
+        page_id=page_id,
+        domain_id=domain_id,
+        run_id=run_id,
+        template=template,
+    )
+
+    assert second.observation.unchanged is True
+    assert second.assets_enqueued == 2
+    rows = await asset_queue_rows(engine)
+    # Two observations, two galleries: the UNIQUE is per observation, so the
+    # second run's row is a new row rather than a conflict.
+    assert len(rows) == 4
+    assert {r.observation_id for r in rows} == {
+        first.observation_id,
+        second.observation_id,
+    }
