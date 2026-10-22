@@ -62,6 +62,31 @@ static crawling unaffected and makes `auto` record `static_fallback`.
 - [ ] TESTING.md §2's politeness tests pass (they exist from 1.8/1.9/1.13).
 - [ ] `make check` green.
 
+## Handoff log
+
+- test — Added `backend/tests/test_load.py` (pure parsing plus the exit
+  files run through the real chain) and
+  `backend/tests/adapters/postgres/test_load_configuration.py` (Postgres
+  and the CLI), 43 tests in total. Full suite: 595 passed, 2 skipped.
+  `make lint-api` is clean. No production defect found. Checked by
+  breaking the code on purpose, then restoring it: with `_refuse_required`
+  turned into a no-op, 14 tests fail. With the transaction split into a
+  commit per domain, the two atomicity tests that fail inside the database
+  go red (negative `crawl_delay_ms` on the second domain, caught by the
+  `configured_crawl_delay_ms_non_negative` check). With `render_mode` and
+  `crawl_delay_ms` dropped from the upsert's `DO UPDATE`, the reload test
+  fails. The tests for an unknown transform or a missing `selector` fail
+  while parsing, before any write, so they do not exercise the transaction
+  on their own. That is why the database-refusal case exists. One thing
+  for the reviewer: YAML 1.2 reads `required: yes`, `on`, `1` and
+  `"true"` as non-booleans. The loader accepts all four silently, and the
+  codec then drops the key. This is outside the literal acceptance
+  ("`required: true`"), but it is the silent-belief case that ADR-0027
+  argues against. No test was written for it. Also, `runs.domain_ids`
+  comes from domains that have seeds, so a domain that has templates but
+  no seeds is set active but left out of the run. That is not tested
+  either. Next: `spydra-reviewer`.
+
 ## Open questions — for the human
 
 1. The `fixtures` profile service on `egress` (ADR-0036). The alternative,

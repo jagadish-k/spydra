@@ -81,6 +81,7 @@ class PostgresConfiguration:
     async def apply(self, domains: Sequence[DomainConfig]) -> RunId:
         async with self._engine.begin() as conn:
             seeded: list[tuple[int, str]] = []
+            domain_ids: list[int] = []
             for domain in domains:
                 domain_id = int(
                     (
@@ -108,11 +109,14 @@ class PostgresConfiguration:
                             "discovery": json.dumps(row["discovery"]),
                         },
                     )
+                domain_ids.append(domain_id)
                 seeded.extend((domain_id, url) for url in domain.seeds)
 
             run_id = RunId(
                 (
-                    await conn.execute(_START_RUN, {"domain_ids": sorted({d for d, _ in seeded})})
+                    # Every domain the file names, seeds or not: the run's
+                    # selection is what the operator loaded.
+                    await conn.execute(_START_RUN, {"domain_ids": sorted(set(domain_ids))})
                 ).scalar_one()
             )
             for domain_id, url in seeded:

@@ -106,9 +106,13 @@ def _refuse_required(node: object, path: str = "") -> None:
     if isinstance(node, Mapping):
         for key, value in node.items():
             here = f"{path}.{key}" if path else str(key)
-            if key == "required" and value is True:
+            # Anything but a literal `false`. YAML 1.2 reads `yes`, `on` and
+            # `"true"` as strings, which would slip past an `is True` test and
+            # leave an operator believing a field is enforced when nothing
+            # reads the flag: the exact case ADR-0027 names.
+            if key == "required" and value is not False:
                 raise RefusedConfiguration(
-                    f"{here}: `required: true` is refused. No field is ever required "
+                    f"{here}: `required: {value}` is refused. No field is ever required "
                     "(ADR-0027): a field that fails is recorded in the observation's "
                     "validation, and only an empty extraction routes or halts. Remove "
                     "the key."
