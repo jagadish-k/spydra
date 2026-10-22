@@ -168,6 +168,54 @@ One claim-loop iteration (spec 002 §1–§7):
       `no_template`, the 404 an observation and no inbox row.
     - Run `completed` with stats, `in_flight` back to 0, SIGTERM exit 0.
     - 3 lines at `info`; at `debug`, one per page plus lifecycle.
+- test — 34 new tests (suite 540 passed, 2 skipped; `make lint-api` clean).
+  No production code touched.
+  - **Files:** `tests/scheduler/test_worker_process.py` (the real
+    `python -m spydra.worker` as a subprocess: end to end, SIGTERM inside
+    the grace, SIGTERM past the grace, 1,000 pages at `info`, a run at
+    `debug`); `tests/scheduler/test_page_crawler.py` (every outcome row,
+    real Postgres and fake `Fetcher`s, with the sidecar 503 going through the
+    real `RenderServiceFetcher` over `MockTransport`);
+    `tests/adapters/postgres/test_frontier_claim_filter.py` (ADR-0034);
+    `tests/adapters/postgres/test_templates_codec.py`;
+    `tests/scheduler/test_render_budget.py`; one robots test for a host with
+    a port. Fixture: `/generated/<n>` in `server.py`, the vantage product
+    with `<n>` substituted plus a `Set-Cookie`, documented in the fixtures
+    README.
+  - **Red against the old code:** all five claim-filter tests fail against
+    `fix/1.11-review-findings`'s `frontier.py` (starvation as an
+    `AssertionError`, the pool tests as a `TypeError`). I made 21 small
+    mutations of `crawl.py`, `frontier.py`, `pools.py`, `logs.py`,
+    `robots.py`, `render_budget.py` and `templates.py`, and 20 of them turn
+    their guarding test red. The exception: dropping the `== 200` from AUTO's
+    second-chance condition in `crawl.py` stays green, because
+    `AutoFetcher` checks for a 200 too. That mutation is equivalent, not a
+    gap in the tests.
+  - **Not tested:** that `worker.py` wires the AUTO second chance through
+    the same `RenderBudget` as the rendered pool. `RenderBudget` is tested
+    on its own, but the wiring is only reachable through a running sidecar.
+    Also not tested: halt-then-abandon (`BREAK`/`NEVER_MATCHED`), which is
+    not on the Acceptance list.
+  - **For review:** `runs.stats` is
+    `{queue, observations, empty_extractions, unchanged, assets_enqueued}`,
+    not spec 009 §2's shape (`pages_crawled`, `by_strategy`, `by_domain`,
+    …). The tests assert only that `stats` is non-empty. At `debug`,
+    `page_crawled` carries `strategy: null` on an empty extraction. The
+    tests accept that and require a non-null `strategy` only where
+    something was extracted.
+
+- backend (after test): `runs.stats` now follows spec 009 §2's shape for
+  the keys phase 1 can know:
+  - `pages_crawled`, `pages_failed`, `pages_abandoned`, `pages_changed`,
+    `by_strategy`, `by_domain`, `duration_s`;
+  - plus `empty_extractions` and `assets_enqueued`, which stands in for
+    `assets_downloaded` until 5.2.
+
+  `assets_downloaded`, `asset_bytes`, `dedupe_rate` and
+  `validation_pass_rate` come with 5.2 and 5.7. The test-writer flagged the
+  mismatch; the e2e test now asserts the keys. `strategy` is `null` on a line
+  for a page that extracted nothing, and that is still "carrying" it in
+  spec 009 §1's sense.
 
 ## Open questions — for the human
 

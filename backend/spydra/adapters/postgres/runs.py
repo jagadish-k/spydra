@@ -18,22 +18,48 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from spydra.domain.ids import RunId
 
+# Spec 009 §2's shape, for the keys phase 1 can know. `assets_downloaded`,
+# `asset_bytes` and `dedupe_rate` arrive with the asset pool (5.2), and
+# `validation_pass_rate` with the reports (5.7); `assets_enqueued` stands in
+# until then. `by_strategy` counts the rung that produced the fields (the
+# `extraction_rung` column, so a static fallback still counts as the rung it
+# used), and `failed` is the rows that never produced an observation.
 _STATS = """
 jsonb_build_object(
-    'queue', (
-        SELECT coalesce(jsonb_object_agg(state, n), '{}'::jsonb)
-        FROM (SELECT state, count(*) AS n FROM crawl.crawl_queue
-              WHERE run_id = :run_id GROUP BY state) s
+    'pages_crawled', (SELECT count(*) FROM crawl.crawl_queue
+                      WHERE run_id = :run_id AND state = 'done'),
+    'pages_failed', (SELECT count(*) FROM crawl.crawl_queue
+                     WHERE run_id = :run_id AND state = 'failed'),
+    'pages_abandoned', (SELECT count(*) FROM crawl.crawl_queue
+                        WHERE run_id = :run_id AND state = 'abandoned'),
+    'pages_changed', (SELECT count(*) FROM crawl.page_observations
+                      WHERE run_id = :run_id AND NOT unchanged AND content_hash IS NOT NULL),
+    'empty_extractions', (SELECT count(*) FROM crawl.page_observations
+                          WHERE run_id = :run_id AND empty_extraction),
+    'assets_enqueued', (SELECT count(*) FROM crawl.asset_queue WHERE run_id = :run_id),
+    'by_strategy', (
+        SELECT coalesce(jsonb_object_agg(rung, n), '{}'::jsonb)
+        FROM (
+            SELECT coalesce(extraction_rung, 'none') AS rung, count(*) AS n
+            FROM crawl.page_observations WHERE run_id = :run_id GROUP BY 1
+            UNION ALL
+            SELECT 'failed', count(*) FROM crawl.crawl_queue
+            WHERE run_id = :run_id AND state = 'failed'
+        ) s
     ),
-    'observations', (SELECT count(*) FROM crawl.page_observations WHERE run_id = :run_id),
-    'empty_extractions', (
-        SELECT count(*) FROM crawl.page_observations
-        WHERE run_id = :run_id AND empty_extraction
+    'by_domain', (
+        SELECT coalesce(jsonb_object_agg(d.host, jsonb_build_object(
+                   'crawled', s.crawled, 'failed', s.failed)), '{}'::jsonb)
+        FROM (
+            SELECT domain_id,
+                   count(*) FILTER (WHERE state = 'done') AS crawled,
+                   count(*) FILTER (WHERE state = 'failed') AS failed
+            FROM crawl.crawl_queue WHERE run_id = :run_id GROUP BY domain_id
+        ) s
+        JOIN crawl.domains d ON d.id = s.domain_id
     ),
-    'unchanged', (
-        SELECT count(*) FROM crawl.page_observations WHERE run_id = :run_id AND unchanged
-    ),
-    'assets_enqueued', (SELECT count(*) FROM crawl.asset_queue WHERE run_id = :run_id)
+    'duration_s', (SELECT round(extract(epoch FROM now() - started_at))::int
+                   FROM crawl.runs WHERE id = :run_id)
 )
 """
 
