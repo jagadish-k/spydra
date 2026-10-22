@@ -495,13 +495,17 @@ on facets._
 extracts from what `2.2` canonicalised. Nothing here has a disjoint file set
 from the task above it.
 
-- [ ] `2.1` **Grow the fixture site** (`1.4`) with the shapes this phase
+- [x] `2.1` **Grow the fixture site** (`1.4`) with the shapes this phase
       needs: paginated listings, a faceted listing whose filter combinations
       would explode, a mega-menu that links the whole tree from depth 0, a
       subcategory nest, and a crawler trap — a repeating path that generates
       URLs for ever. Every task below is tested against these.
       **Done when:** each shape has a page, and the trap is genuinely
       unbounded so that `2.5`'s caps are the only thing that stops it.
+      **Done:** Halden Tools (`backend/tests/fixtures/catalogue.py`), one
+      invented host with every spec 004 shape, an exact product set per seed,
+      and the exit's seed and rules named (`EXIT_SEED`, `EXIT_DISCOVERY`).
+      Three more unbounded traps: facets, a relative-link loop, a calendar.
 
 - [ ] `2.2` **URL canonicalisation and `url_hash`** (spec 004 §2): query
       parameters sorted, tracking parameters stripped, meaningful ones kept,

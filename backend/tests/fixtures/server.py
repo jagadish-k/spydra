@@ -24,6 +24,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import TracebackType
 
+try:
+    from tests.fixtures import catalogue
+except ModuleNotFoundError:
+    # The render suite runs this file as `python3 server.py` from its
+    # read-only /fixtures mount, where `tests` is not a package.
+    import catalogue  # type: ignore[import-not-found,no-redef]
+
 FIXTURES = Path(__file__).resolve().parent
 PAGES = FIXTURES / "pages"
 ROBOTS = FIXTURES / "robots"
@@ -224,6 +231,13 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 f'<a href="{path.rstrip("/")}/deeper/">deeper</a>'
             ).encode()
             self._send(body, "text/html; charset=utf-8")
+            return
+
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        page = catalogue.render(path, query, self.headers.get("host") or catalogue.HOST)
+        if page is not None:
+            status, body = page
+            self._send(body, "text/html; charset=utf-8", status)
             return
 
         target = ROUTES.get(path)

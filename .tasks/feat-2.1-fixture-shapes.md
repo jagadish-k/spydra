@@ -1,0 +1,238 @@
+# feat/2.1-fixture-shapes
+
+**Task:** BUILD_PLAN 2.1 · **Spec:** 004 §1–§5, TESTING.md §1/§4 ·
+**ADRs that constrain this:** AGENTS.md rule 2 (hand-written fixtures), rule
+14 (no network), 0028.
+
+Stacked on `fix/2.0-phase1-decisions` (#21).
+
+## Contract
+
+Grow 1.4's fixture site with **one generated catalogue on one invented host
+(`halden.test`)** that carries every discovery shape phase 2 needs. 2.2–2.10
+and the phase-2 exit test against it, so it is built once, here, and is
+exact: the full product set is a known list.
+
+**Hand-written, then parameterised**, like `/generated/<n>`: two committed
+HTML templates (`pages/halden/listing.html`, `pages/halden/product.html`)
+written by hand, and a small catalogue table in
+`backend/tests/fixtures/catalogue.py` (pure data plus rendering, stdlib
+only). `server.py` routes the `/shop/` prefix to it, beside `TRAP_PREFIX`.
+No captured markup.
+
+### The catalogue
+
+- **Tree:** `/shop/` (root) → 3 categories → 2 subcategories each, and one
+  subcategory has a child of its own (the **subcategory nest**, depth 3).
+  Leaves hold products.
+- **Products:** a fixed, known number (tens, not thousands), every SKU
+  distinct. Canonical product URL `/shop/p/<sku>`. Product pages extract with
+  a selector template (title, price with currency, sku, images), like the
+  vantage markup.
+  `catalogue.PRODUCTS` (or equivalent) is the list the phase-2 exit asserts
+  equality against.
+- **Pagination:** leaves list 10 per page via `?page=N`, with
+  `a[rel="next"]` and numbered page links; the last page has no next. At
+  least one leaf spans 3+ pages.
+- **Facets (the explosion):** every listing page carries facet links
+  (`colour`, `grit`, `sort`, `per_page`) that **add to the current query**,
+  so following them reaches every combination and each faceted page links to
+  more. The reachable space must exceed spec 004 §3's 20,000-URL default cap
+  on its own. Faceted pages list the same products (a filter that changes
+  nothing is the real-world shape, and it is what makes a facet trap look
+  legitimate).
+- **Mega-menu:** every page (listing and product) carries a `nav.mega`
+  linking the **entire** category tree. Category pages also carry their own
+  scoped subcategory tiles in a separate container (`section.subcategories`).
+  A `nav a` subcategory rule therefore discovers the whole tree from depth 0;
+  a `section.subcategories a` rule discovers only the children.
+- **Hidden subcategories (spec 004 §3a case A):** one category renders its
+  subcategory tiles inside a `display:none` container. Static HTML, no JS.
+- **Canonical:** at least one product is also reachable at a
+  category-context URL (`/shop/<cat>/<sub>/p/<sku>`) whose page carries
+  `<link rel="canonical" href="/shop/p/<sku>">` (same host, two URLs, one
+  page). One page carries a canonical pointing **off-host**, which 2.2 must
+  ignore.
+- **Canonicalisation material (2.2):** listing links that carry `utm_*`,
+  `gclid`, `ref`, a fragment, an unsorted query, `./`/`../` segments, a
+  duplicate slash, a trailing slash, and an absolute same-host link with an
+  upper-case host and the default port spelled out (built from the request's
+  `Host`). A meaningful `?page=2` must stay meaningful.
+- **Rejects (2.3, 2.5):** off-host links (`https://elsewhere.test/…`), a
+  subdomain link (`https://cdn.halden.test/…`), `mailto:`, `tel:`,
+  `javascript:`, a URL over 2,000 characters, a calendar path
+  (`/shop/news/2026/10/`), and a relative-link bug that repeats a path
+  segment pair for ever (`…/loop/x/loop/x/…`).
+- **Depth:** a chain of listing pages deep enough that a `max_depth = 5`
+  crawl from the root provably stops before something reachable at depth 6.
+- **The trap:** 1.4's `/trap/` stays (unbounded, linear). The facet space and
+  the repeating relative link are two more traps of different shapes; all
+  three must be genuinely unbounded.
+- **robots:** `halden.test` answers with the permissive robots file.
+
+### Not in this slice
+
+No crawler code. Nothing under `backend/spydra/`. No CSV seed file (2.9 owns
+its fixtures) unless trivially useful.
+
+## Files this slice owns
+
+- backend/tests/fixtures/catalogue.py (new)
+- backend/tests/fixtures/pages/halden/{listing,product}.html (new)
+- backend/tests/fixtures/server.py (route the prefix)
+- backend/tests/fixtures/README.md
+- backend/tests/test_fixture_site.py (or a new `test_catalogue.py`)
+- docs/BUILD_PLAN.md (tick)
+
+## Acceptance
+
+- [ ] Each shape above has a page, reachable over `FixtureSite` and pinned by
+      a test that reads the served HTML (not the Python table).
+- [ ] The product set is exact: a BFS over product/next/subcategory links
+      (scoped tiles, facets ignored) from `/shop/` reaches exactly
+      `PRODUCTS`, through the server.
+- [ ] Facet space: a BFS following facet links exceeds 20,000 distinct URLs
+      (stop the test at 20,001; it must not run out first).
+- [ ] The repeating relative link and `/trap/` both keep producing new URLs
+      to a depth well past any cap (e.g. 50).
+- [ ] The mega-menu on a leaf product page links every category node; the
+      scoped container on a category page links only its children.
+- [ ] The hidden-tiles category's links are in the HTML inside a
+      `display:none` container.
+- [ ] Canonical pair: both URLs serve 200 and name the same canonical href.
+- [ ] Deterministic: two fetches of any page are byte-identical.
+- [ ] No route reaches the public internet; `make check` green.
+- [ ] Mutation: break each shape in the catalogue (cap the facets, bound the
+      loop, drop a product from the tree, drop the hidden style, scope the
+      mega-menu) and the test pinning it goes red.
+
+## Handoff log
+
+- planner (main session): contract above, from spec 004 §1–§5 and
+  BUILD_PLAN 2.2–2.10's "Done when" lines, so later tasks do not need to grow
+  the site again.
+- backend (main session; fixture infrastructure, no production code):
+  `catalogue.py` + `pages/halden/{listing,product}.html`; `server.py` routes
+  `/shop` to it before `ROUTES`. 64 products in 7 leaves (discs 25 → 3
+  pages), 11 tree nodes. Deep chain hangs off the root's tiles
+  (`/shop/deep/1/`…`/8/`, no products, so the product BFS is unaffected).
+  `server.py` imports `catalogue` as `tests.fixtures.catalogue`, falling back
+  to a bare import when the render suite runs it as `python3 server.py` from
+  `/fixtures` (checked in the render container: `/shop/p/HT-CD-001` serves).
+  Lint and mypy clean.
+- spydra-test: `backend/tests/test_catalogue.py` (new, 29 tests incl. 5
+  parametrised 404s), all through `FixtureSite` with `Host: halden.test`,
+  parsed with selectolax lexbor; only `PRODUCTS` is read from the table, as
+  the expected set. Pins: exact product set by a tiles + product-link +
+  `rel=next` BFS from `/shop/` (facets and mega-menu ignored), product
+  extraction markers, the 3×2 + one-nest tree shape, pagination (3+ pages,
+  no next on the last, numbered links, `?page=2` lists other products),
+  facets add one value and change nothing, facet space (BFS over raw hrefs
+  passes 20,000 after ~1,500 fetches; a second test walks the lattice to
+  every value chosen, checking each page offers every unchosen value, so the
+  space survives 2.2's query sort as 2^16 subsets), mega-menu on product and
+  every listing page ⊇ the tile-discovered tree, scoped tiles are direct
+  children only and narrower than the mega-menu, exactly one category hides
+  non-empty tiles under `display:none` with no script, canonical pair (both
+  200, both name `/shop/p/<sku>`), an off-host canonical, the promo's
+  spellings (utm/gclid/ref/fragment/dot segments/`//`/trailing slash/
+  unsorted pair/`HALDEN.TEST:80`) all canonicalising to one listing, the
+  footer's rejects, permissive robots, depth chain ≥ 6 with no shortcut
+  anchor, loop/news/`/trap/` 50 hops of new 200s, byte-identical refetch,
+  trailing-slash equivalence, unknown `/shop/…` 404. File runs in ~4 s.
+  Mutation: 18 chosen, 18 red (facets capped at 3 and at 4 selections —
+  the 4-cap passes the raw count and is caught only by the lattice walk;
+  loop, news and `/trap/` bounded; a product dropped from its leaf; hidden
+  style removed; a second hidden category; mega-menu scoped to top level;
+  context and off-host canonicals dropped; a timestamp in every page; deep
+  chain cut to 4; bare paths 404; unknown paths served as the root;
+  upper-case host link and `mailto:` removed; `rel=next` on the last page).
+  `catalogue.py` and `server.py` restored, `git diff` empty. `make lint-api`
+  clean; full backend suite 668 passed, 2 skipped. No fixture defect.
+  Note for 2.2: the raw promo href `/shop//cutting//discs/` serves 404 if
+  fetched un-normalised; only its canonical form is fetchable, which the
+  contract allows.
+
+- reviewer (fresh context; did not write it): 1 blocking, 7 non-blocking,
+  all probed with a stdlib BFS over `catalogue.render`.
+  1. **Blocking, fixed.** No category seed yielded `PRODUCTS` and none could
+     see an off-host link (the rejects footer was root-only), so the exit's
+     "without leaving the host" from a category seed would pass with the
+     host filter deleted, and scoped rules never met a facet. Now:
+     `products_under(path)`, `EXIT_SEED = /shop/cutting/`, `EXIT_DISCOVERY`
+     (scoped rules plus `form.facets a`, so the trap is in reach and only
+     spec 004's deny pattern keeps it out), `EXIT_PRODUCTS` (33). Four
+     off-host product cards on discs page 1, and the rejects footer on every
+     listing page. Probe from the exit seed with those rules (main session,
+     scratchpad): exactly the 33 SKUs, all 4 cards seen as off-host, 64 facet
+     links denied, 44 URLs.
+  2. **Fixed by seed choice.** From the root the last discs are at depth 5;
+     from the exit seed the deepest product is at 4. Recorded in the README.
+     Spec 004 §1 vs §5 depth off-by-one: open question 2.
+  3. **Fixed.** The depth chain hangs off `/shop/cutting/`: the probe reaches
+     `/shop/deep/5/` at depth 5 and never `/6/`.
+  4. **Fixed.** `/shop/cutting/` features `/shop/p/HT-SB-001`, so one crawl
+     meets both URLs of the canonical pair (probe: both discovered).
+  5. **Fixed.** The loop is `…/loop/x/page` → `loop/x/page`: the file-name
+     segment keeps the pair repeating whatever 2.2 does to trailing slashes.
+  6. **Fixed** with 1: `xhalden.test`, `halden.test.elsewhere.test`.
+  7. **Fixed.** The category-context route serves only that leaf's SKUs.
+  8. **Fixed.** BUILD_PLAN 2.1 ticked.
+     Tests now pin the old contract in places (root archive tile, loop path):
+     back to the test-writer.
+- spydra-test (after review): `backend/tests/test_catalogue.py` moved to
+  the new contract, now 37 tests. Changes to existing tests: the
+  root-scoped crawl skips off-host product cards, and a SKU seen at two
+  URLs is allowed only when every URL names the same canonical (the
+  featured HT-SB-001 now appears at both). The tree-shape, scoped-tile and
+  hidden-tile tests leave the depth chain out of "children", because
+  `/shop/cutting/` now carries the archive tile on purpose. The determinism
+  test fetches `loop/x/loop/x/page`. New tests:
+  - An `exit_crawl` fixture applies `EXIT_DISCOVERY` from `EXIT_SEED`
+    exactly as written: the three selectors, `deny_patterns` searched on
+    path+query, an exact host match, and `max_depth` as hop count. It
+    guards against blow-up at 500 pages.
+  - That crawl yields exactly `EXIT_PRODUCTS`, which equals
+    `products_under(EXIT_SEED)`.
+  - It sees all four `PARTNER_CARDS` off-host. The cards include one
+    subdomain, one look-alike that a bare endswith check would keep, and
+    one look-alike that starts with the host.
+  - At least one facet link is denied, and no faceted URL is fetched.
+  - `/shop/deep/5/` is reached and `/6/` is not, while `/5/` still links
+    to `/6/`.
+  - Both URLs of a canonical pair are discovered in that crawl.
+  - The loop adds one `loop/x/` pair per hop for 50 hops when the base's
+    trailing slash is stripped.
+  - `/shop/cutting/blades/p/HT-CD-001` returns 404.
+  - The rejects footer is on a leaf listing.
+
+  Mutation on the new guards: 12 chosen, 12 red:
+  - deny pattern neutered (the fixture's 500-page guard turns all 5 exit
+    tests red)
+  - partner cards cut to 2, and removed entirely
+  - archive tile taken off cutting
+  - `DEEP_LEVELS = 5`
+  - chain starting at `/deep/2/`
+  - featured product removed, and swapped for one outside the subtree
+  - loop reverted to the old `loop/x/` shape
+  - context route serving any SKU
+  - leaf footer removed
+  - product dropped
+
+  I re-ran the earlier 18: all still red. `catalogue.py` and `server.py`
+  are restored, and `git diff` on both is empty. `make lint-api` is clean.
+  The full backend suite gives 676 passed, 2 skipped. No fixture defect.
+
+## Open questions — for the human
+
+Carried from `fix/2.0-phase1-decisions` (see that file).
+
+New:
+
+1. **`DiscoveryRules` has no `max_depth`** (it lives on `Domain`), while
+   spec 004 §1's JSON puts it on the template's discovery rules. 2.3 decides;
+   noted here because the fixture's depth chain assumes the domain's 5.
+2. **Spec 004 §1 vs §5 disagree by one on depth.** §1 keeps a link at
+   "depth below `max_depth`"; §5 says "depth 6 links are not enqueued when
+   `max_depth` is 5" (so depth 5 is). The fixture's exit is inside both
+   readings; 2.3 picks one and edits the other.

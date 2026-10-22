@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{title}} — Halden Tools</title>
+    {{canonical}}
+  </head>
+  <body>
+    <!-- Halden Tools: the discovery catalogue (BUILD_PLAN 2.1). One template
+         for every listing page; catalogue.py fills the slots. The mega-menu
+         is on every page on purpose (spec 004 §3a): a `nav a` rule
+         discovers the whole tree from here. -->
+    <header><a href="/shop/">Halden Tools</a></header>
+    <nav class="mega">{{mega}}</nav>
+    <main class="listing">
+      <h1 class="listing__title">{{title}}</h1>
+      {{tiles}}
+      <form class="facets">{{facets}}</form>
+      <ul class="product-grid">
+        {{products}}
+      </ul>
+      <nav class="pagination">{{pagination}}</nav>
+      {{extra}}
+    </main>
+  </body>
+</html>
