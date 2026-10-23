@@ -274,33 +274,33 @@ design, not an omission: keep it true.
 
 the contract demands it)
 
-- [ ] A run stopped mid-crawl (real worker crawling) reports the work it did
+- [x] A run stopped mid-crawl (real worker crawling) reports the work it did
       not do: pending rows `abandoned`, `state='stopped'`,
       `stop_reason='stopped by operator'`, `stats.pages_abandoned > 0`
-- [ ] In-flight rows at stop finish their fetch and close `done` (observation
+- [x] In-flight rows at stop finish their fetch and close `done` (observation
       written); the run is not marked `completed` by their finish
-- [ ] A row released after stop (SIGTERM / backpressure path) lands
+- [x] A row released after stop (SIGTERM / backpressure path) lands
       `abandoned`, and no claim of that run's rows ever succeeds again — the
       run cannot be resurrected
-- [ ] The fenced domain stays claimable for a _different, running_ run's
+- [x] The fenced domain stays claimable for a _different, running_ run's
       pending rows (the fence is per-row, not per-domain)
-- [ ] A paused run: claims stop, in-flight rows finish and close `done`, rows
+- [x] A paused run: claims stop, in-flight rows finish and close `done`, rows
       stay `pending` (none abandoned), no `stop_reason`, state `paused`;
       the in-flight tail's discovery still enqueues (pause freezes dequeue,
       not discovery)
-- [ ] `resume` returns a paused run to `running` and it crawles to
+- [x] `resume` returns a paused run to `running` and it crawles to
       `completed` with stats; a run that drained while paused completes on
       resume rather than hanging `running`
-- [ ] Stop from `paused` is legal; pause/stop on a terminal run changes
+- [x] Stop from `paused` is legal; pause/stop on a terminal run changes
       nothing and reports the actual state (CLI never lies)
-- [ ] `stats` populated on every terminal path: completed (existing), failed
+- [x] `stats` populated on every terminal path: completed (existing), failed
       cap-breach (existing), stopped (new)
-- [ ] The CHECK rejects a `stopped`/`failed` row with NULL `stop_reason` and
+- [x] The CHECK rejects a `stopped`/`failed` row with NULL `stop_reason` and
       accepts `running`/`paused`/`completed` with NULL; migration runs both
       ways
-- [ ] Spec 001 §2 carries the run transition table; every valid edge tested,
+- [x] Spec 001 §2 carries the run transition table; every valid edge tested,
       ≥3 invalid transitions rejected (the guarded UPDATEs miss)
-- [ ] `make pause-run r=<id>` / `resume-run` / `stop-run` run through the api
+- [x] `make pause-run r=<id>` / `resume-run` / `stop-run` run through the api
       container and print honest outcomes
 
 ## Handoff log
@@ -340,6 +340,57 @@ the contract demands it)
   fixture parked a run in `stopped` with no `stop_reason` — the new CHECK
   (correctly) rejects it; the fixture now writes one. No scheduler file
   touched; `scheduler/` untouched by design holds.
+- test — 57 tests, three files, all green under `make test-api`
+  (1149 passed, 2 skipped; 1092 before). `tests/adapters/postgres/
+test_run_lifecycle.py` (41): the fence (claim refuses paused + all three
+  terminal states with a pending row; per-run-not-per-domain control),
+  sweep routing (terminal→abandoned, paused→pending, `attempts >= max`
+  still wins on a stopped run), release routing (after-stop→abandoned,
+  under-pause→pending), the positive paused-discovery enqueue the backend
+  left, every valid transition edge (pause/resume/stop/finish/halt) and
+  the misses as refusals reporting the actual state, stop's abandoned
+  count and exact `pages_abandoned` snapshot, resume's same-transaction
+  drained-finish, both finish paths' `running` fence, the CHECK
+  (rejects `stopped`/`failed` bare, accepts `running`/`paused`/`completed`
+  bare and terminal-with-reason), and the completion race as two real
+  engines (a finish blocked on an uncommitted stop misses; a stop blocked
+  on an uncommitted finish misses). `tests/scheduler/test_run_control.py`
+  (5, real worker): stop mid-crawl (abandoned+done both present, no
+  pending, stats exact, tail closes done without completing the run,
+  requests freeze with the worker up, domain `active`, every request
+  accounted done); stop + SIGTERM cancelling a 15 s fetch (released row
+  `abandoned`, run `stopped`); pause freezes claiming and resume crawls to
+  `completed`; the deterministic paused-tail test (claim seed → pause →
+  crawl in-process: row closes `done`, observation written, discovery
+  enqueues `pending` under pause, nothing claimable until resume); and
+  the drained-while-paused run (single slow page, pause in flight, tail
+  closes, finish refuses, resume completes with stats).
+  `tests/test_runctl.py` (11, subprocess `python -m spydra.runctl`):
+  pause/resume/stop happy paths — stop's output names the abandoned count
+  and carries `pages_abandoned` — six wrong-state misses (exit 1, actual
+  state named), no-such-run, and the usage guard. **Mutations, each red
+  then restored green:** M1 claim fence removed (5 red); M2 fence narrowed
+  to `<> 'stopped'` (paused claimable — 4 red); M3 sweep terminal branch
+  removed (3 red); M4 release routing dropped (1 red); M5 stop's
+  statements swapped (stats snapshot 0 abandoned — 3 red, adapter + both
+  worker tests); M6 stop fence widened to `completed` (3 red incl. the
+  blocked-stop race and the CLI); M7 resume without the drained-finish
+  (2 red); M8 CHECK dropped in the test DB (2 red; restored with the
+  migration's exact text); M9 `_ENQUEUE` back to `running`-only (2 red);
+  M10 `stop_reason` mangled — **initially GREEN, a vacuous test**: the
+  first version asserted against the imported `STOP_REASON_OPERATOR`,
+  comparing the constant to itself; fixed to pin spec 001 §2's literal
+  `"stopped by operator"` (4 red after, green restored). **One measured
+  behaviour worth knowing (not a defect):** a row released after stop
+  lands `abandoned` in the queue but is NOT recounted in the stop-time
+  stats snapshot (`pages_abandoned` 2 of 3 rows in the SIGTERM test) —
+  ADR-0041's stated bounded snapshot cost, the same one the tail's `done`
+  closes pay on `pages_crawled`; the test pins it with a comment. The
+  scheduler file is named `test_run_control.py`, not
+  `test_run_lifecycle.py`, because pytest imports test modules by basename
+  and the adapter file owns that name. Migration-both-ways stays with
+  `test_migrations.py`'s AST symmetry guards + CI's `migrate-down` (that
+  file's own header explains why a suite test must not run `downgrade`).
 
 ## Open questions
 
