@@ -171,6 +171,21 @@ WHERE id = :domain_id
 
 # Release: PENDING again, no penalty — but the gate must be given back
 # (spec 002 §6, and the port's own docstring).
+#
+# **The run row is share-locked BEFORE the routing statement** (ADR-0041).
+# A stop or cap-halt committing between this statement's read and the
+# release's commit would leave the row `pending` on a terminal run —
+# unclaimable (the claim fence holds) but permanently unreported. `FOR
+# SHARE` is the 2.3/`_ENQUEUE` pattern turned on the run row: the terminal
+# writers take it `FOR UPDATE` before their abandon, so either they commit
+# first and this statement reads the terminal state, or they wait and
+# their abandon sees the row this release returns to `pending`.
+_LOCK_RUN_FOR_RELEASE = sa.text(
+    """
+SELECT id FROM crawl.runs WHERE id = :run_id FOR SHARE
+"""
+)
+
 _RELEASE_QUEUE = sa.text(
     """
 UPDATE crawl.crawl_queue
@@ -204,6 +219,16 @@ WHERE id = :domain_id
 )
 
 # The sweep. Spec 002 §3, and load-bearing since ADR-0026.
+#
+# The run row is share-locked **in the statement** (`FOR SHARE OF r`),
+# the `_ENQUEUE` pattern turned on the run row (ADR-0041): the routing
+# CASE's read of `r.state` and the row's fate are decided atomically under
+# a lock the terminal writers (`stop_run`, `halt_run`) take exclusively
+# before their abandon — so a swept row of a run that stops mid-sweep
+# routes `abandoned`, never `pending`-on-terminal. In the statement, not
+# a preceding one: a lock taken by an earlier statement of this
+# transaction holds a *different* snapshot's candidate set, and a row
+# expiring between the two would route unlocked.
 _SWEEP = sa.text(
     """
 WITH expired AS (
@@ -213,9 +238,10 @@ WITH expired AS (
     WHERE q.state = 'in_flight'
       AND q.locked_until IS NOT NULL
       AND q.locked_until < now()
-    -- OF q: lock queue rows exactly as before. Locking the joined run
-    -- rows too would serialise every sweep against every run transition.
-    FOR UPDATE OF q SKIP LOCKED
+    -- OF q: lock queue rows exactly as before. No SKIP LOCKED on r: a
+    -- terminal writer holding the run row exclusively is exactly what
+    -- this sweep must wait for, and it holds it only for microseconds.
+    FOR UPDATE OF q SKIP LOCKED FOR SHARE OF r
 ),
 recovered AS (
     UPDATE crawl.crawl_queue q
@@ -322,6 +348,17 @@ SELECT (SELECT count(*) FROM inserted) AS added,
        (SELECT n FROM queued) + (SELECT count(*) FROM inserted) >= :cap AS capped
 """
 )
+
+# Same serialisation for the cap halt (ADR-0041): the `failed` edge has
+# the same abandon-then-transition shape as stop, so the routing writers'
+# `FOR SHARE` needs the same exclusive counterpoint or a release racing a
+# breach-halt lands `pending` on a failed run.
+_LOCK_RUN_FOR_HALT = sa.text(
+    """
+SELECT id FROM crawl.runs WHERE id = :run_id AND state = 'running' FOR UPDATE
+"""
+)
+
 
 # ADR-0040's recording. `state = 'running'` makes it first-signaller-wins:
 # a later in-flight re-signal — or a concurrent clean finish that got
@@ -437,8 +474,13 @@ class PostgresFrontier:
 
         Fenced like `complete`: a row this lease already closed, or lost, is
         left alone, so a release on shutdown cannot reopen a finished page.
+
+        The run row is share-locked first (see `_LOCK_RUN_FOR_RELEASE`) so
+        the pending-vs-abandoned routing cannot race a terminal
+        transition (ADR-0041).
         """
         async with self._engine.begin() as conn:
+            await conn.execute(_LOCK_RUN_FOR_RELEASE, {"run_id": int(item.run_id)})
             released = (
                 await conn.execute(_RELEASE_QUEUE, {"id": int(item.id), "lease": item.locked_until})
             ).scalar_one_or_none()
@@ -508,9 +550,12 @@ class PostgresFrontier:
         The abandon runs first so the stats written with the failure count
         the rows it abandoned (see `_HALT_RUN`). The domain row is never
         touched: it stays `active`, and the next run's count starts at
-        zero, below any cap.
+        zero, below any cap. The run row is locked `FOR UPDATE` before the
+        abandon (see `_LOCK_RUN_FOR_HALT`) so the release/sweep routing
+        cannot return a row to `pending` on this transition (ADR-0041).
         """
         async with self._engine.begin() as conn:
+            await conn.execute(_LOCK_RUN_FOR_HALT, {"run_id": int(run_id)})
             abandoned = await conn.execute(
                 _ABANDON, {"run_id": int(run_id), "domain_id": int(domain_id)}
             )

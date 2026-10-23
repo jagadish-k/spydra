@@ -47,9 +47,38 @@ a claim that raced the signal) each send a row of a non-`running` run to
 sweep, because an exhausted row failed and that is accurate. Without these
 two, a row released or swept after stop lands `pending` on a terminal run:
 unclaimable (the fence holds) but unreported — a silent hole in "the work
-it did not do", the number stop exists to report. With them, **a terminal
-run holds no pending rows** is true at the write, and the stats written at
-the terminal transition stay honest.
+it did not do", the number stop exists to report.
+
+**The routing is serialised against the transition, under row locks.** The
+first version of the two siblings above read `runs.state` from an unlocked
+snapshot, and a stop committing between that read and the routing
+statement's commit put the row `pending` on a terminal run after all —
+unclaimable, permanently unreported, and invisible to a second stop (which
+abandons it but rewrites no stats and tells nobody). The fix is the
+2.3/`_ENQUEUE` pattern (`_ENQUEUE` share-locks the domain row so a halt's
+abandon waits and sees its rows) turned on the run row, and it needs both
+halves:
+
+- **The routing writers lock first.** `release` takes `FOR SHARE` on the
+  item's run row before its routing statement; the sweep share-locks the
+  run rows _in_ its expired CTE's locking clause (`FOR UPDATE OF q SKIP
+LOCKED FOR SHARE OF r`), so the routing CASE's read and the row's fate
+  are one atomic decision — a preceding lock-statement would hold a
+  different snapshot's candidate set and route a row that expired between
+  the two statements unlocked.
+- **The terminal writers lock before their abandon.** `stop_run` and
+  `halt_run` take the run row `FOR UPDATE` (guarded by their transition's
+  own predicate) _before_ abandoning, which is the half the share locks
+  alone lack: without it, a stop's abandon — its first statement, touching
+  only `crawl_queue` — runs while a release still holds the row
+  `in_flight`, misses it, and the release commits it `pending` onto the
+  run the stop then closes. With both halves, every interleaving routes
+  `abandoned`: the routing writer either commits first (and the terminal
+  writer's abandon sees the row it returned to `pending`) or waits and
+  reads the terminal state.
+
+With them, **a terminal run holds no pending rows** is true at the write,
+and the stats written at the terminal transition stay honest.
 
 **Pause freezes dequeue, not discovery.** `pause_run` is a guarded
 `running → paused` UPDATE: no queue row is touched, no `stop_reason`
@@ -101,8 +130,14 @@ exists for a pure function — the callers are SQL transactions (stop, pause,
 resume, finish, halt).
 
 **Stated cost, same as ADR-0040's:** stats are a snapshot at the terminal
-transition. The in-flight tail (bounded by workers × `max_concurrency`)
-closes `done` after stop and is not recounted. Bounded, documented, and
+transition, and the tail is not recounted in either direction. Rows
+in flight at stop (bounded by workers × `max_concurrency`) close `done`
+after the snapshot; rows _released_ after it — the SIGTERM worker handing
+its rows back, which the serialised routing now sends to `abandoned` — are
+counted by neither the snapshot nor the abandoned-batch number stop
+reports. A run stopped with three rows in flight whose SIGTERMed worker
+releases two of them reports them `abandoned` but they never enter the
+snapshot's `pages_abandoned`; bounded by the same tail, documented, and
 preferred to a reconciler — ADR-0026's philosophy is to make the write
 correct under the row lock, not to repair it later.
 
@@ -122,9 +157,11 @@ a crawler-caller convenience, not the pattern.
 - Pause costs nothing the operator cannot see: rows stay `pending`, the
   in-flight tail finishes and its discovery still enqueues, and resume
   either finds work or completes the run with stats immediately.
-- `pages_abandoned` is exact at stop time; `pages_crawled` is a snapshot
-  that the in-flight tail adds to afterwards. The run report states the
-  work not done; the run row does not chase the tail.
+- `pages_abandoned` is exact for everything pending at stop; the tail is
+  not recounted in either direction — rows in flight close `done` after
+  the snapshot, and rows the SIGTERM path releases after it land
+  `abandoned` outside both the snapshot and the reported count. The run
+  report states the work not done; the run row does not chase the tail.
 - A run that drained while paused is completed by resume, not by the
   sweep: `finish_drained`'s recovery role is unchanged, but resume is what
   closes a deliberately-paused run, which keeps transitions out of

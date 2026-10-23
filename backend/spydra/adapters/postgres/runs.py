@@ -147,6 +147,23 @@ _ABANDON_RUN = sa.text(
     """
 )
 
+# The serialisation's other half (ADR-0041). `FOR SHARE` in the routing
+# writers only narrows the window unless the terminal writer takes the run
+# row exclusively BEFORE its abandon: the abandon (first statement, queue
+# rows only) would otherwise run while a release holds the row `in_flight`,
+# miss it, and the release would commit it `pending` onto the just-stopped
+# run. With this lock first, the routing writer either commits before it —
+# and the abandon sees the returned `pending` row — or waits and reads the
+# terminal state. Guarded by the same predicate as the transition itself,
+# so a run already terminal locks nothing.
+_LOCK_RUN_FOR_STOP = sa.text(
+    """
+SELECT id FROM crawl.runs
+WHERE id = :run_id AND state IN ('running', 'paused')
+FOR UPDATE
+"""
+)
+
 _STOP_RUN = sa.text(
     f"""
     UPDATE crawl.runs
@@ -242,8 +259,14 @@ class PostgresRuns:
         as ADR-0040's breach halt. Stop from `paused` is legal — forcing
         resume-then-stop would make rows claimable again for a window, a
         momentary resurrection to achieve the one thing stop must not do.
+
+        Three statements now: the run-row `FOR UPDATE` first (see
+        `_LOCK_RUN_FOR_STOP`), then the two ADR-0040 ordered ones. The
+        lock is what serialises the release/sweep routing against this
+        transition; the abandon-then-stats order is unchanged.
         """
         async with self._engine.begin() as conn:
+            await conn.execute(_LOCK_RUN_FOR_STOP, {"run_id": int(run_id)})
             abandoned = await conn.execute(_ABANDON_RUN, {"run_id": int(run_id)})
             stats = (
                 await conn.execute(
