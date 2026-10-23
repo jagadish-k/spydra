@@ -145,9 +145,9 @@ exist), `docs/BUILD_PLAN.md` (integrator ticks 2.6 in the PR, WORKFLOW §4).
       house style).
 - [x] `make check` green. Named mutations: spanning → plain roots (must go
       red — it is the false positive this task exists to prevent),
-      threshold 2 → 3 (misses Halden's mega), ancestor test without the
-      segment boundary, dedupe dropped, `levels` off by one, sample roots
-      empty.
+      threshold 2 → 3 (killed by the two-branch allow test, not the mega
+      case), ancestor test without the segment boundary, dedupe dropped,
+      `levels` off by one, sample roots empty.
 
 ## Handoff log
 
@@ -215,13 +215,14 @@ ancestor count`, roots sample = sorted canonical top-category paths) — no
      "misses Halden's mega" wording has this wrong; the two-branch test is
      what makes the mutation provably non-equivalent;
   4. ancestor boundary → bare `startswith` — RED (the spliced `-tools`
-     pair "spans"); 5. query-strip removed — RED
-     (`test_query_spellings…`, paths 13 ≠ 11); 6. dedupe dropped (set →
-     list) — RED (same test); 7. `levels` off by one — RED (nav-a levels);
-  5. `roots` sample emptied — RED (roots assertion); 9. rule key →
-     `product_links` — RED (nav-a finding disappears; the product-rule
-     test fires). One environmental note, not a defect: during the first
-     full `make check`, `render`'s DNS-isolation test
+     pair "spans");
+  5. query-strip removed — RED (`test_query_spellings…`, paths 13 ≠ 11);
+  6. dedupe dropped (set → list) — RED (same test);
+  7. `levels` off by one — RED (nav-a levels);
+  8. `roots` sample emptied — RED (roots assertion);
+  9. rule key → `product_links` — RED (nav-a finding disappears; the
+     product-rule test fires). One environmental note, not a defect: during
+     the first full `make check`, `render`'s DNS-isolation test
      (`acceptance.test.js:316`) failed once with `web` resolving from the
      render container; it passes on the clean tree **and** with this diff
      on re-run (57/57 twice) — flaky when other compose containers are up,
@@ -240,3 +241,12 @@ ancestor count`, roots sample = sorted canonical top-category paths) — no
    it is a chosen blind spot, not an accident — a one-branch catalogue's
    site-wide menu is invisible to this analysis until 2.10's projection
    lands.
+3. Blind spot 2, the home link (reviewer, 2.6): one accepted link to an
+   ancestor of everything else accepted — the site root, or Halden's
+   `/shop/` from a breadcrumb — becomes the sole branch root, so the
+   finding cannot fire there for the same broken rule that fires on pages
+   without the home link. Real menus link Home. Named in `mega_menu.py`'s
+   docstring beside the single-branch case; covered by the same 2.10
+   `projected_urls_at_depth_5` backstop. Not fixed — a repair (set the
+   sole universal ancestor aside when counting roots) is easy but
+   unpinned against real menus, and this slice ships the named blind spot.

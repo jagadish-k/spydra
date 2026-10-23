@@ -11,11 +11,14 @@ operator explanation describes (BUILD_PLAN 2.6).
 
 Pure, and the one analysis the dry-run (2.10) calls for its report. Nothing
 here scopes a rule or rejects a link at runtime; the finding is advice —
-"scope the selector to the menu's own container" (spec 004 §3a). The
-single-branch blind spot is deliberate: a site-wide menu nested under one
-top-level branch is invisible to structure and belongs to §3a's "prefer the
-path already in the crawl" projection, which the dry-run computes
-separately.
+"scope the selector to the menu's own container" (spec 004 §3a). Two blind
+spots are deliberate, and §3a's "prefer the path already in the crawl"
+projection — which the dry-run computes separately — is the backstop for
+both: a site-wide menu nested under one top-level branch (one spanning
+root), and a menu that also links the site's home, as real menus do: the
+home path (Halden's `/shop/`, a breadcrumb's target) is an ancestor of
+every accepted path, becomes the sole root, and the finding cannot fire for
+the same broken rule that fires on pages without the home link.
 """
 
 from dataclasses import dataclass
