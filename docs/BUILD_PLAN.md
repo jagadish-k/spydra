@@ -532,7 +532,7 @@ from the task above it.
       in one guarded statement: only into a running run on an active domain.
       Listing pages are outside the extraction verdict (ADR-0039).
 
-- [ ] `2.4` **Dedupe within a run and breadth-first enqueue** — `UNIQUE
+- [x] `2.4` **Dedupe within a run and breadth-first enqueue** — `UNIQUE
 (run_id, url_hash)` (spec 001 §1) with listings drained before
       products, which is what keeps the frontier full (spec 002 §1).
       **Done when:** the same URL discovered twice in one run enqueues once

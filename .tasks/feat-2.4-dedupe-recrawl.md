@@ -250,6 +250,42 @@ WHERE q.url_hash = u.url_hash)` added → re-crawl test RED in 24 s:
 migrate` against dev brought it to head and the check now passes with no
     diff.
   - Hand off to **spydra-reviewer**.
+- integrator (post-review, on `feat/2.4-dedupe-recrawl` @ `648e2c7`):
+  - **Provenance note.** The parent session's reviewer output was not
+    recorded anywhere before it ended, and this integrator session could
+    not spawn a nested `spydra-reviewer` (subagent depth limit). The review
+    below was therefore performed by the integrator in a fresh context that
+    wrote none of the slice — a weaker separation than the house reviewer;
+    the human should read the diff's three files with that in mind.
+  - **Verdict: ready.** No blocking findings. Diff scope verified: exactly
+    the three declared files, zero under `backend/spydra/`; `seed_halden`'s
+    `discovery=` keyword is additive with the old default and
+    `test_enqueue_guard.py`'s import is untouched; subjects ≤ 72 chars and
+    house-shaped (`test: acceptance tests for …` matches 2.2/2.3).
+  - **Not fixed, documented** — two non-blocking findings:
+    1. _Degenerate-prior path unguarded._ The re-crawl test never asserts
+       run 1's product observations are full rows (`title`/`price_amount`
+       present, `unchanged` false); run 2's `unchanged` compares hashes
+       against run 1's priors, so a hypothetical regression that emptied
+       run 1's extraction would leave run 2 "unchanged" against degenerate
+       priors and green. Non-blocking: extraction is pinned by the
+       1.10/1.11 suites and the cross-run comparison itself is
+       mutation-pinned.
+    2. _`_yaml` hand-copies the exit discovery rule._ The listing
+       template's `discovery` block re-states `EXIT_DISCOVERY`'s selectors
+       and `deny_patterns` as literals instead of deriving from the
+       constant the way `expected_queue` derives from the catalogue.
+       Shape-affecting drift fails red on set equality, but shape-neutral
+       drift (e.g. a broadened `deny_patterns`) would change what the
+       re-crawl crawls without failing anything.
+  - **Gate legs, run individually:** `lint`, `types`, `generated` (clean
+    tree after), `test-api` (1047 passed, 2 skipped), `test-bff`, `test-web`
+    — all green. `test-render` red with the documented DNS failure
+    (`web` → 127.0.53.53, ICANN's name-collision sinkhole); proven
+    pre-existing by re-running on `develop` @ `4bbf3d9` — identical
+    assertion (`AssertionError: Missing expected rejection: web resolves
+from the render container…`). Pushed with `--no-verify` under
+    WORKFLOW.md §2; declared in the PR body.
 
 ## Open questions — for the human
 
