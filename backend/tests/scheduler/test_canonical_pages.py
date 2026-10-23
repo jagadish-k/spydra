@@ -30,6 +30,7 @@ from spydra.adapters.postgres.domains import PostgresDomains
 from spydra.adapters.postgres.frontier import PostgresFrontier
 from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.adapters.postgres.pages import PostgresPages
+from spydra.adapters.postgres.run_events import PostgresRunEvents
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates
 from spydra.domain.enums import FetchPath
@@ -82,6 +83,7 @@ def build(engine: AsyncEngine, static: HttpxFetcher) -> PageCrawler:
             templates=PostgresTemplates(engine),
             observations=observations,
             runs=PostgresRuns(engine),
+            events=PostgresRunEvents(engine),
         ),
         writer=ObservationWriter(observations, PostgresAssets(engine)),
         chain=ExtractionChain([StructuredStrategy(), SelectorStrategy()]),

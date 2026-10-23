@@ -34,6 +34,7 @@ from spydra.adapters.postgres.domains import PostgresDomains
 from spydra.adapters.postgres.frontier import PostgresFrontier
 from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.adapters.postgres.pages import PostgresPages
+from spydra.adapters.postgres.run_events import PostgresRunEvents
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates, extraction_to_json
 from spydra.domain.enums import FetchPath, RenderMode
@@ -156,6 +157,7 @@ def build(
             templates=PostgresTemplates(engine),
             observations=observations,
             runs=runs or PostgresRuns(engine),
+            events=PostgresRunEvents(engine),
         ),
         writer=ObservationWriter(observations, PostgresAssets(engine)),
         chain=ExtractionChain([StructuredStrategy(), SelectorStrategy()]),
@@ -771,6 +773,7 @@ async def test_the_loop_backs_off_while_the_sidecar_is_unavailable(
         frontier=PostgresFrontier(clean_crawl),
         assets=PostgresAssets(clean_crawl),
         runs=PostgresRuns(clean_crawl),
+        events=PostgresRunEvents(clean_crawl),
         pressure=AssetPressure(),
         crawler=crawler,
     )
@@ -806,6 +809,7 @@ async def test_the_sweep_finishes_a_run_whose_last_row_it_retired(
         frontier=PostgresFrontier(clean_crawl),
         assets=PostgresAssets(clean_crawl),
         runs=PostgresRuns(clean_crawl),
+        events=PostgresRunEvents(clean_crawl),
         pressure=AssetPressure(),
         crawler=build(
             clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200)), unused_renderer()
