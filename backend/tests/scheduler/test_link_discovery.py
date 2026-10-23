@@ -70,11 +70,12 @@ async def seed_halden(
     listing_kind: str = "listing",
     listing_extraction: bool = False,
     seed: str = EXIT_SEED,
+    discovery: dict[str, object] | None = None,
 ) -> tuple[DomainId, RunId, int]:
     """An active static domain at the fixture site with `max_depth = 5`, a
-    listing template carrying `EXIT_DISCOVERY`, a product template, a run,
-    and one pending depth-0 row for `seed`. Returns the listing template's
-    id too."""
+    listing template carrying `discovery` (default `EXIT_DISCOVERY`), a
+    product template, a run, and one pending depth-0 row for `seed`.
+    Returns the listing template's id too."""
     host = urlsplit(base_url).netloc
     product_extraction = json.dumps(extraction_to_json(vantage_template().extraction))
     async with engine.begin() as conn:
@@ -110,7 +111,7 @@ async def seed_halden(
                     "d": int(domain),
                     "p": listing_pattern,
                     "k": listing_kind,
-                    "disc": json.dumps(EXIT_DISCOVERY),
+                    "disc": json.dumps(discovery if discovery is not None else EXIT_DISCOVERY),
                     "x": product_extraction if listing_extraction else "{}",
                 },
             )
