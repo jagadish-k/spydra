@@ -324,10 +324,17 @@ raise; they are not silently ignored.
 
 Explicit state on `runs.state` (ADR-0041). The invariant underneath: **a
 row is claimable if and only if its run is `running`** — enforced at the
-claim, and at the two other places a row can leave `in_flight` back to
-claimable (the lease sweep and the release path both send a row of a
-non-`running` run to `abandoned`), so a terminal run holds no pending rows
-and the stats written at its terminal transition stay honest.
+claim, and at the writers that could put a row on a non-`running` run
+against the operator's intent. The two routing writers (the lease sweep
+and the release path) send a row of a non-`running` run to `abandoned`,
+deciding under a share lock on the run row; the discovery writer (the
+guarded enqueue) locks the run row `FOR SHARE` in a CTE at the top of its
+statement, so a stop landing mid-enqueue either sees the rows via its
+abandon or the enqueue re-reads the terminal state and inserts nothing.
+The terminal writers (`stop_run`, the cap halt) take the run row
+`FOR UPDATE` before their abandon — the pairing that makes **a terminal
+run holds no pending rows** true at the write, and keeps the stats written
+at the terminal transition honest.
 
 ```
 running ──pause──> paused ──resume──> running

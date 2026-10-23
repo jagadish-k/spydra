@@ -295,15 +295,20 @@ WHERE run_id = :run_id AND domain_id = :domain_id AND state = 'pending'
 
 # One statement per page, and only into a live run on an active domain.
 #
-# **The guard is in the INSERT, under a share lock on the domain row.** A
-# check made first and an insert made after is a race: another worker can
-# halt the domain (`BREAK`, a 403 pause) and abandon its pending rows in
-# between, and rows inserted after that are claimed by nobody, so the run
-# never drains (2.3 review finding 1, reproduced). `FOR SHARE` makes a
-# concurrent halt's `UPDATE domains` wait for this insert to commit, so its
-# abandon sees these rows; an insert that waited on a halt re-reads the state
-# and inserts nothing. The run must still be `running`: a worker whose lease
-# was lost can otherwise add work to a run the sweep already finished.
+# **Two share locks, two writers fenced.** The domain row's `FOR SHARE`
+# (in the INSERT's WHERE, unchanged) fences the 2.3 *domain* halts (`BREAK`,
+# a 403 pause): a concurrent halt's `UPDATE domains` waits for this insert
+# to commit, so its abandon sees these rows, and an insert that waited on a
+# halt re-reads the state and inserts nothing. The run row's `FOR SHARE OF
+# r` (in the `run` CTE at the top) fences the *run* transitions — stop and
+# the cap halt lock that row `FOR UPDATE` before their abandon, and the
+# finish paths UPDATE it — so a stop committing after this snapshot cannot
+# leave discovered rows `pending` on a terminal run: this insert either
+# completes first and the stop's abandon sees the rows, or waits on the
+# run row and re-reads the terminal state (EvalPlanQual) and inserts
+# nothing. The same mechanism the sweep's `FOR SHARE OF r` uses (ADR-0041).
+# The lock is a CTE rather than the domain lock's inline EXISTS because it
+# must be taken before the INSERT runs, and read once.
 #
 # `unnest` makes it one round trip whatever the page links to: a mega-menu
 # page re-sends hundreds of links, almost all of them conflicts.
@@ -318,7 +323,13 @@ WHERE run_id = :run_id AND domain_id = :domain_id AND state = 'pending'
 # no flag to keep true.
 _ENQUEUE = sa.text(
     """
-WITH queued AS (
+WITH run AS (
+    SELECT r.id
+    FROM crawl.runs r
+    WHERE r.id = :run_id AND r.state IN ('running', 'paused')
+    FOR SHARE OF r
+),
+queued AS (
     SELECT count(*) AS n
     FROM crawl.crawl_queue
     WHERE run_id = :run_id AND domain_id = :domain_id
@@ -338,8 +349,7 @@ inserted AS (
       -- still crawls, and dropping its links would make resume produce a
       -- silently incomplete crawl — the worst failure mode a pause can
       -- have, and it leaves no trace.
-      AND EXISTS (SELECT 1 FROM crawl.runs r
-                  WHERE r.id = :run_id AND r.state IN ('running', 'paused'))
+      AND EXISTS (SELECT 1 FROM run)
       AND (SELECT n FROM queued) < :cap
     ON CONFLICT (run_id, url_hash) DO NOTHING
     RETURNING id

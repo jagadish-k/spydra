@@ -376,6 +376,31 @@ the contract demands it)
   `test_run_control.py`. `make lint` + `make test-api` green
   (1149 passed, 2 skipped) with the routing tests unchanged — the locking
   changed no observable behaviour beyond the race.
+- backend (re-review) — blocker 1 fixed: `_ENQUEUE`'s run-state check was
+  the last unlocked run read feeding a queue write; a stop committing
+  after the enqueue's snapshot landed discovered rows `pending` on a
+  terminal run — the identical class the routing serialisation closed.
+  The check moved into a locking CTE at the top of `_ENQUEUE`
+  (`WITH run AS (SELECT id FROM crawl.runs WHERE id = :run_id AND state
+IN ('running','paused') FOR SHARE OF r)`; consumed as
+  `AND EXISTS (SELECT 1 FROM run)`), one statement preserved. The domain
+  `FOR SHARE` stays inline (it fences the 2.3 domain halts); the run lock
+  fences stop/halt/finish — same EvalPlanQual re-read the sweep's
+  `FOR SHARE OF r` uses, cited in the comment. **Correction to D1**: its
+  "the guarded enqueue has carried an identical run-state EXISTS since
+  2.3" is now doubly stale — the predicate is a locking CTE, not a bare
+  EXISTS, and the fence is a lock, not just a filter. D1 left as written
+  (planner text; house style corrects in the handoff, as the planner's
+  own OQ3 correction did); artifacts aligned: ADR-0041's serialisation
+  paragraph gains the discovery-writer bullet and the extended
+  "true at the write" sentence; spec 001 §2's Run lifecycle intro
+  rewritten for routing locks + enqueue lock (it still attributed the
+  invariant to the routing CASEs alone). Verified with a throwaway
+  two-engine probe (deleted): with a terminal writer holding the run row
+  uncommitted, the enqueue BLOCKED behind the CTE's `FOR SHARE` and, once
+  the stop committed, re-read and inserted nothing (`added=0`). Blocker 2
+  (permanent two-engine interleaving tests) left to the test agent per
+  the review.
 - test — 57 tests, three files, all green under `make test-api`
   (1149 passed, 2 skipped; 1092 before). `tests/adapters/postgres/
 test_run_lifecycle.py` (41): the fence (claim refuses paused + all three

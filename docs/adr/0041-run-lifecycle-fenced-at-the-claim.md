@@ -77,8 +77,21 @@ LOCKED FOR SHARE OF r`), so the routing CASE's read and the row's fate
   writer's abandon sees the row it returned to `pending`) or waits and
   reads the terminal state.
 
-With them, **a terminal run holds no pending rows** is true at the write,
-and the stats written at the terminal transition stay honest.
+- **The discovery writer locks too.** The guarded enqueue's run-state
+  check — a plain, unlocked `EXISTS` at first — is a locking CTE at the top
+  of the statement: `WITH run AS (SELECT id FROM crawl.runs WHERE … FOR
+SHARE OF r)`. A stop committing after the enqueue's snapshot would
+  otherwise land discovered rows `pending` on a terminal run, the identical
+  hole the routing serialisation closed. With the lock, the insert either
+  completes before the stop's `FOR UPDATE` (and its abandon sees the rows)
+  or waits and re-reads the terminal state, inserting nothing — the same
+  EvalPlanQual re-read the sweep's `FOR SHARE OF r` relies on.
+
+With them, **a terminal run holds no pending rows** is true at the write —
+for the routing writers _and_ the discovery writer, each fenced by a share
+lock on the run row against terminal writers that lock it exclusively
+before their abandon — and the stats written at the terminal transition
+stay honest.
 
 **Pause freezes dequeue, not discovery.** `pause_run` is a guarded
 `running → paused` UPDATE: no queue row is touched, no `stop_reason`
