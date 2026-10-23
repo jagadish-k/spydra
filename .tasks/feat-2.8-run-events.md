@@ -259,7 +259,7 @@ has no consumer and adds none.
 ## Acceptance (from BUILD_PLAN 2.8's done-when)
 
 - [ ] Two real engines emitting concurrently into one run: `UNIQUE (run_id,
-    seq)` holds, every insert lands with its own seq — N concurrent emits
+  seq)` holds, every insert lands with its own seq — N concurrent emits
       yield N rows, seqs exactly `1..N`, none dropped, none duplicated
 - [ ] `seq` is monotonic per run and **gap-free** (pinned): a rolled-back
       emission reserves nothing; a killed worker's in-flight transaction
@@ -295,6 +295,42 @@ has no consumer and adds none.
   spydra-backend — first file
   `backend/spydra/adapters/postgres/run_events.py`** (the migration and the
   transitions' emission follow; ADR-0042 is backend's to write from §6).
+- backend (2.8) — implemented as pinned, all seven items. Built:
+  `run_events.py` (adapter `emit`/`trim` + module `emit_in`, reserve-by-
+  UPDATE-RETURNING + INSERT, `KEEP_EVENTS = 5_000` as `trim`'s default,
+  no `emit_many`); migration `f4b2d6a91c03_runs_next_seq` (column +
+  backfill, down = drop column; proven down/up on the test DB);
+  `run_state` inside every transition transaction — `runs.py`
+  pause/resume/stop/`finish_if_drained` (via new `_finish_if_drained_in`
+  helper, shared with resume's drained finish)/`finish_drained` (per
+  returned row), `frontier.py` `halt_run` (its statement now `RETURNING
+id, stats` so the event carries the transition-time snapshot); worker
+  emission in `crawl.py` — `page` on done/final-failed closes only via
+  `_close`'s new `_PageOutcome` param, `progress` throttled 1/s/(run,
+  domain) on the monotonic clock carrying `item.depth` (counts from new
+  `PostgresFrontier.queue_counts`), `domain_state` on `_pause_if_blocked`
+  (`moved is not None`) and `_observe`'s halted branch; the trim called
+  from `ClaimLoop._next()` beside the sweep; ADR-0042 + README index;
+  spec 001 (runs DDL late column + run_events kinds/bound note), spec 002
+  §7 (cadence line). No log lines added or changed.
+  **Deviations/findings for the test agent:**
+  1. `Repositories` and `ClaimLoop` gained a required `events=` keyword —
+     the two `build()` fixtures (`test_page_crawler.py:153`,
+     `test_canonical_pages.py:79`) and the two `ClaimLoop` constructions
+     (`test_page_crawler.py:769,804`) need `events=PostgresRunEvents(engine)`.
+     These four sites are the ONLY remaining failures: 45 failed / 1114
+     passed, every failure the constructor TypeError, zero behavioral
+     assertion failures. 2.7's transition tests and runctl pass unchanged.
+  2. One file beyond the declared list: `ports/frontier.py` gained an
+     8-line `queue_counts` Protocol method. The pin placed the read on the
+     frontier (the queue's owner) while `PageCrawler` holds the frontier
+     through the port — a cast or a second concrete collaborator were the
+     only alternatives, both worse. Flagged here per the ownership rule.
+  3. `_HALT_RUN` now returns `(id, stats)` instead of `id` — internal to
+     the adapter; `RunHalt`'s shape is unchanged.
+  4. `crawl.generated.ts` regenerated (next_seq reached it, line 243) —
+     dev DB migrated first (`make migrate`), since drizzle introspects the
+     live database.
 
 ## Open questions
 
