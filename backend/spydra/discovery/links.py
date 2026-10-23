@@ -27,6 +27,15 @@ RULES: tuple[str, ...] = ("product_links", "next_page", "subcategory_links")
 
 _SAMPLES = 5
 _SCHEMES = frozenset({"http", "https"})
+# Spec 004 §3: the trap-shape rejects' thresholds. The length is measured on
+# the canonical URL — the spelling that is hashed and enqueued, so the one
+# the cap counts; a href padded by tracking parameters is not a trap, and
+# canonicalisation has already stripped them by the time this runs.
+_MAX_URL_CHARS = 2000
+# `/20\d\d/\d\d/` on the canonical path, which has no trailing slash
+# (spec 004 §2 step 6): `(/|$)` matches the month-leaf form
+# (`/news/2026/10`) and the anything-after form (`/2026/10/story`) alike.
+_CALENDAR = re.compile(r"/20\d\d/\d\d(/|$)")
 
 
 class RejectReason(StrEnum):
@@ -34,6 +43,9 @@ class RejectReason(StrEnum):
     SCHEME = "scheme"
     OFF_HOST = "off_host"
     NOT_ALLOWED = "not_allowed"
+    TOO_LONG = "too_long"
+    CALENDAR = "calendar"
+    REPEATING_PATH = "repeating_path"
     DENY_PATTERN = "deny_pattern"
     DEPTH = "depth"
 
@@ -117,11 +129,24 @@ def discover(
             continue
         parts = urlsplit(canonical)
         target = parts.path + (f"?{parts.query}" if parts.query else "")
+        allow_hit = bool(allow) and any(p.search(target) for p in allow)
 
         if parts.netloc != own_host:
             tally.add(RejectReason.OFF_HOST, canonical)
-        elif allow and not any(p.search(target) for p in allow):
+        elif allow and not allow_hit:
             tally.add(RejectReason.NOT_ALLOWED, canonical)
+        # The three structural trap rejects sit between the operator's yes
+        # and the operator's no, and the order is pinned: `calendar` MUST
+        # follow the allow check, because a matched `allow_pattern` is the
+        # operator's explicit permission (spec 004 §1 rule 3) and walks
+        # past it. Length and repetition are facts about the URL's own
+        # shape and hold even for an explicitly allowed link.
+        elif len(canonical) > _MAX_URL_CHARS:
+            tally.add(RejectReason.TOO_LONG, canonical)
+        elif not allow_hit and _CALENDAR.search(parts.path):
+            tally.add(RejectReason.CALENDAR, canonical)
+        elif _repeats(parts.path):
+            tally.add(RejectReason.REPEATING_PATH, canonical)
         elif (hit := next((p for p in deny if p.search(target)), None)) is not None:
             tally.add(RejectReason.DENY_PATTERN, canonical, hit.pattern)
         elif depth >= max_depth:
@@ -192,6 +217,23 @@ def _host_of(host: str) -> str:
     default port dropped, IDNA), so the comparison is like for like."""
     scheme = "https" if host.endswith(":443") else "http"
     return urlsplit(canonical_url(f"{scheme}://{host}/")).netloc
+
+
+def _repeats(path: str) -> bool:
+    """True when one contiguous block of path segments repeats three full
+    times in immediate succession (`loop,x` ×3, `deeper` ×3): the
+    relative-link bug's shape, whatever the unit. Two cycles
+    (`/a/b/a/b/`) are what honest pagination looks like, and a 2.5-cycle
+    path (`/a/b/a/b/a/`) does not trip — the third full repetition does
+    (spec 004 §3)."""
+    segments = [s for s in path.split("/") if s]
+    return any(
+        segments[i : i + unit]
+        == segments[i + unit : i + 2 * unit]
+        == segments[i + 2 * unit : i + 3 * unit]
+        for unit in range(1, len(segments) // 3 + 1)
+        for i in range(len(segments) - 3 * unit + 1)
+    )
 
 
 class _Tally:
