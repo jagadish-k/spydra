@@ -361,3 +361,36 @@ domains:
         parse(text)
     with pytest.raises(RefusedConfiguration, match="respect_robots"):
         parse(f"domains:\n  - host: shop.test\n    respect_robots: {spelling}\n")
+
+
+# ---------------------------------------------------------------------------
+# 2.3 review, finding 10: `max_depth` is the domain's
+# ---------------------------------------------------------------------------
+
+_DISCOVERY = """
+domains:
+  - host: halden.test
+    templates:
+      - name: listing
+        url_pattern: "^/shop/"
+        page_kind: listing
+        discovery:
+          product_links: "a.product-card__link"
+          deny_patterns: ["[?&](colour|sort)="]
+{extra}        extraction: {{}}
+"""
+
+
+def test_a_template_max_depth_is_refused_naming_where_it_belongs() -> None:
+    """Loaded and ignored, the file would say depth 2 and the crawl would go
+    to the domain's 5."""
+    text = _DISCOVERY.format(extra="          max_depth: 2\n")
+    with pytest.raises(RefusedConfiguration, match="max_depth"):
+        parse(text)
+
+
+def test_discovery_without_max_depth_is_read() -> None:
+    (domain,) = parse(_DISCOVERY.format(extra=""))
+    (template,) = domain.templates
+    assert template.discovery.product_links == "a.product-card__link"
+    assert template.discovery.deny_patterns == ("[?&](colour|sort)=",)

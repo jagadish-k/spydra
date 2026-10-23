@@ -157,5 +157,9 @@ class Frontier(Protocol):
         self, run_id: RunId, domain_id: DomainId, urls: Sequence[tuple[str, int]]
     ) -> int:
         """Add (url, depth) pairs, deduplicated within the run by `url_hash`
-        (spec 001 §1). Returns how many were new."""
+        (spec 001 §1). Returns how many were new.
+
+        Adds nothing unless the run is `running` and the domain `active`,
+        decided atomically with the insert: rows added to a halted domain
+        or a finished run would never be claimed."""
         ...

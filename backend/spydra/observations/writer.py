@@ -47,7 +47,7 @@ from datetime import datetime
 from spydra.adapters.postgres.assets import PostgresAssets
 from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.domain.entities import Observation, Template
-from spydra.domain.enums import DomainEvent, Strategy, UnknownReason
+from spydra.domain.enums import DomainEvent, PageKind, Strategy, UnknownReason
 from spydra.domain.fetch import FetchedPage
 from spydra.domain.health import MINIMUM_PAGES_FOR_A_VERDICT, assess
 from spydra.domain.ids import DomainId, ObservationId, PageId, RunId
@@ -176,10 +176,11 @@ class ObservationWriter:
             )
 
         event, halted = (
-            # ADR-0027 §3: a page with no template is outside the threshold
-            # entirely, so it cannot change the verdict and is not assessed.
+            # ADR-0027 §3 and ADR-0039: only a page a product template
+            # extracted is inside the threshold; anything else cannot change
+            # the verdict and is not assessed.
             await self._apply_health(run_id, page.domain_id, empty=empty)
-            if template is not None
+            if _extracted(template)
             else (None, False)
         )
         return WriteOutcome(
@@ -257,6 +258,13 @@ def _reason(http_status: int, template: Template | None, empty: bool) -> Unknown
         return None
     if template is None:
         return UnknownReason.NO_TEMPLATE
-    if empty:
+    if empty and _extracted(template):
         return UnknownReason.EMPTY_EXTRACTION
     return None
+
+
+def _extracted(template: Template | None) -> bool:
+    """Was this page meant to yield product data? A listing template's page
+    is for discovery (ADR-0039): it extracts nothing by design, so "empty"
+    is not a verdict on it, neither for the inbox nor for the threshold."""
+    return template is not None and template.page_kind is PageKind.PRODUCT

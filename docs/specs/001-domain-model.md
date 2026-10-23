@@ -56,7 +56,9 @@ CREATE TABLE templates (
   id            BIGSERIAL PRIMARY KEY,
   domain_id     BIGINT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
   name          TEXT NOT NULL,
-  url_pattern   TEXT NOT NULL,        -- regex matched against path+query
+  url_pattern   TEXT NOT NULL,        -- regex matched against the CANONICAL
+                                      -- path+query (spec 004 §2): no
+                                      -- trailing slash, sorted query
   page_kind     TEXT NOT NULL,        -- 'listing' | 'product'
   version       INT  NOT NULL,
   is_active     BOOLEAN NOT NULL DEFAULT FALSE,

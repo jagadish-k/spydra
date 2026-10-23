@@ -2,7 +2,9 @@
 
 **Status:** Accepted · 2026-10-19
 **Amended by:** [ADR-0037](0037-empty-means-nothing-substantive.md) (the prior is read as
-`content_hash IS NOT NULL`)
+`content_hash IS NOT NULL`);
+[ADR-0039](0039-listing-pages-are-not-extraction-verdicts.md) (listing pages
+are outside both counts)
 **Amends:** [spec 003](../specs/003-extraction.md) §3,
 [spec 001](../specs/001-domain-model.md) §1 (`unknown_pages.reason`),
 [`TESTING.md`](../TESTING.md) §2

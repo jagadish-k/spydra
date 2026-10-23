@@ -15,22 +15,31 @@ From `templates.discovery`:
 
 ```json
 {
-  "next_page":         "a[rel='next']",
-  "product_links":     "a.product-card__link",
+  "next_page": "a[rel='next']",
+  "product_links": "a.product-card__link",
   "subcategory_links": "nav.cat-tree a",
-  "allow_patterns":    ["^/catalog/", "^/products/"],
-  "deny_patterns":     ["\\?(colour|grit|sort|view|per_page)=", "/compare"],
-  "max_depth":         5
+  "allow_patterns": ["^/catalog/", "^/products/"],
+  "deny_patterns": ["[?&](colour|grit|sort|view|per_page)=", "/compare"]
 }
 ```
 
+`max_depth` (default 5) and a further `deny_patterns` list live on the
+**domain** (spec 001 §1); a link must pass both lists. Patterns are searched
+against the canonical URL's path and query (§2). Rules are applied only on a
+page matched by a template; hrefs resolve against the document's
+`<base href>` if it has one, else the URL the body was served from, by `spydra.discovery.links.discover`, which the dry-run (§4) shares.
+
 Each extracted link is kept only if **all** hold:
 
-1. Same registrable domain as the seed (subdomains configurable per domain).
+1. Same host as the domain. Stricter than "same registrable domain": a
+   subdomain is its own `domains` row (politeness and templates are per
+   host), and following subdomains needs the public suffix list. Not built.
 2. Scheme is http or https.
 3. Matches at least one `allow_pattern` if any are set.
 4. Matches no `deny_pattern`.
-5. Depth below `max_depth`.
+5. The page being expanded is at a depth below `max_depth`, so its links are
+   at most `max_depth` deep: at `max_depth = 5`, depth-5 pages are enqueued
+   and their depth-6 links are not (§5).
 6. Not already in `crawl_queue` for this run (`UNIQUE (run_id, url_hash)`).
 
 ## 2. Canonicalisation
@@ -79,11 +88,11 @@ Cascading menus, mega-menus and hover-revealed category trees. Three cases
 that look identical in a browser and are completely different to a crawler.
 **Diagnose before building anything** — the cheap case is the common one.
 
-| Case | What is in the fetched HTML | Cost |
-| --- | --- | --- |
-| **A — hidden by CSS** | the `<a href>` is there, `display:none` until hover | free |
-| **B — injected on interaction** | the data is there (inline JSON, a JS bundle), the links are not | small |
-| **C — fetched on interaction** | nothing; hovering fires an XHR | moderate |
+| Case                            | What is in the fetched HTML                                     | Cost     |
+| ------------------------------- | --------------------------------------------------------------- | -------- |
+| **A — hidden by CSS**           | the `<a href>` is there, `display:none` until hover             | free     |
+| **B — injected on interaction** | the data is there (inline JSON, a JS bundle), the links are not | small    |
+| **C — fetched on interaction**  | nothing; hovering fires an XHR                                  | moderate |
 
 ### Case A is free, and the risk runs the other way
 
@@ -91,8 +100,8 @@ that look identical in a browser and are completely different to a crawler.
 `display:none` is an ordinary match. Most bespoke supplier sites are
 server-rendered and land here. **Nothing needs building.**
 
-The real hazard is the opposite one: a mega-menu often lists *the entire
-category tree on every page*. A `subcategory_links` rule scoped to `nav a`
+The real hazard is the opposite one: a mega-menu often lists _the entire
+category tree on every page_. A `subcategory_links` rule scoped to `nav a`
 therefore discovers the whole site from depth 0, defeats the depth cap, and
 looks like a working rule right up until the URL cap halts the domain. Scope
 the selector to the menu's own container and let `allow_patterns` and the
@@ -142,7 +151,7 @@ the answer: it holds the network log for the render. So capture it.
 
 `/inspect` returns `network[]` — requests issued during reveal, with method,
 URL, status and content type. In the playground, hovering a menu surfaces
-*"this produced 3 requests; one returned JSON containing 24 URLs"*, and the
+_"this produced 3 requests; one returned JSON containing 24 URLs"_, and the
 operator can promote that endpoint to a discovery rule.
 
 **An endpoint is a better discovery rule than an interaction.** It survives
@@ -166,13 +175,20 @@ matched:
 ```json
 {
   "matched": {
-    "product_links":     {"count": 48, "sample": ["/products/flap-disc-120g-115mm", "..."]},
-    "next_page":         {"count": 1,  "sample": ["/products/abrasives?page=2"]},
-    "subcategory_links": {"count": 11, "sample": ["..."]}
+    "product_links": {
+      "count": 48,
+      "sample": ["/products/flap-disc-120g-115mm", "..."]
+    },
+    "next_page": { "count": 1, "sample": ["/products/abrasives?page=2"] },
+    "subcategory_links": { "count": 11, "sample": ["..."] }
   },
   "rejected": {
-    "deny_pattern": {"count": 312, "pattern": "\\?(colour|grit|sort)=", "sample": ["..."]},
-    "off_domain":   {"count": 7,   "sample": ["..."]}
+    "deny_pattern:[?&](colour|grit|sort)=": {
+      "count": 312,
+      "pattern": "[?&](colour|grit|sort)=",
+      "sample": ["..."]
+    },
+    "off_host": { "count": 7, "sample": ["..."] }
   },
   "projected_urls_at_depth_5": 2140
 }

@@ -46,8 +46,9 @@ from spydra.adapters.postgres.pages import PostgresPages
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates, matching
 from spydra.discovery.canonical import canonical_link
+from spydra.discovery.links import discover
 from spydra.domain.entities import Domain, Template
-from spydra.domain.enums import DomainEvent, RenderMode, UnknownReason
+from spydra.domain.enums import DomainEvent, PageKind, RenderMode, UnknownReason
 from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchedPage, FetchRequest
 from spydra.domain.urls import canonical_url
@@ -174,9 +175,13 @@ class PageCrawler:
         # page with no template has no selector a render could feed, and
         # rendering every one would be a second request to the supplier per
         # page for nothing.
+        # A listing template's page is never an extraction verdict
+        # (ADR-0039), so "nothing usable" says nothing about it either: an
+        # AUTO domain would otherwise render every field-less listing twice.
         if (
             domain.render_mode is RenderMode.AUTO
             and template is not None
+            and template.page_kind is PageKind.PRODUCT
             and fetched.http_status == 200
         ):
             result = await self._chain.extract(fetched, template)
@@ -298,10 +303,41 @@ class PageCrawler:
             abandoned = await self._frontier.abandon_domain(item.run_id, domain.id)
             log.error(
                 "domain_halted",
-                event=outcome.event,
+                verdict=outcome.event,
                 abandoned=abandoned,
                 action="review the domain's template against its current pages",
             )
+            return
+        await self._discover(item, domain, fetched, template)
+
+    async def _discover(
+        self, item: ClaimedUrl, domain: Domain, fetched: FetchedPage, template: Template | None
+    ) -> None:
+        """Spec 004 §1: enqueue what the template's discovery rules select.
+
+        Before the row is closed, so the run cannot look drained between this
+        page completing and its links arriving. Never on a halted domain: its
+        new rows would never be claimed and the run would never finish.
+        """
+        if template is None or fetched.http_status != 200:
+            return
+        found = discover(
+            fetched.body,
+            fetched.final_url,
+            template.discovery,
+            host=domain.host,
+            depth=item.depth,
+            max_depth=domain.max_depth,
+            domain_deny=domain.deny_patterns,
+        )
+        links = found.links()
+        added = await self._frontier.enqueue(item.run_id, domain.id, links) if links else 0
+        log.debug(
+            "links_discovered",
+            accepted=len(links),
+            enqueued=added,
+            rejected={key: r.count for key, r in found.rejected.items()},
+        )
 
     async def _retry_or_fail(
         self,
@@ -405,9 +441,11 @@ def _completion(state: QueueItemState, source: Decision | Completion) -> Complet
 
 
 def _path(url: str) -> str:
-    """Path plus query: what `templates.url_pattern` is matched against
-    (spec 001 §1)."""
-    parts = urlsplit(url)
+    """Path plus query of the **canonical** URL: what `templates.url_pattern`
+    is matched against (spec 001 §1). The queue fetches the URL as written
+    (2.2), so `/shop/cutting/` and `/shop/cutting` are one page, and a
+    pattern written for one must match the other."""
+    parts = urlsplit(canonical_url(url))
     return f"{parts.path}?{parts.query}" if parts.query else parts.path
 
 

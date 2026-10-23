@@ -106,6 +106,10 @@ LIMIT 1
 # to the FINAL observation of a page, after any `auto` fallback, and a page
 # fetched twice in one run otherwise contributes its first attempt as well.
 #
+# **Only pages a `product` template extracted are in it** (ADR-0039). A
+# listing template's page is a discovery page: nothing on it is meant to be
+# extracted, so it is never "empty", for the same reason as below.
+#
 # **A page with no template is not in it at all** (ADR-0027 §3: "neither as
 # empty nor as crawled-successfully"). Counted, a domain's `/about` and
 # category pages diluted a real redesign as healthy pages, and on a first run
@@ -117,7 +121,10 @@ _RUN_PAGES = """
     JOIN crawl.pages p ON p.id = o.page_id
     WHERE o.run_id = :run_id
       AND p.domain_id = :domain_id
-      AND o.template_id IS NOT NULL
+      AND EXISTS (
+          SELECT 1 FROM crawl.templates t
+          WHERE t.id = o.template_id AND t.page_kind = 'product'
+      )
     ORDER BY o.page_id, o.observed_at DESC, o.id DESC
 """
 
@@ -159,13 +166,18 @@ FROM (
     JOIN crawl.pages p ON p.id = o.page_id
     WHERE o.run_id = :run_id
       AND p.domain_id = :domain_id
-      AND o.template_id IS NOT NULL
+      AND EXISTS (
+          SELECT 1 FROM crawl.templates t
+          WHERE t.id = o.template_id AND t.page_kind = 'product'
+      )
     LIMIT :minimum + 1
 ) AS sample
 """
 )
 
-# A domain's first run is one with no observation from any EARLIER run. Not
+# A domain's first run is one with no observation from any EARLIER run,
+# listing pages aside (ADR-0039: a run that only ever saw listings has not
+# tried the product template, so the next run is still its first verdict). Not
 # "no observations at all": this is asked while the current run is writing,
 # so counting its own rows would make every run the first one and no domain
 # would ever reach `broken`.
@@ -177,6 +189,10 @@ SELECT NOT EXISTS (
     JOIN crawl.pages p ON p.id = o.page_id
     WHERE p.domain_id = :domain_id
       AND o.run_id <> :run_id
+      AND NOT EXISTS (
+          SELECT 1 FROM crawl.templates t
+          WHERE t.id = o.template_id AND t.page_kind = 'listing'
+      )
 ) AS first_run
 """
 )

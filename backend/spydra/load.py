@@ -146,8 +146,24 @@ def _template(raw: Mapping[str, Any]) -> TemplateConfig:
         url_pattern=str(raw["url_pattern"]),
         page_kind=PageKind(raw.get("page_kind", PageKind.PRODUCT.value)),
         extraction=extraction_from_json(extraction),
-        discovery=discovery_from_json(raw.get("discovery", {})),
+        discovery=discovery_from_json(_discovery(raw)),
     )
+
+
+def _discovery(raw: Mapping[str, Any]) -> Mapping[str, Any]:
+    """A template's discovery rules, refusing what would be silently dropped.
+
+    `max_depth` lives on the domain (spec 001 §1, spec 004 §1); a template
+    copy of it would load, be ignored, and crawl to the domain's depth while
+    the file says otherwise. Refused, as `required` is.
+    """
+    discovery = raw.get("discovery", {})
+    if isinstance(discovery, Mapping) and "max_depth" in discovery:
+        raise RefusedConfiguration(
+            f"template {raw.get('name')!r}: discovery.max_depth is not a template "
+            "setting; it is per domain (spec 001 §1, spec 004 §1)"
+        )
+    return discovery if isinstance(discovery, Mapping) else {}
 
 
 def _seed(seed: str, scheme: str, host: str) -> str:
