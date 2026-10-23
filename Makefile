@@ -249,6 +249,10 @@ load: ## configure domains from YAML and start a run: make load f=path.yaml (BUI
 	@test -n "$(f)" || { echo "usage: make load f=path/to/file.yaml (relative to backend/)"; exit 2; }
 	$(COMPOSE) run --rm api python -m spydra.load $(f)
 
+load-seeds: ## onboard seed URLs from CSV: make load-seeds f=seeds.csv (BUILD_PLAN 2.9)
+	@test -n "$(f)" || { echo "usage: make load-seeds f=path/to/seeds.csv (relative to backend/)"; exit 2; }
+	$(COMPOSE) run --rm api python -m spydra.load_seeds $(f)
+
 pause-run: ## pause a run: make pause-run r=42 (BUILD_PLAN 2.7)
 	@test -n "$(r)" || { echo "usage: make pause-run r=<run_id>"; exit 2; }
 	$(COMPOSE) run --rm api python -m spydra.runctl pause $(r)
