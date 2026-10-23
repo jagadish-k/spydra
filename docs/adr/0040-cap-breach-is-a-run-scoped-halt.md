@@ -43,11 +43,15 @@ further enqueue refuses without any new state.
 
 **Enforcement is a count guard inside the guarded enqueue** — the same
 statement that already refuses a halted domain or a finished run, under the
-same `FOR SHARE`. One round trip, no per-link check. A batch is
-all-or-nothing: while the count is below the cap the whole batch inserts
-(it may overshoot); at or past the cap nothing inserts. The statement
-returns `(added, capped)`, `capped := count-after-insert >= cap`, which is
-what tells the crawler to halt.
+same `FOR SHARE`. That lock fences the _enqueue's_ guards, not the halt:
+`halt_run` takes no domain lock and touches no locked row — it is fenced by
+its own `state = 'running'` predicate on the run row, which every finish
+path re-checks under the UPDATE's row lock, so a run that completed or
+failed first is never failed under it. One round trip, no per-link check.
+A batch is all-or-nothing: while the count is below the cap the whole
+batch inserts (it may overshoot); at or past the cap nothing inserts. The
+statement returns `(added, capped)`, `capped := count-after-insert >=
+cap`, which is what tells the crawler to halt.
 
 **The race, stated honestly.** Against ADR-0026's lesson — there, the
 politeness guarantee silently failed twenty rounds out of twenty — this cap

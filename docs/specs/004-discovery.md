@@ -43,9 +43,10 @@ Each extracted link is kept only if **all** hold:
 6. Not already in `crawl_queue` for this run (`UNIQUE (run_id, url_hash)`).
 7. Its canonical URL is at most 2,000 characters long — the canonical
    spelling, because it is the one hashed and enqueued (§2).
-8. Its canonical path does not match a calendar pattern (`/20\d\d/\d\d/`)
-   unless an `allow_pattern` matched — the operator's explicit yes outranks
-   the calendar defence (§3).
+8. Its canonical path does not match a calendar pattern —
+   `/20\d\d/\d\d(/|$)`, matched at the month's end because the canonical
+   path carries no trailing slash (§2) — unless an `allow_pattern`
+   matched. The operator's explicit yes outranks the calendar defence (§3).
 9. Its canonical path contains no block of one or more segments repeated
    three full times in immediate succession (§3).
 
@@ -96,11 +97,12 @@ Defences, in order of effectiveness:
    repetition does.
 
 Also reject: `mailto:`, `tel:`, `javascript:`, canonical URLs over 2,000
-characters, and anything matching a calendar pattern (`/20\d\d/\d\d/`) —
-unless an `allow_pattern` matched it: the calendar check runs after the
-allow check, so the operator's reviewed pattern is the explicit permission
-(a broad allow implicitly permits calendars; the dry-run is where that
-becomes visible).
+characters, and anything matching a calendar pattern (`/20\d\d/\d\d(/|$)`,
+at the month's end — the canonical path has no trailing slash) — unless an
+`allow_pattern` matched it: the calendar check runs after the allow check,
+so the operator's reviewed pattern is the explicit permission (a broad
+allow implicitly permits calendars; the dry-run is where that becomes
+visible).
 
 ## 3a. Navigation the crawler cannot see
 
@@ -224,8 +226,11 @@ is far cheaper than catching it mid-run.
 - [ ] A seed with a faceted listing is capped by `deny_patterns` and the
       dry-run reports the rejected count.
 - [ ] Depth 6 links are not enqueued when `max_depth` is 5.
-- [ ] A run breaching the per-domain URL cap halts that domain and names the
-      pattern.
+- [ ] A run breaching the per-domain URL cap is failed with the cap and the
+      host named as its `stop_reason`, its pending rows for that domain
+      abandoned and counted in `pages_abandoned`, and the domain itself
+      still `active` (ADR-0040). Naming the pattern that exploded is the
+      dry-run's job (§4, 2.10).
 - [ ] A `rel="canonical"` pointing elsewhere on the same host collapses two
       URLs into one page row.
 - [ ] Discovery never leaves the registrable domain.

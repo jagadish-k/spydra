@@ -41,6 +41,8 @@ CREATE TABLE domains (
   -- and spec 002 §4's decay stops here, never below (BUILD_PLAN 1.13).
   configured_crawl_delay_ms INT NOT NULL DEFAULT 2000
     CHECK (configured_crawl_delay_ms >= 0),
+  -- ADR-0040: the per-run queue ceiling, enforced inside the guarded enqueue.
+  url_cap         INT NOT NULL DEFAULT 20000 CHECK (url_cap > 0),
   notes           TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- ADR-0026: the counter gates claiming, so a negative one is impolite

@@ -391,6 +391,23 @@ inside the render container` — verified failing identically on
     in CI before the PR.
   - No production defects found; every contract behaviour held as built.
     Hand off to **spydra-reviewer**.
+- backend (review findings fixed): all four reviewer findings were
+  documentation, no code changes. (1) **spec 004 §5**'s stale acceptance
+  line — "halts that domain and names the pattern" — rewritten to the
+  ADR-0040 semantics: the run is `failed` with cap and host in
+  `stop_reason`, its pending rows abandoned and counted in
+  `pages_abandoned`, the domain still `active`; pattern-grouped naming is
+  2.10's dry-run. (2) **spec 001 §1**'s `domains` DDL gained
+  `url_cap INT NOT NULL DEFAULT 20000 CHECK (url_cap > 0)` in the
+  late-column comment convention, naming ADR-0040. (3) **spec 004**'s two
+  literal `/20\d\d/\d\d/` mentions (§1 rule 8, §3) updated to the anchored
+  form the code compiles — `/20\d\d/\d\d(/|$)` — since a canonical
+  month-leaf path carries no trailing slash. (4) **ADR-0040 §Decision**
+  no longer implies the halt is fenced by the enqueue's `FOR SHARE`: the
+  added sentence says the lock fences the enqueue's guards while
+  `halt_run` takes no domain lock and is fenced by its `state = 'running'`
+  predicate, re-checked under the UPDATE's row lock. `make lint` and
+  `make test-api` re-verified green.
 
 ## Open questions — for the human
 
