@@ -310,6 +310,36 @@ the contract demands it)
   imprecise — `apply` is 1 run : N domains per file (D7). ADR-0041 content
   is §8; backend writes the file. **First file:**
   `backend/spydra/adapters/postgres/runs.py`.
+- backend — built, as pinned: claim fence (one EXISTS inside ADR-0034's,
+  `frontier.py` `_CLAIM`; both ADR-0026 locks untouched); sweep CASE +
+  release CASE route non-`running`-run rows to `abandoned` (sweep joins
+  runs in the expired CTE with `FOR UPDATE OF q` so only queue rows lock,
+  as before); `_ENQUEUE` fence widened to `('running','paused')`;
+  `PostgresRuns.pause_run/resume_run/stop_run` + `RunTransition` (mirrors
+  `RunHalt`: transitioned / actual state on miss / abandoned / stats) —
+  **adapter-direct, no Runs port introduced** (task §6: worker is not a
+  caller, 3.4's API wraps the adapter, Frontier port unchanged); stop is
+  two-statements-one-transaction per ADR-0040 (abandon first, `_STATS`
+  second), stop from `running|paused`, finishes stay `running`-fenced;
+  resume runs `_FINISH_IF_DRAINED` in the same transaction as the
+  `paused→running` write. `spydra/runctl.py` (load.py precedent: sync
+  entry, `asyncio.run`, adapter direct; refuses with the actual state on
+  a miss, exit 1). Makefile `pause-run|resume-run|stop-run r=` with the
+  `usage:` guard. Migration `e5f2c9a71b34_runs_terminal_stop_reason`
+  (CHECK, up/down; hand-written per 2.5 — autogenerate misses CHECKs).
+  ADR-0041 written from §8, indexed in README. Spec 001: §1 runs DDL
+  CHECK; §2 new "Run lifecycle" subsection (transition table,
+  guarded-SQL-not-pure-function reason, stop_reason vocabulary, D7
+  multi-domain note). `make lint` + `make test-api` green (1092 passed).
+  **Two deviations, both forced by the pinned design, both in
+  `test_enqueue_guard.py` (production scope otherwise):** (1) the 2.3-era
+  parametrize `["completed","stopped","paused"]` on
+  "a run that is not running gets nothing" contradicts D2's pinned
+  widening — `paused` removed, test renamed `test_a_terminal_run_gets_nothing`;
+  the positive paused-discovery case is the test agent's. (2) that test's
+  fixture parked a run in `stopped` with no `stop_reason` — the new CHECK
+  (correctly) rejects it; the fixture now writes one. No scheduler file
+  touched; `scheduler/` untouched by design holds.
 
 ## Open questions
 
