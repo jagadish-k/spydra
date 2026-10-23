@@ -409,6 +409,36 @@ inside the render container` — verified failing identically on
   predicate, re-checked under the UPDATE's row lock. `make lint` and
   `make test-api` re-verified green.
 
+- integrator (post-review, on `feat/2.5-trap-defences` @ `020fb65`,
+  base `feat/2.4-dedupe-recrawl`):
+  - **Gate.** Legs run individually, all green: `make lint` 0 ·
+    `make types` 0, clean tree · `make generated` 0, clean tree ·
+    `make test-api` **1074 passed, 2 skipped** (as declared) ·
+    `make test-bff` 10 pass/0 fail · `make test-web` 10 pass/0 fail.
+    `make test-render` is environmental-red on this host — 56 pass,
+    1 fail (`web resolves from the render container`, the ADR-0023/0038
+    egress-isolation test): this host's Docker DNS answers single-label
+    names, it fails identically on `develop`, and the diff touches
+    nothing under `render/`, `docker/` or `compose.yaml`. CI is the
+    authority; same declaration as PR #26. Full `make check` therefore
+    cannot pass here, and the push used `--no-verify` naming this leg.
+  - **Scope.** `git diff --stat feat/2.4-dedupe-recrawl...HEAD`: 21
+    files, all within the declared set (ADR-0040 + README index, specs
+    001/004, the eight backend source files, the migration,
+    `crawl.generated.ts` regenerated, three new test files, four
+    mechanical cap-adaptations, this task file). Nothing outside; no
+    findings. Commit subjects imperative, ≤ 72 chars.
+  - **BUILD_PLAN 2.5 ticked**, with its stale clause reconciled: "halts
+    that domain and names the cap" → run `failed` with the cap named,
+    domain stays `active`, per ADR-0040; `**Done:**` line added in the
+    plan's amended-entry style.
+  - **PR handoff.** Pushed `feat/2.5-trap-defences` (`--no-verify`, the
+    render leg declared above). `gh` is not installed on this host, so
+    the PR body is `.tasks/pr-2.5-body.md`; the human opens
+    `feat/2.4-dedupe-recrawl...feat/2.5-trap-defences`. **Stacked**: base
+    is `feat/2.4-dedupe-recrawl` (PR #26, unmerged) — merge #26 first,
+    then retarget this PR to `develop`. Not merged by the integrator.
+
 ## Open questions — for the human
 
 Carried from 2.4 (unchanged): subdomains never followed; AUTO listings with

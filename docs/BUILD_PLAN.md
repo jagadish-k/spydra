@@ -538,11 +538,16 @@ from the task above it.
       **Done when:** the same URL discovered twice in one run enqueues once
       and in a _later_ run enqueues again, because that is a re-crawl.
 
-- [ ] `2.5` **Trap defences** (spec 004 §3): per-run and per-domain URL caps,
+- [x] `2.5` **Trap defences** (spec 004 §3): per-run and per-domain URL caps,
       the depth cap, repeating-path detection, scheme and length rejects.
       **Done when:** `2.1`'s unbounded trap terminates, and a run breaching
-      the per-domain cap halts that domain and names the cap as the reason
-      rather than reporting a clean finish.
+      the per-domain cap fails with the cap named as the stop reason while
+      the domain stays `active`, rather than reporting a clean finish.
+      **Done:** three structural rejects in `discover()`, `domains.url_cap`
+      behind an in-statement count guard in the guarded enqueue, and a
+      run-scoped breach halt (ADR-0040) — the run fails with the cap named,
+      the domain is untouched and the next run starts clean. 24 acceptance
+      tests over three files; 13 mutations, all red.
 
 - [ ] `2.6` **Mega-menu containment** (spec 004 §3a): a `subcategory_links`
       rule is scoped to its container, and the dry-run reports when a rule
