@@ -13,7 +13,7 @@ files named below; the invalid transitions are pinned as fenced misses —
 the guarded UPDATE matches nothing and the caller is told the run's
 actual state, which is the whole of "an operator CLI must never print a
 lie". The real-worker acceptance (stop mid-crawl, pause/resume through
-the subprocess) lives in `tests/scheduler/test_run_lifecycle.py`.
+the subprocess) lives in `tests/scheduler/test_run_control.py`.
 
 - `running → completed` (drained finish) and the completion races: here.
 - `running → failed` (cap halt): `test_url_cap.py` at adapter level, and
