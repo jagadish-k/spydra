@@ -53,3 +53,4 @@ shape everything else sits inside.
 | [0037](0037-empty-means-nothing-substantive.md)             | An empty extraction is one with nothing substantive in it                   | Accepted                                   |
 | [0038](0038-render-link-network.md)                         | The worker reaches the sidecar over a two-member internal network           | Accepted                                   |
 | [0039](0039-listing-pages-are-not-extraction-verdicts.md)   | A listing template's page is never an empty extraction verdict              | Accepted                                   |
+| [0040](0040-cap-breach-is-a-run-scoped-halt.md)             | A URL-cap breach is a run-scoped halt, not a domain state                   | Accepted                                   |
