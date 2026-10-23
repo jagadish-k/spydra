@@ -24,6 +24,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from spydra.adapters.postgres.run_events import emit_in
 from spydra.domain.ids import RunId
 
 # Spec 009 §2's shape, for the keys phase 1 can know. `assets_downloaded`,
@@ -205,6 +206,17 @@ async def _run_state(conn: AsyncConnection, run_id: RunId) -> str | None:
     return (await conn.execute(_RUN_STATE, {"run_id": int(run_id)})).scalar_one_or_none()
 
 
+async def _finish_if_drained_in(conn: AsyncConnection, run_id: RunId) -> dict[str, Any] | None:
+    """`_FINISH_IF_DRAINED` plus its `run_state` event, on the caller's
+    transaction (ADR-0042): the row the statement already locked is the one
+    the seq reservation rides on, and a `completed` row exists iff the
+    finish happened — even when no worker owns the run."""
+    stats = (await conn.execute(_FINISH_IF_DRAINED, {"run_id": int(run_id)})).scalar_one_or_none()
+    if stats is not None:
+        await emit_in(conn, run_id, "run_state", {"state": "completed", "stats": dict(stats)})
+    return dict(stats) if stats is not None else None
+
+
 class PostgresRuns:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
@@ -217,7 +229,11 @@ class PostgresRuns:
         """
         async with self._engine.begin() as conn:
             paused = (await conn.execute(_PAUSE_RUN, {"run_id": int(run_id)})).scalar_one_or_none()
-            state = None if paused is not None else await _run_state(conn, run_id)
+            state: str | None = None
+            if paused is not None:
+                await emit_in(conn, run_id, "run_state", {"state": "paused"})
+            else:
+                state = await _run_state(conn, run_id)
         return RunTransition(transitioned=paused is not None, state=state)
 
     async def resume_run(self, run_id: RunId) -> RunTransition:
@@ -237,12 +253,11 @@ class PostgresRuns:
             ).scalar_one_or_none()
             if resumed is None:
                 return RunTransition(transitioned=False, state=await _run_state(conn, run_id))
-            stats = (
-                await conn.execute(_FINISH_IF_DRAINED, {"run_id": int(run_id)})
-            ).scalar_one_or_none()
+            await emit_in(conn, run_id, "run_state", {"state": "running"})
+            stats = await _finish_if_drained_in(conn, run_id)
         return RunTransition(
             transitioned=True,
-            stats=dict(stats) if stats is not None else None,
+            stats=stats,
         )
 
     async def stop_run(self, run_id: RunId) -> RunTransition:
@@ -274,7 +289,20 @@ class PostgresRuns:
                     {"run_id": int(run_id), "reason": STOP_REASON_OPERATOR},
                 )
             ).scalar_one_or_none()
-            state = None if stats is not None else await _run_state(conn, run_id)
+            state: str | None = None
+            if stats is not None:
+                await emit_in(
+                    conn,
+                    run_id,
+                    "run_state",
+                    {
+                        "state": "stopped",
+                        "stop_reason": STOP_REASON_OPERATOR,
+                        "stats": dict(stats),
+                    },
+                )
+            else:
+                state = await _run_state(conn, run_id)
         return RunTransition(
             transitioned=stats is not None,
             abandoned=int(abandoned.rowcount),
@@ -285,14 +313,20 @@ class PostgresRuns:
     async def finish_if_drained(self, run_id: RunId) -> dict[str, Any] | None:
         """The run's stats if THIS call finished it, else `None`."""
         async with self._engine.begin() as conn:
-            stats = (
-                await conn.execute(_FINISH_IF_DRAINED, {"run_id": int(run_id)})
-            ).scalar_one_or_none()
-        return dict(stats) if stats is not None else None
+            return await _finish_if_drained_in(conn, run_id)
 
     async def finish_drained(self) -> list[tuple[RunId, dict[str, Any]]]:
         """Finish every running run with nothing left to claim; the runs
-        THIS call finished, with their stats."""
+        THIS call finished, with their stats. Each finished run's
+        `completed` event is written in the statement's own transaction
+        (ADR-0042): a run drained of owners still gets its terminal event."""
         async with self._engine.begin() as conn:
             rows = (await conn.execute(_FINISH_DRAINED)).all()
+            for row in rows:
+                await emit_in(
+                    conn,
+                    RunId(row.id),
+                    "run_state",
+                    {"state": "completed", "stats": dict(row.stats)},
+                )
         return [(RunId(row.id), dict(row.stats)) for row in rows]

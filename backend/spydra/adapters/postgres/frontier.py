@@ -29,6 +29,7 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from spydra.adapters.postgres.run_events import emit_in
 from spydra.adapters.postgres.runs import _STATS
 from spydra.domain.enums import RenderMode
 from spydra.domain.ids import DomainId, QueueItemId, RunId
@@ -265,6 +266,18 @@ SELECT count(*) AS recovered FROM recovered
 """
 )
 
+# The `progress` event's counts (BUILD_PLAN 2.8): one grouped read per
+# page close, taken after the close committed so it includes the row the
+# event is about.
+_QUEUE_COUNTS = sa.text(
+    """
+    SELECT state, count(*) AS n
+    FROM crawl.crawl_queue
+    WHERE run_id = :run_id AND domain_id = :domain_id
+    GROUP BY state
+    """
+)
+
 # Reconcile by RECOUNT, not by decrement. Spec 001 §1 calls in_flight a cache;
 # subtracting a number from a value you do not trust leaves you with a
 # different untrusted value, and two sweeps racing a completion can drive it
@@ -384,13 +397,17 @@ SELECT id FROM crawl.runs WHERE id = :run_id AND state = 'running' FOR UPDATE
 # ADR-0040 forbids. Within one transaction the later statement sees the
 # earlier's writes; the transaction, not the statement count, is what
 # keeps the halt atomic.
+#
+# Returns `stats` too (2.8): the `run_state` event emitted beside the
+# transition carries the transition-time snapshot, the same one written to
+# `runs.stats` here.
 _HALT_RUN = sa.text(
     f"""
 UPDATE crawl.runs
 SET state = 'failed', stop_reason = :reason, finished_at = now(),
     stats = {_STATS}
 WHERE id = :run_id AND state = 'running'
-RETURNING id
+RETURNING id, stats
 """
 )
 
@@ -563,6 +580,10 @@ class PostgresFrontier:
         zero, below any cap. The run row is locked `FOR UPDATE` before the
         abandon (see `_LOCK_RUN_FOR_HALT`) so the release/sweep routing
         cannot return a row to `pending` on this transition (ADR-0041).
+
+        The `failed` `run_state` event is written in this same transaction
+        (ADR-0042): the lock is already held, so the seq reservation costs
+        nothing, and the event exists iff the transition happened.
         """
         async with self._engine.begin() as conn:
             await conn.execute(_LOCK_RUN_FOR_HALT, {"run_id": int(run_id)})
@@ -571,5 +592,29 @@ class PostgresFrontier:
             )
             halted = (
                 await conn.execute(_HALT_RUN, {"run_id": int(run_id), "reason": reason})
-            ).scalar_one_or_none()
+            ).first()
+            if halted is not None:
+                await emit_in(
+                    conn,
+                    run_id,
+                    "run_state",
+                    {
+                        "state": "failed",
+                        "stop_reason": reason,
+                        "stats": dict(halted.stats),
+                    },
+                )
         return RunHalt(abandoned=int(abandoned.rowcount), transitioned=halted is not None)
+
+    async def queue_counts(self, run_id: RunId, domain_id: DomainId) -> dict[str, int]:
+        """The (run, domain)'s queue rows by state — the `progress` event's
+        payload (BUILD_PLAN 2.8, spec 005 §3). One grouped read on this,
+        the frontier's own table; `pending` is the payload's `queued`."""
+        async with self._engine.begin() as conn:
+            rows = (
+                await conn.execute(
+                    _QUEUE_COUNTS,
+                    {"run_id": int(run_id), "domain_id": int(domain_id)},
+                )
+            ).all()
+        return {row.state: int(row.n) for row in rows}
