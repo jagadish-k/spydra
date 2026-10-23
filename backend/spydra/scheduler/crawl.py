@@ -49,9 +49,10 @@ from spydra.adapters.postgres.templates import PostgresTemplates, matching
 from spydra.discovery.canonical import canonical_link
 from spydra.discovery.links import discover
 from spydra.domain.entities import Domain, Template
-from spydra.domain.enums import DomainEvent, PageKind, RenderMode, UnknownReason
+from spydra.domain.enums import DomainEvent, DomainState, PageKind, RenderMode, UnknownReason
 from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchedPage, FetchRequest
+from spydra.domain.lifecycle import transition
 from spydra.domain.urls import canonical_url
 from spydra.extraction.chain import ChainResult, ExtractionChain
 from spydra.extraction.validation import empty_extraction
@@ -356,13 +357,20 @@ class PageCrawler:
             # will never be claimed, so they are recorded as work not done
             # and the run can finish instead of waiting on them for ever.
             abandoned = await self._frontier.abandon_domain(item.run_id, domain.id)
-            # The 1.11 halts' event (ADR-0042): `break` and `never_matched`
-            # both move the domain to `broken`, the state the payload names.
+            # The 1.11 halts' event (ADR-0042). The verdict names the state:
+            # both halt edges exist only from `active` (domain/lifecycle.py),
+            # so the pure `transition` is the state the domain moved to —
+            # `broken` for BREAK, `awaiting_approval` for NEVER_MATCHED
+            # (ADR-0030), never a hard-coded one.
             if outcome.event is not None:
                 await self._repos.events.emit(
                     item.run_id,
                     "domain_state",
-                    {"domain": domain.host, "state": "broken", "reason": outcome.event.value},
+                    {
+                        "domain": domain.host,
+                        "state": transition(DomainState.ACTIVE, outcome.event).value,
+                        "reason": outcome.event.value,
+                    },
                 )
             log.error(
                 "domain_halted",

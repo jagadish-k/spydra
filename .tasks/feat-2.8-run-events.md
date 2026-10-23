@@ -407,6 +407,16 @@ test_the_never_matched_halt_names_the_state_the_domain_moved_to`):
   XFAIL(strict) today with the precise diff (`broken` vs
   `awaiting_approval`), XPASS(strict) under the aimed fix — fixing the
   production line will turn the suite red until the marker is removed.
+- backend (2.8, defect fix) — fixed the pinned defect: the halted branch
+  now emits `transition(DomainState.ACTIVE, outcome.event).value` — the
+  same pure lifecycle function the writer's own move used. Both halt edges
+  exist only from `active` (`_EDGES`), so this is exactly the state the
+  verdict moved the domain to: `broken` for BREAK, `awaiting_approval`
+  for NEVER_MATCHED (ADR-0030). One site changed, no API reshaping;
+  `make lint` green; the pinned test XPASSes — **suite shows 1 "failed" =
+  that XPASS(strict) until the test agent removes the marker
+  (test_page_crawler.py:1092); the next runner should expect exactly that
+  one red, not a regression.**
   **Reviewer note:** one test-data subtlety — `observation_seed.
 seed_observation` writes no `template_id`, and the health sample counts
   only observations a product template made, so the never_matched fixture
