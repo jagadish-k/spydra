@@ -429,6 +429,19 @@ seed_observation` writes no `template_id`, and the health sample counts
   `NEVER_MATCHED` → `awaiting_approval` against the domain row itself, and
   the BREAK edge gained the same domain-row oracle beside its literal
   `broken` payload.
+- integrator (2.8) — scope-check clean against `feat/2.7-run-lifecycle`:
+  21 files, exactly the declared set (the "five test files" plus
+  `test_canonical_pages.py`, which is one of the four mechanical `events=`
+  repair hunks — two build() fixtures, two ClaimLoop constructions, imports
+  only, no assertions touched); `git diff … -- backend/spydra` adds **zero**
+  `log.` call-sites (9 grep hits, all hunk context); all 10 commit subjects
+  imperative, ≤ 72. Gate, per leg: lint green; types regenerated, no diff;
+  `make generated` clean (13 tables introspected, `run_events` in); test-api
+  **1185 passed, 2 skipped**; test-bff 10; test-web 10; test-render 0 fail
+  (the environmental red did not return — pushed **with** hooks, no
+  `--no-verify`). BUILD_PLAN 2.8 ticked with the Done line above. PR body at
+  `.tasks/pr-2.8-body.md`; base `feat/2.7-run-lifecycle`, stacked merge
+  order recorded there.
 
 ## Open questions
 

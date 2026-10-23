@@ -586,12 +586,29 @@ from the task above it.
       pinned by interleaving tests. `runctl` CLI plus `make run-pause`
       /`run-resume`/`run-stop`/`run-status`. 63 tests, 16 mutations, all red.
 
-- [ ] `2.8` **`run_events` writer** — monotonic `seq` per run, the bounded
+- [x] `2.8` **`run_events` writer** — monotonic `seq` per run, the bounded
       log that lets a reconnecting SSE client be backfilled rather than shown
       a gap (spec 001 §1, ADR-0012). Built here because the worker emits
       them; `1.13`'s worker deliberately emits none.
       **Done when:** `UNIQUE (run_id, seq)` holds under two workers emitting
       concurrently, and the log is bounded rather than growing with the run.
+      **Done:** events go through `PostgresRunEvents.emit_in` (ADR-0042) with
+      `seq` reserved from `runs.next_seq` inside the emitting transaction
+      (migration `f4b2d6a91c03`, backfilled) — gap-free and trim-proof, the
+      `UNIQUE (run_id, seq)` pinned by two real engines emitting concurrently.
+      Emission set: `page` on closes only (a mass abandon is a number, never
+      a burst), `progress` at most 1/s/domain carrying depth, `domain_state`
+      on every actual move — the three-403 pause and the 1.11 halts, with the
+      state the domain really moved to — and `run_state` inside every
+      transition transaction, including the unowned drained finish and the
+      cap halt replaying ADR-0040's transition-time stats snapshot; `asset`
+      deliberately deferred to `5.2`. Bounded at keep-last-5,000 per run,
+      trimmed in the claim loop's sweep beat, live runs only. One production
+      defect found by the acceptance tests and fixed in-slice: halt events
+      hard-coded `state: broken`, so a never-matched halt claimed the domain
+      had broken when it had moved to `awaiting_approval` — pinned
+      `xfail(strict)`, fixed to the lifecycle-computed state, unpinned.
+      1185 passed, 2 skipped.
 
 - [ ] `2.9` **CSV seed parsing** with per-row validation and no HTTP
       (spec 004 §4). Rejects report the row and the reason.
