@@ -30,6 +30,7 @@ from dataclasses import dataclass
 import structlog
 
 from spydra.adapters.postgres.assets import PostgresAssets
+from spydra.adapters.postgres.run_events import PostgresRunEvents
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.domain.enums import RenderMode
 from spydra.ports.frontier import ClaimedUrl, Frontier
@@ -70,6 +71,7 @@ class ClaimLoop:
         frontier: Frontier,
         assets: PostgresAssets,
         runs: PostgresRuns,
+        events: PostgresRunEvents,
         pressure: AssetPressure,
         crawler: PageCrawler,
     ) -> None:
@@ -77,6 +79,7 @@ class ClaimLoop:
         self._frontier = frontier
         self._assets = assets
         self._runs = runs
+        self._events = events
         self._pressure = pressure
         self._crawler = crawler
         self._failures = 0
@@ -108,6 +111,10 @@ class ClaimLoop:
             # run's last one the run is finished here or never.
             for run_id, stats in await self._runs.finish_drained():
                 log.info("run_finished", run_id=int(run_id), stats=stats)
+        # The maintenance beat's other half (ADR-0042): keep the last 5,000
+        # events per live run. Probes, not scans — a run under the bound
+        # deletes nothing.
+        await self._events.trim()
         await self._pressure.before_claim(await self._assets.pending())
         return await self._frontier.claim(self._pool.render_modes)
 

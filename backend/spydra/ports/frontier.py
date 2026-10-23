@@ -209,4 +209,12 @@ class Frontier(Protocol):
         run a concurrent worker already finished cleanly is never failed
         under it.
         """
+
+        ...
+
+    async def queue_counts(self, run_id: RunId, domain_id: DomainId) -> dict[str, int]:
+        """The (run, domain)'s queue rows by state (BUILD_PLAN 2.8): the
+        `progress` event's payload. A read of this, the frontier's own
+        table — `pending` is the payload's `queued`."""
+
         ...
