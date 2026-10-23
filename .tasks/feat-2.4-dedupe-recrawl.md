@@ -172,20 +172,23 @@ Verified on `develop` @ `4bbf3d9`, clean tree:
 
 ## Acceptance (BUILD_PLAN 2.4, spec 001 §1, spec 004 §1 rule 6)
 
-- [ ] The same URL discovered from two different listing pages in one run
+- [x] The same URL discovered from two different listing pages in one run
       enqueues once — the mega crawl completes with every row `done`, every
       category exactly once, all 64 products observed (acceptance 1).
-- [ ] A later run enqueues the same URLs again: both runs through
+- [x] A later run enqueues the same URLs again: both runs through
       `PostgresConfiguration.apply`, run 2's queue set equals run 1's as fresh
       rows, every product page re-observed (acceptance 2).
-- [ ] Run 2's product observations are `unchanged` rows against run 1's
+- [x] Run 2's product observations are `unchanged` rows against run 1's
       priors; if not, the defect is fixed in-slice.
-- [ ] The second `apply` versions the templates and run 2's observations name
+- [x] The second `apply` versions the templates and run 2's observations name
       the v2 ids (ADR-0006).
-- [ ] The crawl's request sequence is non-decreasing in depth (acceptance 3).
-- [ ] Mutations 1 and 2 proven red; the adapter-level dedupe tests stay green
+- [x] The crawl's request sequence is non-decreasing in depth (acceptance 3).
+- [x] Mutations 1 and 2 proven red; the adapter-level dedupe tests stay green
       and unduplicated.
-- [ ] `make check` green.
+- [ ] `make check` green. — every leg green on this machine except
+      `test-render`, which fails pre-existing and environmental (details in
+      the handoff log); expected green in CI. Left for the integrator to
+      tick from CI.
 
 ## Handoff log
 
@@ -193,6 +196,60 @@ Verified on `develop` @ `4bbf3d9`, clean tree:
   mechanism end to end on `develop` @ `4bbf3d9`. Hand off to **spydra-test**
   (first file: `backend/tests/scheduler/test_dedupe_recrawl.py`); **spydra-
   backend** joins only if a defect surfaces.
+- test (subagent session, on `feat/2.4-dedupe-recrawl` @ `54c5931`):
+  - **Files.** New `backend/tests/scheduler/test_dedupe_recrawl.py`
+    (2 tests). `seed_halden` in `test_link_discovery.py` extended with a
+    `discovery=` keyword (default `EXIT_DISCOVERY`); not forked —
+    `test_enqueue_guard.py`'s import unchanged and green.
+  - **Row counts: the constants and the arithmetic agree.** The mega shape
+    is exactly 84 (11 categories + 3 pagination + 5 deep + 64 product
+    spellings + the featured spelling) and the exit shape 44, both derived
+    in `expected_queue()` from `catalogue.NODES`/`LEAVES`/`PER_PAGE`, so the
+    tests assert sets, never literals.
+  - **No defect found.** Run 2's product observations are all `unchanged`
+    lightweight rows (hash kept, `title`/`price_amount` NULL,
+    `empty_extraction` false) against run 1's priors, under v2 templates, on
+    the first run of the tests — nothing needed the in-slice fix.
+  - **Mutations** (applied, run, restored with `git checkout`, re-run green):
+    1. `frontier.py` `_ENQUEUE`, `ON CONFLICT (run_id, url_hash) DO NOTHING`
+       dropped → mega test RED in 2.3 s: `assert {'failed'} == {'done'}` —
+       the re-discoveries raise, rows retry to `failed`.
+    2. same statement, `AND NOT EXISTS (SELECT 1 FROM crawl.crawl_queue q
+WHERE q.url_hash = u.url_hash)` added → re-crawl test RED in 24 s:
+       run 2 "completed" with queue set `{'/shop/cutting'}` — the one-row
+       cross-run signature; the set-equality assertion is what catches it.
+    3. (test agent's own) prior lookup made run-scoped — `_LATEST` in
+       `observations.py` + `latest()` + the `writer.py` call site given
+       `run_id` → re-crawl test RED in 46 s: "run 2 re-hashed instead of
+       comparing". Pins that the prior of spec 003 §4 is cross-run.
+    4. (validation, stayed green by design) claim `ORDER BY q2.depth, q2.id`
+       → `ORDER BY q2.id` → mega test still GREEN: in these fixtures every
+       depth-1 URL is discovered from the seed's single first claim, so id
+       order coincides with depth order. Confirms the contract's "must not
+       be re-derived here" — the SQL is pinned at adapter level (1.8).
+  - **Adapter level stays green and unduplicated**: `test_frontier.py` +
+    `test_enqueue_guard.py` + `test_catalogue.py` ran green alongside the
+    new file (35 passed).
+  - **Suite.** `make test-api`: **1047 passed, 2 skipped** (both skips
+    pre-existing: `test_required_is_inert` annotation check, migration
+    baseline). `make lint` green (ruff + mypy --strict + eslint + prettier).
+  - **`make check` — one leg red, pre-existing, environmental.**
+    `test-render`'s "no internal service name resolves from inside the
+    render container" fails because `web` resolves to **127.0.53.53**
+    (ICANN's name-collision sinkhole) via this machine's upstream DNS;
+    `api`/`db`/`bff`/`edge` correctly ENOTFOUND from the same container.
+    Reproduced identically with this slice's changes stashed, so it is not
+    ours; expected green in CI (Linux compose DNS rejects the name).
+  - **Environment fixes the next agent should know about** (both pre-existing
+    states of this machine, not slice defects): the shared `venv` volume was
+    missing `ruamel-yaml` (stale since before 1.14) — `docker compose run
+--rm --no-deps api uv sync --frozen` resynced it; and the **dev**
+    database was behind head (missing `configured_crawl_delay_ms`,
+    `ix_page_observations_run_page`, `uq_unknown_pages_open`), which made
+    `make generated-check` produce a stale `crawl.generated.ts` — `make
+migrate` against dev brought it to head and the check now passes with no
+    diff.
+  - Hand off to **spydra-reviewer**.
 
 ## Open questions — for the human
 
