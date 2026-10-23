@@ -295,6 +295,43 @@ not fork).
   the test agent can start pinning while the cap's migration lands);
   **ADR-0040 is backend's to write**, content pinned in Decided (user) +
   the cap sections.
+- backend (this session, @ the cap+halt commit): ADR-0040 written and
+  indexed; the three `discover()` rejects, the cap, and the breach halt
+  built as contracted. `make lint` and `make test-api` green (1050 passed,
+  2 skipped — existing tests only; the trap/breach tests are the test
+  agent's). Migration verified up → down → up on the dev DB; `make
+generated` run (crawl.generated.ts +1 line, no frontend schema movement).
+  Deviations, all deliberate:
+  - **The halt is one transaction, two statements, not the contract's one
+    CTE statement.** PostgreSQL runs data-modifying CTEs on one snapshot
+    and they cannot see one another's writes, so the sketch's `_STATS`
+    inside the halt CTE would count the just-abandoned rows as still
+    `pending` and write `pages_abandoned = 0` — violating the contract's
+    own acceptance. The abandon (the existing `_ABANDON`) runs first, the
+    guarded `_HALT_RUN` with `_STATS` second, in one transaction: the same
+    atomicity against worker death, the same race profile, correct stats.
+    Verified on real Postgres with a throwaway script (not committed).
+  - **`enqueue`'s `cap` is a required keyword**, no default: a default of
+    20,000 would silently re-create the column default in a future caller
+    and defeat every low-cap breach test. The signature change's mechanical
+    fixes to existing test call sites (`cap=20_000`, `.added`) ride in the
+    cap commit — adaptations of existing tests, not new ones.
+  - **`adapters/postgres/tables.py` touched** though not in the owned list:
+    the Core metadata must carry `url_cap` or the next `make revision`
+    autogenerates a spurious drop (the 1.13 `configured_crawl_delay_ms`
+    precedent). `runs.py` is untouched — `_STATS` is shared by import into
+    `frontier.py`, which satisfies "share, do not duplicate" with zero
+    edits.
+  - **The calendar regex is `/20\d\d/\d\d(/|$)`**, not the contract's
+    literal trailing-slash form: canonicalisation strips the trailing slash
+    (spec 004 §2 step 6), so the month-leaf `/shop/news/2026/10` — which
+    the acceptance requires rejected — would not match `/20\d\d/\d\d/`.
+    Same pattern, boundary made explicit.
+  - Spec 004 §3's defence-2 line ("the domain halts for that run") and
+    §3a's "URL cap halts the domain" both said the wrong actor; rewritten
+    to the run-fails/domain-stays-`active` semantics alongside the pinned
+    calendar escape and repeating-path threshold.
+    Hand off to **spydra-test**.
 
 ## Open questions — for the human
 

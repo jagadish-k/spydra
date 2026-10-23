@@ -41,6 +41,18 @@ Each extracted link is kept only if **all** hold:
    at most `max_depth` deep: at `max_depth = 5`, depth-5 pages are enqueued
    and their depth-6 links are not (§5).
 6. Not already in `crawl_queue` for this run (`UNIQUE (run_id, url_hash)`).
+7. Its canonical URL is at most 2,000 characters long — the canonical
+   spelling, because it is the one hashed and enqueued (§2).
+8. Its canonical path does not match a calendar pattern (`/20\d\d/\d\d/`)
+   unless an `allow_pattern` matched — the operator's explicit yes outranks
+   the calendar defence (§3).
+9. Its canonical path contains no block of one or more segments repeated
+   three full times in immediate succession (§3).
+
+The three structural checks (7–9) run in `discover` between rule 3 and
+rule 4: a link an `allow_pattern` matched walks past the calendar check,
+while length and repetition are facts about the URL's own shape and hold
+regardless.
 
 ## 2. Canonicalisation
 
@@ -71,16 +83,24 @@ Defences, in order of effectiveness:
 
 1. **`deny_patterns` on the template**, reviewed by the operator. The
    dry-run tool (§4) exists so this is caught before a run.
-2. **Per-run URL cap per domain**, default 20,000. On breach the domain halts
-   for that run and the report names the pattern that exploded, grouped by
-   the discovery rule that matched it.
+2. **Per-run URL cap per domain**, default 20,000. On breach the run is
+   failed with the cap named as the reason and the domain's pending rows in
+   that run are abandoned; the domain itself stays `active` and the next
+   run starts clean (ADR-0040). The dry-run report names the pattern that
+   exploded, grouped by the discovery rule that matched it.
 3. **Depth cap**, default 5.
-4. **Repeating-path detection** — `/a/b/a/b/a/` means a relative-link bug on
-   the site; reject at three repetitions.
+4. **Repeating-path detection** — one contiguous block of one or more path
+   segments repeated three **full** times in immediate succession
+   (`/a/b/a/b/a/b/` trips on `a,b`; `/x/deeper/deeper/deeper/` on `deeper`).
+   A 2.5-cycle path (`/a/b/a/b/a/`) does not trip; the third full
+   repetition does.
 
-Also reject: `mailto:`, `tel:`, `javascript:`, URLs over 2,000 characters,
-and anything matching a calendar pattern (`/20\d\d/\d\d/`) unless explicitly
-allowed.
+Also reject: `mailto:`, `tel:`, `javascript:`, canonical URLs over 2,000
+characters, and anything matching a calendar pattern (`/20\d\d/\d\d/`) —
+unless an `allow_pattern` matched it: the calendar check runs after the
+allow check, so the operator's reviewed pattern is the explicit permission
+(a broad allow implicitly permits calendars; the dry-run is where that
+becomes visible).
 
 ## 3a. Navigation the crawler cannot see
 
@@ -103,7 +123,7 @@ server-rendered and land here. **Nothing needs building.**
 The real hazard is the opposite one: a mega-menu often lists _the entire
 category tree on every page_. A `subcategory_links` rule scoped to `nav a`
 therefore discovers the whole site from depth 0, defeats the depth cap, and
-looks like a working rule right up until the URL cap halts the domain. Scope
+looks like a working rule right up until the URL cap fails the run. Scope
 the selector to the menu's own container and let `allow_patterns` and the
 dry-run (§4) confirm the count before approval.
 
