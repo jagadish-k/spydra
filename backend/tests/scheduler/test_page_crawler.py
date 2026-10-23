@@ -1087,23 +1087,21 @@ async def test_the_break_halt_emits_its_domain_state_event(clean_crawl: AsyncEng
     assert moved == [{"domain": HOST, "state": "broken", "reason": "break"}]
     states = await queue_states(clean_crawl, run)
     assert states == ["done"] * 5, "the fixture did not crawl five pages"
+    # The same oracle the NEVER_MATCHED edge pins below: the event names
+    # the state the domain row actually moved to.
+    assert (await domain_row(clean_crawl, domain)).state == moved[0]["state"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="defect (2.8): crawl.py's halted branch hard-codes state='broken' for "
-    "every halt, but NEVER_MATCHED moves the domain to awaiting_approval "
-    "(domain/lifecycle.py) — the event names a state the domain is not in. "
-    "Spec 005 §3's payload names the state that moved; see the task file's "
-    "handoff for the report.",
-)
 async def test_the_never_matched_halt_names_the_state_the_domain_moved_to(
     clean_crawl: AsyncEngine,
 ) -> None:
     """ADR-0030's halt: a first run whose template never worked sends the
     domain back to review — `awaiting_approval`, not `broken`; nothing used
     to work, so "this used to work" would be a lie. The event's `state` is
-    the domain's state, exactly as the three-403 event reports `paused`."""
+    the domain's state, exactly as the three-403 event reports `paused` and
+    the BREAK edge (above) reports `broken`: the fix computes the state
+    from the lifecycle, so both edges are pinned — this one against the
+    domain row itself, the strongest oracle."""
     domain = await seed_crawl_domain(clean_crawl, with_template=True)
     run = await seed_run(clean_crawl, [int(domain)])
     template = await _template_id(clean_crawl, domain)
@@ -1132,6 +1130,7 @@ async def test_the_never_matched_halt_names_the_state_the_domain_moved_to(
 
     domain_after = await domain_row(clean_crawl, domain)
     moved = [p for kind, p in await run_events(clean_crawl, run) if kind == "domain_state"]
+    assert domain_after.state == "awaiting_approval", "the fixture did not reach review"
     assert moved == [{"domain": HOST, "state": domain_after.state, "reason": "never_matched"}], (
         "the event must name the state the domain moved to"
     )

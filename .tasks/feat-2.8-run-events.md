@@ -422,6 +422,13 @@ seed_observation` writes no `template_id`, and the health sample counts
   only observations a product template made, so the never_matched fixture
   pins the template on its seeded rows (the BREAK fixture is unaffected:
   regressions read the prior's `content_hash`, not its template).
+- test (2.8, follow-up) — the halt-state defect above **fixed by backend
+  `01b529b`** (the event now computes `transition(ACTIVE, verdict).value`);
+  the `xfail(strict)` marker removed and the test asserts for real — 1185
+  passed / 2 skipped / **0 xfailed**. Both edges now pinned in both forms:
+  `NEVER_MATCHED` → `awaiting_approval` against the domain row itself, and
+  the BREAK edge gained the same domain-row oracle beside its literal
+  `broken` payload.
 
 ## Open questions
 
