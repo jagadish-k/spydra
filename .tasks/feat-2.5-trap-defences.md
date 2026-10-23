@@ -239,7 +239,7 @@ Every crawl below runs the real worker against the fixture site, one
 connection, `crawl_delay_ms = 20` (the `seed_halden` substrate; extend, do
 not fork).
 
-- [ ] **The loop terminates because of `repeating_path`**: a crawl from
+- [x] **The loop terminates because of `repeating_path`**: a crawl from
       `EXIT_SEED` with the footer reachable enqueues `/shop/loop/x/page`
       (d1) and `/shop/loop/x/loop/x/page` (d2) and crawls both `done`, and
       **no queue row ever contains three `loop/x` units**; the run
@@ -247,37 +247,37 @@ not fork).
       link as `repeating_path` with a sample, and that link's depth (3) is
       ≤ `max_depth` (5) — depth is not the rejecter. The existing
       k=2-link-is-accepted test (`test_without_base_href…`) stays green.
-- [ ] **The single-segment trap terminates too**: a crawl seeded on
+- [x] **The single-segment trap terminates too**: a crawl seeded on
       `/trap/` with a rule matching `a` enqueues at most two `deeper` hops
       and never `/trap/deeper/deeper/deeper/`; unit level, `discover` on
       the two-deeper page rejects the third as `repeating_path`.
-- [ ] **The calendar is rejected, and the escape works**: unit level,
+- [x] **The calendar is rejected, and the escape works**: unit level,
       `discover` on the seed page (footer rules) rejects `/shop/news/2026/10/`
       as `calendar` with a sample, at depth 1; the same rules plus
       `allow_patterns = ["^/shop/news/"]` accept it. Worker level: a
       footer-reachable crawl queues **zero** `/shop/news/` URLs and
       `completed`.
-- [ ] **`too_long` fires**: unit level, the footer's search URL is rejected
+- [x] **`too_long` fires**: unit level, the footer's search URL is rejected
       `too_long` with a sample; worker level, no queue URL exceeds 2,000
       characters.
-- [ ] **The reject reasons fire, not just the run finishing**: each unit
+- [x] **The reject reasons fire, not just the run finishing**: each unit
       assertion above names the reason, a count ≥ 1, and a sample — the
       grouped-reject contract 2.10 reports on (its seam: `rejected` keyed by
       reason / `deny_pattern:<pattern>`).
-- [ ] **A breach fails the run with the cap named**: `url_cap` set low
+- [x] **A breach fails the run with the cap named**: `url_cap` set low
       (SQL, e.g. 200) and the facet deny dropped, a crawl from `EXIT_SEED`
       breaches; the run ends `failed` with `stop_reason` naming
       `url cap exceeded` and the cap; its pending rows for that domain are
       `abandoned` and `stats.pages_abandoned` > 0; **the domain is still
       `active`**; no row is deleted. Adapter level: after the count reaches
       the cap, `enqueue` returns `added = 0, capped = True`.
-- [ ] **The overshoot is bounded and every breach signals**: adapter level,
+- [x] **The overshoot is bounded and every breach signals**: adapter level,
       enqueues past the cap never take the count beyond cap + one batch, and
       each one past the cap signals `capped`.
-- [ ] **The next run starts clean**: a following run (re-`apply` or
+- [x] **The next run starts clean**: a following run (re-`apply` or
       re-seeded) on the same domain with the deny restored completes with no
       breach, and the domain was `active` throughout both.
-- [ ] **Mutations proven red, then restored**: each new reject's condition
+- [x] **Mutations proven red, then restored**: each new reject's condition
       (excised, and inverted — e.g. `> 2000` → `>= 2000`, the calendar
       regex, the repetition threshold 3 → 2 and the unit length restricted
       to 1); the cap guard (`<` → `<=`, dropped); `capped` (`>=` → `>`);
@@ -332,6 +332,65 @@ generated` run (crawl.generated.ts +1 line, no frontend schema movement).
     to the run-fails/domain-stays-`active` semantics alongside the pinned
     calendar escape and repeating-path threshold.
     Hand off to **spydra-test**.
+- test (this session, @ the test commit): all nine behavioural boxes
+  proved and ticked; the `make check` box left open (below). 24 new tests
+  in three files, extending the named harnesses rather than forking:
+  - `tests/discovery/test_trap_rejects.py` (10) — unit `discover` on the
+    served traps: each reason fires with count + sample, and the near
+    shapes stay kept (k=2 and 2.5-cycle paths; 1,999/2,000-char and
+    tracking-padded URLs; 19xx-year and 3-digit-month date-likes;
+    allow-escaped calendar; length/repetition still refusing an allowed
+    trap link).
+  - `tests/scheduler/test_trap_crawls.py` (4) — real worker against the
+    fixture site: the footer-reachable exit crawl (loop two hops and never
+    a third unit, zero `/shop/news/`, no URL over 2,000, `completed`); the
+    `/trap/` crawl (exactly `/trap`, two `deeper`s); the breach + clean
+    restart (both runs via `PostgresConfiguration.apply`, `url_cap = 200`
+    by SQL, deny dropped/restored — run 1 `failed` with the exact
+    `stop_reason`, pending `abandoned`, `pages_abandoned > 0`, domain
+    `active`, no row deleted, exactly one `url_cap_exceeded` line in the
+    worker log; run 2 the full 44-URL exit shape `completed` under the
+    same cap); and the in-process first-signaller test (two pages claimed
+    before either crawls, the second's re-signal logged at debug not
+    error — asserted via a recording logger standing in for the module's
+    structlog one, since the process's structlog is unconfigured and
+    renders no level to read).
+  - `tests/adapters/postgres/test_url_cap.py` (10) — the column
+    (default 20,000 through the repository; CHECK refuses 0), the count
+    guard (signals at the exact cap, refuses after, all-or-nothing batch
+    overshoot, every state counts, two-engine race bounded by cap + one
+    batch per enqueuer), and the halt (abandons pending only, this domain
+    only, domain row untouched, reason verbatim, `pages_abandoned` = 3,
+    re-signal transitions nothing and corrupts nothing, a `completed` run
+    is never failed, `finish_drained` refuses to rewrite a breached run).
+  - Suite: `make test-api` **1074 passed, 2 skipped** (backend's baseline
+    1050 + 24; every existing test green, including
+    `test_without_base_href…`). `make lint` clean, `make generated` no
+    diff.
+  - Mutations, each red on a named test then restored (`git checkout`),
+    suite green after: calendar anchor removed → date-likes kept, **red**;
+    escape removed → allow-escape, **red**; threshold 3→2 → 2.5-cycle
+    kept, **red**; unit length → 1 → loop pair-trip, **red**; length
+    `>` → `>=` → 2,000-boundary kept, **red**; cap guard `<` → `<=` →
+    refusal-at-cap, **red**; `capped` `>=` → `>` → signal-at-cap
+    (semantic red, `(5, False)`), **red**; halt fence removed → re-signal
+    - completed-run tests, **red**; abandon's `state='pending'` dropped →
+      done/failed swept too `(5, True)`, **red**; abandon's `domain_id`
+      dropped → other domain's rows swept, **red**; halt pausing the domain
+      → domain-still-`active`, **red**; `stop_reason` mangled → exact-string
+      assert, **red**; re-signal logged at error → errors == 2, **red**.
+      ("Cap guard dropped" is caught by the same refusal-at-cap test as
+      `<` → `<=`; not run separately.)
+  - `make check` not green here, **for a reason outside this slice**:
+    `make test-render` fails `no internal service name resolves from
+inside the render container` — verified failing identically on
+    `develop` (56 pass / 1 fail both branches; the diff touches nothing
+    under `render/`, `docker/` or `compose.yaml`). Environmental on this
+    machine (Docker DNS); every leg that can see this slice's files —
+    lint, test-api, generated — is green. Integrator to re-run the gate
+    in CI before the PR.
+  - No production defects found; every contract behaviour held as built.
+    Hand off to **spydra-reviewer**.
 
 ## Open questions — for the human
 
