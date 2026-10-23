@@ -1,0 +1,172 @@
+# feat/2.6-mega-menu-guard
+
+**Task:** BUILD_PLAN 2.6 · **Spec:** 004 §3a (all three cases + "Prefer the
+path already in the crawl"), §4 (seam), §5 (two items) · **ADRs:** none new —
+pure analysis, no dependency, no ownership change (reasoning in Decided)
+
+Stacked on `feat/2.5-trap-defences` (PR pending, base #26).
+
+## Contract
+
+**A pure analysis that flags a `subcategory_links` rule discovering the whole
+tree from one page, shaped as the library function 2.10's dry-run calls.**
+Nothing scopes a rule at runtime; nothing is enqueued or rejected here. The
+flag joins the dry-run report in 2.10 — this slice delivers the function and
+its tests, so the "caught by the dry-run" acceptance resolves to _"the
+analysis the dry-run will call returns the flag."_
+
+- `spydra/discovery/mega_menu.py` (new, pure, stdlib + `domain.urls`):
+  `whole_tree(discovery: Discovery) -> MegaMenuFinding | None`.
+  Reads **only** `discovery.accepted["subcategory_links"]` (spec 004 §3a
+  names that rule; a product rule matching a nav is a broken selector the
+  count/sample report already exposes).
+
+### The heuristic, pinned
+
+1. Take `accepted["subcategory_links"]` — absent or empty → `None`.
+2. Canonicalise each URL (`domain.urls.canonical_url`), keep the **path**
+   (query dropped — tree structure never lives in the query), dedupe paths.
+   Facet spellings and canonical pairs collapse to one node.
+3. `P` is an **ancestor** of `Q` iff `P ≠ Q` and `Q == P + "/" + rest`
+   (canonical paths carry no trailing slash, so the boundary is a segment;
+   `/` is an ancestor of every other path).
+4. A **branch root** is a path with no ancestor in the set. A root
+   **spans** iff some other path in the set has it as an ancestor.
+5. **Finding iff ≥ 2 roots span** (`_SPANNING_ROOTS = 2`, a named module
+   constant whose docstring derives it from the two Halden shapes below).
+
+`MegaMenuFinding` (frozen dataclass): `links` (accepted subcategory links),
+`paths` (distinct canonical paths), `branches` (spanning roots), `levels`
+(deepest ancestor→descendant chain, in nodes), `roots` (up to 3 spanning-root
+paths — the sample an operator reads). The one-sentence operator explanation
+2.10 will render: _"From this one page, this rule matched both a category and
+its own subcategories under N separate branches — a site-wide menu's shape,
+not one section's tiles; scope the selector to the menu's own container."_
+
+### Why it fires and stays silent (derive the constant from these)
+
+Halden's mega-menu (`nav.mega`, built by `catalogue._mega()`) links **all 11
+category nodes on every page**. A `nav a` rule on `/shop/cutting/` (a
+non-leaf page — `nav.pagination` is empty there, so `nav a` matches exactly
+the 11 mega links) accepts 11 paths: three roots — `/shop/cutting`,
+`/shop/grinding`, `/shop/finishing` — **and every one spans** (discs, blades;
+wheels, belts→narrow, wide; pads, polish; deepest chain 3 nodes:
+grinding → belts → narrow). 3 spanning roots ≥ 2 → **fires**.
+
+The scoped counterexample on the **same page**: `section.subcategories`
+tiles are one node's children only. On `/shop/cutting/`: discs, blades,
+`/shop/deep/1` — three roots, **none spans** (no accepted path extends
+another). On `/shop/grinding/belts/` (narrow, wide) and on `/shop/` (the
+three top categories): same flat shape. Roots, never spanning → **silent**.
+Counting plain roots instead of _spanning_ roots would fire on every scoped
+tile set with two children — that inversion is the mutation this slice
+exists to catch.
+
+Silent too: `EXIT_DISCOVERY` (`section.subcategories a, form.facets a`) on
+`EXIT_SEED` — tiles + archive, no facets rendered on a non-leaf page. And
+under a combined rule on a leaf page, facet URLs share one path with
+different queries → path-dedupe collapses them to a single node, no nesting.
+
+### Case A (`display:none`): pin it, build nothing
+
+Spec §3a: selectolax parses markup and computes no styles, so a CSS-hidden
+link is an ordinary match — "nothing needs building". **The fixture already
+exists** (2.1, `catalogue.py`): `/shop/finishing/` (`hidden_tiles=True`)
+serves `<section class="subcategories" style="display:none">` with pads and
+polish inside; `test_catalogue.py` asserts exactly one such category. This
+slice adds **no fixture** — it pins discovery of the existing one: `discover`
+over `/shop/finishing/`'s static HTML with `subcategory_links: "section.subcategories a"`
+accepts `/shop/finishing/pads` and `/shop/finishing/polish`, no reveal step.
+
+## Decided (planner)
+
+- **"Scoped to its container" is operator guidance, not a code mechanism.**
+  Spec §3a's sentence tells the operator what a good selector looks like;
+  no runtime scoping exists or is added. The code deliverable is detection
+  only. Verified against the spec text and against 2.3's `discover` (rules
+  are bare selectors; there is no scope parameter anywhere to hang a
+  mechanism on).
+- **The threshold is structural (≥ 2 spanning roots), not a link count.**
+  A count threshold (`nav a` finds 11, tiles find 2–3) breaks the moment a
+  supplier has 3 categories or a 40-tile section page. Branch-and-level
+  structure is what separates "one container's tiles" from "the site tree",
+  and it is what the one-sentence explanation actually describes.
+- **Accepted links, not raw selector matches.** What the rule _enqueues_ is
+  the hazard; if `allow_patterns` narrows a mega-menu to one branch, the
+  rule no longer discovers the whole tree and the flag correctly stays
+  silent. `Discovery` already carries the post-filter set, grouped per rule.
+- **Single-branch site menus are the named boundary, not a miss.** A
+  site-wide menu nested under one top-level branch stays silent here (one
+  spanning root). That shape is §3a's "Prefer the path already in the
+  crawl" comparison — `projected_urls_at_depth_5` with the rule set and
+  unset, reachability rather than structure — which is 2.10's report. The
+  seam: 2.10 calls `whole_tree(discovery)` for the structural flag and
+  computes the projection for the reachability comparison; **this slice
+  builds no projection.**
+- **No ADR.** No new dependency, no datastore/service change, no public API
+  shape change. The hazard and the container guidance are already spec 004
+  §3a. If the flag ever needs to _block_ approval rather than advise, that
+  changes the authoring pipeline's contract and gets its ADR then (open
+  question 1).
+- Spec 004 §4 gains one short paragraph naming the `whole_tree` finding,
+  the function, and the projection seam — 2.10 owns the report's JSON keys.
+
+## Files this slice owns
+
+- backend/spydra/discovery/mega_menu.py (new)
+- docs/specs/004-discovery.md (§4: the one paragraph named above)
+- backend/tests/discovery/test_mega_menu.py (test-writer, new)
+- .tasks/feat-2.6-mega-menu-guard.md
+
+Explicitly **not** touched: `discovery/links.py` (2.3/2.5's; `Discovery`
+already carries everything the analysis reads),
+`tests/fixtures/catalogue.py` and `pages/halden/` (2.1's; the needed shapes
+exist), `docs/BUILD_PLAN.md` (integrator ticks 2.6 in the PR, WORKFLOW §4).
+
+## Acceptance (BUILD_PLAN 2.6, spec 004 §5)
+
+- [ ] `whole_tree` over `discover` of `/shop/cutting/`'s static HTML with
+      `subcategory_links: "nav a"` returns the finding — 11 links, 3
+      spanning branches, deepest chain 3 nodes. This is "a `nav a` rule on
+      2.1's mega-menu fixture is caught by the dry-run" (spec 004 §5): the
+      analysis the dry-run calls returns the flag; 2.10 wires the report.
+- [ ] The scoped rule over the **same page** stays silent:
+      `section.subcategories a` on `/shop/cutting/` and on
+      `/shop/grinding/belts/` (a page carrying both the mega-menu and the
+      tiles) → no finding.
+- [ ] The production rule stays silent: `EXIT_DISCOVERY` on `EXIT_SEED`'s
+      page → no finding.
+- [ ] `/shop/finishing/`'s `display:none` subcategory tiles are discovered
+      by a static `discover` with no reveal step — pads and polish accepted
+      (spec 004 §5).
+- [ ] Query spellings cannot fake a tree: facet URLs under a combined rule
+      collapse to one node (paths deduped, query dropped).
+- [ ] Pure module: no I/O imports, not async, same answer twice (2.3's
+      house style).
+- [ ] `make check` green. Named mutations: spanning → plain roots (must go
+      red — it is the false positive this task exists to prevent),
+      threshold 2 → 3 (misses Halden's mega), ancestor test without the
+      segment boundary, dedupe dropped, `levels` off by one, sample roots
+      empty.
+
+## Handoff log
+
+- planner — contract and decisions above; branch cut from the tip of
+  `feat/2.5-trap-defences`. Fixture situation verified: mega-menu (11 nodes
+  on every page) and hidden tiles (`/shop/finishing/`) both shipped in 2.1;
+  `tests/fixtures/README.md` already maps both shapes to 2.6. No in-flight
+  slice owns `discovery/`. First file for the implementer:
+  `backend/spydra/discovery/mega_menu.py`. To **spydra-backend**.
+
+## Open questions
+
+1. Should the `whole_tree` flag ever _block_ template approval rather than
+   advise in the dry-run report? Spec §3a reads as operator-judgement
+   ("let `allow_patterns` and the dry-run confirm the count before
+   approval"); a blocking mode changes the authoring pipeline's contract
+   and would need an ADR. Not built.
+2. The single-branch boundary (Decided) is deliberate: structural detection
+   here, reachability projection in 2.10. Flagging it for the human because
+   it is a chosen blind spot, not an accident — a one-branch catalogue's
+   site-wide menu is invisible to this analysis until 2.10's projection
+   lands.
