@@ -340,6 +340,42 @@ the contract demands it)
   fixture parked a run in `stopped` with no `stop_reason` — the new CHECK
   (correctly) rejects it; the fixture now writes one. No scheduler file
   touched; `scheduler/` untouched by design holds.
+- backend (review) — review verdict fixed, all three findings. **F1
+  (BLOCKING), serialise the routing writers against run transitions** —
+  implemented as the reviewer decided (FOR SHARE, the 2.3/`_ENQUEUE`
+  pattern, on the run row), with two shape calls recorded here because the
+  reviewer's own probe forced them: (a) `release()` takes the share lock
+  as a preceding statement exactly as prescribed, but the **sweep's share
+  lock lives in the expired CTE's locking clause**
+  (`FOR UPDATE OF q SKIP LOCKED FOR SHARE OF r`) rather than a preceding
+  statement — a preceding lock-statement holds a _different_ snapshot's
+  candidate set, so a row expiring between the two statements of one
+  transaction would route unlocked (the same race, narrower), and
+  in-statement is the literal `_ENQUEUE` precedent shape; the empty case
+  locks nothing by construction, so the skip-if-empty guard is moot.
+  (b) **the terminal writers lock before their abandon**: `stop_run` and
+  `halt_run` now take the run row `FOR UPDATE` (guarded by their own
+  transition predicate) as the transaction's FIRST statement. Without
+  this, share locks on the routing side only narrow the window — a stop's
+  abandon (first statement, `crawl_queue` only) runs before its run-row
+  UPDATE ever blocks on the share lock, misses the `in_flight` row the
+  release holds, and the release commits it `pending` onto the stopped
+  run; the probe's adversarial interleaving fails without the writer-side
+  lock. This is the other half of the cited precedent (there, the share
+  lock exists "so its abandon sees these rows" — same ordering, run row
+  instead of domain row). `halt_run` gets the same lock because the
+  `failed` edge has the identical shape and hole. Probe (two engines,
+  deleted after): release-holds-share + concurrent stop → row `abandoned`
+  (stop parked pre-abandon, release routed `pending`, stop's abandon
+  caught the committed row, `abandoned=1`); stop-commits-first → release
+  routes `abandoned`. Both pass. ADR-0041: new "routing is serialised"
+  decision paragraph (mechanism, the unlocked-read interleaving in one
+  sentence, both halves); stated-cost + consequences now carry the
+  released-`abandoned`-not-recounted half of the tail (the SIGTERM 2-of-3)
+  — **F3**. **F2**: `test_run_lifecycle.py` docstring pointer →
+  `test_run_control.py`. `make lint` + `make test-api` green
+  (1149 passed, 2 skipped) with the routing tests unchanged — the locking
+  changed no observable behaviour beyond the race.
 - test — 57 tests, three files, all green under `make test-api`
   (1149 passed, 2 skipped; 1092 before). `tests/adapters/postgres/
 test_run_lifecycle.py` (41): the fence (claim refuses paused + all three
