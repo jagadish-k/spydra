@@ -239,6 +239,8 @@ export const runsInCrawl = crawl.table("runs", {
 	trigger: text().default('manual').notNull(),
 	stats: jsonb().default({}).notNull(),
 	stopReason: text("stop_reason"),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	nextSeq: bigint("next_seq", { mode: "number" }).default(0).notNull(),
 }, (table) => [
 	index("ix_runs_started_at_desc").using("btree", table.startedAt.desc().nullsFirst()),
 ]);

@@ -111,6 +111,11 @@ CREATE TABLE runs (
   trigger       TEXT NOT NULL DEFAULT 'manual',
   stats         JSONB NOT NULL DEFAULT '{}',  -- rolled up at completion
   stop_reason   TEXT,
+  -- ADR-0042 (2.8, late column): the per-run event counter every
+  -- `run_events` emission reserves on — one UPDATE .. RETURNING whose own
+  -- row lock serialises reservers, so run_events.seq is per-run monotonic
+  -- AND gap-free by construction.
+  next_seq      BIGINT NOT NULL DEFAULT 0,
   -- ADR-0041: `completed` is the only terminal state allowed a NULL
   -- stop_reason. `paused` is on the NULL side deliberately: it is not
   -- terminal (the terminal set is completed|stopped|failed), it is
@@ -226,6 +231,10 @@ CREATE UNIQUE INDEX uq_unknown_pages_open
 
 -- Bounded per-run event log. Exists so an SSE client that reconnects with
 -- Last-Event-ID can be backfilled rather than shown a gap (ADR-0012).
+-- Kinds written (2.8, ADR-0042): 'progress' | 'page' | 'domain_state' |
+-- 'run_state' — 'asset' waits for 5.2 — at most the last 5,000 per run
+-- (trimmed while the run is live; seq is reserved gap-free from
+-- runs.next_seq).
 CREATE TABLE run_events (
   id        BIGSERIAL PRIMARY KEY,
   run_id    BIGINT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,

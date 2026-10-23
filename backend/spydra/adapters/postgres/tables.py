@@ -195,6 +195,11 @@ runs = sa.Table(
     sa.Column("trigger", sa.Text, nullable=False, server_default="manual"),
     sa.Column("stats", pg.JSONB, nullable=False, server_default=_EMPTY_JSONB),
     sa.Column("stop_reason", sa.Text),
+    # ADR-0042: the per-run event counter every `run_events` emission
+    # reserves on — one UPDATE .. RETURNING under the row lock the run
+    # transitions already take. Late column (2.8): the next autogenerate
+    # drops it if this mirror is not kept current.
+    sa.Column("next_seq", sa.BigInteger, nullable=False, server_default=sa.text("0")),
     sa.Index("ix_runs_started_at_desc", sa.text("started_at DESC")),
 )
 
