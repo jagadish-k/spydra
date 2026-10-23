@@ -492,6 +492,45 @@ test_run_lifecycle.py` (41): the fence (claim refuses paused + all three
   narrower net the interleavings do not need to rely on. `make lint` +
   `make test-api` green (1155 passed, 2 skipped).
 
+- integrator (on `feat/2.7-run-lifecycle` @ `50f79d4`, base
+  `feat/2.6-mega-menu-guard`):
+  - **Gate.** Legs run individually, all green: `make lint` 0 ·
+    `make types` 0, clean tree · `make generated` 0, clean tree — the
+    Makefile gained `run-pause`/`run-resume`/`run-stop`/`run-status`
+    targets but no API schema moved, so nothing regenerated ·
+    `make test-api` **1155 passed, 2 skipped** — 1157 collected,
+    arithmetic closed by diffing collected node ids against a 2.6-tip
+    worktree (1091): +47 `test_run_lifecycle.py`, +5
+    `test_run_control.py`, +11 `test_runctl.py`, +2 enqueue-guard
+    (`test_a_terminal_run_gets_nothing[completed|stopped]`), +1
+    `test_required_is_inert[runctl.py]` and +3
+    `test_migrations[e5f2c9a71b34_*]` — both auto-parametrised over
+    new production/migration files, neither file in the diff — −3 the
+    retired `test_a_run_that_is_not_running_gets_nothing`
+    (its `paused` case flipped positive: pause freezes dequeue, not
+    discovery). Net +66 = 1157 exactly · `make test-bff` 0 fail ·
+    `make test-web` 10 pass · **`make test-render` 57/57 green** — no
+    environmental declaration, no `--no-verify`: clean push.
+  - **Scope.** `git diff --stat feat/2.6-mega-menu-guard...HEAD`:
+    exactly the declared set — ADR-0041 + `docs/adr/README.md`,
+    `docs/specs/001-domain-model.md`, `runs.py`/`frontier.py`,
+    `runctl.py` (new), `Makefile`, migration `e5f2c9a71b34` (new),
+    the three new test files, `test_enqueue_guard.py` (the two logged
+    deviations), this task file. Nothing outside; no findings. All 13
+    commit subjects imperative, ≤ 72 chars (39–56).
+  - **BUILD_PLAN 2.7 ticked** — `**Done:**` line in the plan's density:
+    lifecycle + drained finish, claim-fence, sweep/release routing,
+    enqueue widened with the pause rationale, `stop_reason` CHECK, the
+    serialisation race found twice and pinned by interleavings,
+    `runctl` + targets, 63 tests / 16 mutations.
+  - **PR handoff.** Pushed `feat/2.7-run-lifecycle` (no `--no-verify` —
+    all legs green). `gh` is not installed on this host, so the PR body
+    is `.tasks/pr-2.7-body.md`; the human opens
+    `feat/2.6-mega-menu-guard...feat/2.7-run-lifecycle`. **Stacked**:
+    merge #26 (`feat/2.4-dedupe-recrawl`), then 2.5, then 2.6, then
+    retarget this one to `develop` in turn. Not merged by the
+    integrator.
+
 ## Open questions
 
 - none blocking. Flagged for the human (planner decisions taken, reversible

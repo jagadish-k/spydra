@@ -569,11 +569,22 @@ from the task above it.
       (`projected_urls_at_depth_5`) as backstop. 14 tests over the fixture
       site; 9 mutations, all red.
 
-- [ ] `2.7` **Run lifecycle** — create, pause, stop, complete, and
+- [x] `2.7` **Run lifecycle** — create, pause, stop, complete, and
       `runs.stats` rolled up at completion (spec 001 §1). Abandoned rows are
       reported, never deleted (ADR-0004).
       **Done when:** a stopped run reports the work it did not do, and
       `stop_reason` is set for every non-`completed` terminal state.
+      **Done:** pause/resume/stop plus a drained finish that completes the run
+      when the frontier empties; a row is claimable iff its run is `running`,
+      fenced in the claim's `EXISTS` (ADR-0041). Sweep/release route by run
+      state — abandoned rows are counted, never deleted. Enqueue widened to
+      `running|paused`: pause freezes dequeue, not discovery. `stop_reason`
+      CHECK constraint (migration `e5f2c9a71b34`) set for every
+      non-`completed` terminal state. Routing and discovery writers are
+      serialised against terminal writers — the reviewer caught the race
+      twice, first the row routing, then the enqueue CTE, and the locks are
+      pinned by interleaving tests. `runctl` CLI plus `make run-pause`
+      /`run-resume`/`run-stop`/`run-status`. 63 tests, 16 mutations, all red.
 
 - [ ] `2.8` **`run_events` writer** — monotonic `seq` per run, the bounded
       log that lets a reconnecting SSE client be backfilled rather than shown
