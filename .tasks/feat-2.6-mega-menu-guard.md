@@ -125,25 +125,25 @@ exist), `docs/BUILD_PLAN.md` (integrator ticks 2.6 in the PR, WORKFLOW §4).
 
 ## Acceptance (BUILD_PLAN 2.6, spec 004 §5)
 
-- [ ] `whole_tree` over `discover` of `/shop/cutting/`'s static HTML with
+- [x] `whole_tree` over `discover` of `/shop/cutting/`'s static HTML with
       `subcategory_links: "nav a"` returns the finding — 11 links, 3
       spanning branches, deepest chain 3 nodes. This is "a `nav a` rule on
       2.1's mega-menu fixture is caught by the dry-run" (spec 004 §5): the
       analysis the dry-run calls returns the flag; 2.10 wires the report.
-- [ ] The scoped rule over the **same page** stays silent:
+- [x] The scoped rule over the **same page** stays silent:
       `section.subcategories a` on `/shop/cutting/` and on
       `/shop/grinding/belts/` (a page carrying both the mega-menu and the
       tiles) → no finding.
-- [ ] The production rule stays silent: `EXIT_DISCOVERY` on `EXIT_SEED`'s
+- [x] The production rule stays silent: `EXIT_DISCOVERY` on `EXIT_SEED`'s
       page → no finding.
-- [ ] `/shop/finishing/`'s `display:none` subcategory tiles are discovered
+- [x] `/shop/finishing/`'s `display:none` subcategory tiles are discovered
       by a static `discover` with no reveal step — pads and polish accepted
       (spec 004 §5).
-- [ ] Query spellings cannot fake a tree: facet URLs under a combined rule
+- [x] Query spellings cannot fake a tree: facet URLs under a combined rule
       collapse to one node (paths deduped, query dropped).
-- [ ] Pure module: no I/O imports, not async, same answer twice (2.3's
+- [x] Pure module: no I/O imports, not async, same answer twice (2.3's
       house style).
-- [ ] `make check` green. Named mutations: spanning → plain roots (must go
+- [x] `make check` green. Named mutations: spanning → plain roots (must go
       red — it is the false positive this task exists to prevent),
       threshold 2 → 3 (misses Halden's mega), ancestor test without the
       segment boundary, dedupe dropped, `levels` off by one, sample roots
@@ -192,6 +192,41 @@ branches, levels, roots)` — first four are ints (the acceptance reads
     Note for the test-writer: `discover` accepts **fetchable** spellings
     (trailing slash kept, query kept) — build expected paths through
     `canonical_url`, not `urlsplit(...).path`. To **spydra-test**.
+- spydra-test — `backend/tests/discovery/test_mega_menu.py` (14 test items,
+  `make check` green): every discovery through `discover` over the served
+  fixture site; every expected number derived from `catalogue.py`
+  (`len(NODES)` links/paths, `len(TREE)` branches, `LEVELS = 1 + max
+ancestor count`, roots sample = sorted canonical top-category paths) — no
+  magic numbers. Coverage beyond the checkboxes: the single-branch blind
+  spot pinned as silent (`nav.mega a[href^="/shop/grinding"]` — one
+  spanning root); an `allow_patterns` two-branch narrowing still fires with
+  `branches == 2` (the Decided "allow narrows the hazard" bullet, both
+  ways); a `product_links` rule matching the nav stays silent (reads only
+  `subcategory_links`); the prefix boundary pinned by splicing
+  `/shop/cutting-tools` and `/shop/grinding-tools` tiles into `/shop/`'s
+  container — five flat roots, silent. Backend's two flagged calls handled:
+  ints asserted against derived constants; expected paths built through
+  `canonical_url`. Mutations (each applied, this suite run, restored —
+  **all nine red**, restored green):
+  1. spanning → plain roots — RED (scoped-tiles silence tests fire);
+  2. `_SPANNING_ROOTS` 2 → 1 — RED (the single-branch pin fires);
+  3. 2 → 3 — RED (the two-branch allow case goes silent). Note: on bare
+     Halden `nav a` (3 branches) 2→3 is _equivalent_ — the task file's own
+     "misses Halden's mega" wording has this wrong; the two-branch test is
+     what makes the mutation provably non-equivalent;
+  4. ancestor boundary → bare `startswith` — RED (the spliced `-tools`
+     pair "spans"); 5. query-strip removed — RED
+     (`test_query_spellings…`, paths 13 ≠ 11); 6. dedupe dropped (set →
+     list) — RED (same test); 7. `levels` off by one — RED (nav-a levels);
+  5. `roots` sample emptied — RED (roots assertion); 9. rule key →
+     `product_links` — RED (nav-a finding disappears; the product-rule
+     test fires). One environmental note, not a defect: during the first
+     full `make check`, `render`'s DNS-isolation test
+     (`acceptance.test.js:316`) failed once with `web` resolving from the
+     render container; it passes on the clean tree **and** with this diff
+     on re-run (57/57 twice) — flaky when other compose containers are up,
+     untouched by this slice. No production defects found. To
+     **spydra-reviewer**.
 
 ## Open questions
 
