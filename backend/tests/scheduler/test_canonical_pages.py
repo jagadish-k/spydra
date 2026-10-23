@@ -110,7 +110,9 @@ async def crawl_all(engine: AsyncEngine, base: str, paths: list[str]) -> tuple[D
     domain = await seed_domain(engine, base.removeprefix("http://"))
     run = await seed_run(engine, [int(domain)])
     frontier = PostgresFrontier(engine)
-    assert await frontier.enqueue(run, domain, [(base + p, 1) for p in paths]) == len(paths)
+    assert (
+        await frontier.enqueue(run, domain, [(base + p, 1) for p in paths], cap=20_000)
+    ).added == len(paths)
 
     static = HttpxFetcher(SystemClock())
     try:

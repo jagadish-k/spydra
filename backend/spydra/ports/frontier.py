@@ -89,6 +89,35 @@ class Completion:
     consecutive_403s: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class Enqueued:
+    """What one guarded enqueue did.
+
+    `capped` is the breach signal (ADR-0040): the count of this run's queue
+    rows for the domain has reached `cap`, counted after this batch —
+    whether or not this batch inserted anything. The caller that sees it
+    halts the run; the count never comes back down (rows within a run are
+    never deleted), so every later enqueue re-signals it too.
+    """
+
+    added: int
+    capped: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RunHalt:
+    """The outcome of a run-scoped halt (ADR-0040).
+
+    `transitioned` is True only for the caller whose guarded UPDATE moved
+    the run to `failed` — the first signaller. Later in-flight pages
+    re-signal, abandon nothing (the rows already are `abandoned`) and
+    transition nothing; they log at debug, not error.
+    """
+
+    abandoned: int
+    transitioned: bool
+
+
 class Frontier(Protocol):
     async def claim(
         self, render_modes: frozenset[RenderMode] = EVERY_RENDER_MODE
@@ -154,12 +183,30 @@ class Frontier(Protocol):
         ...
 
     async def enqueue(
-        self, run_id: RunId, domain_id: DomainId, urls: Sequence[tuple[str, int]]
-    ) -> int:
+        self, run_id: RunId, domain_id: DomainId, urls: Sequence[tuple[str, int]], *, cap: int
+    ) -> Enqueued:
         """Add (url, depth) pairs, deduplicated within the run by `url_hash`
-        (spec 001 §1). Returns how many were new.
+        (spec 001 §1). Returns how many were new, and whether the domain's
+        per-run row count for `cap` has been reached (ADR-0040).
 
         Adds nothing unless the run is `running` and the domain `active`,
         decided atomically with the insert: rows added to a halted domain
-        or a finished run would never be claimed."""
+        or a finished run would never be claimed. The cap joins those
+        guards in the same statement: while the count is below it the whole
+        batch inserts (it may overshoot by up to one batch per concurrent
+        enqueuer); at or past it nothing inserts and `capped` is True.
+        """
+
+        ...
+
+    async def halt_run(self, run_id: RunId, domain_id: DomainId, reason: str) -> RunHalt:
+        """Fail `run_id` with `reason` and abandon its pending rows for
+        `domain_id`, in one transaction (ADR-0040).
+
+        Run-scoped by design: the domain row is untouched — it stays
+        `active`, and the next run's count starts at zero, below any cap.
+        Fenced on `state = 'running'`, so the first signaller wins and a
+        run a concurrent worker already finished cleanly is never failed
+        under it.
+        """
         ...

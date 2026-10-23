@@ -78,6 +78,8 @@ domains = sa.Table(
     sa.Column("in_flight", sa.Integer, nullable=False, server_default=sa.text("0")),
     sa.Column("asset_concurrency", sa.Integer, nullable=False, server_default=sa.text("5")),
     sa.Column("max_depth", sa.Integer, nullable=False, server_default=sa.text("5")),
+    # ADR-0040: the per-run queue ceiling, enforced by the guarded enqueue.
+    sa.Column("url_cap", sa.Integer, nullable=False, server_default=sa.text("20000")),
     sa.Column("deny_patterns", pg.ARRAY(sa.Text), nullable=False, server_default=_EMPTY_ARRAY),
     sa.Column("respect_robots", sa.Boolean, nullable=False, server_default=_TRUE),
     sa.Column("user_agent", sa.Text),

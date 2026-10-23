@@ -29,10 +29,18 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from spydra.adapters.postgres.runs import _STATS
 from spydra.domain.enums import RenderMode
 from spydra.domain.ids import DomainId, QueueItemId, RunId
 from spydra.domain.urls import fetchable_url, url_hash
-from spydra.ports.frontier import EVERY_RENDER_MODE, MAX_ATTEMPTS, ClaimedUrl, Completion
+from spydra.ports.frontier import (
+    EVERY_RENDER_MODE,
+    MAX_ATTEMPTS,
+    ClaimedUrl,
+    Completion,
+    Enqueued,
+    RunHalt,
+)
 
 __all__ = ["LEASE_SECONDS", "MAX_ATTEMPTS", "PostgresFrontier", "url_hash"]
 
@@ -238,19 +246,62 @@ WHERE run_id = :run_id AND domain_id = :domain_id AND state = 'pending'
 #
 # `unnest` makes it one round trip whatever the page links to: a mega-menu
 # page re-sends hundreds of links, almost all of them conflicts.
+#
+# The cap (ADR-0040) joins those guards. `queued` counts the run's rows for
+# the domain in every state — abandoned and failed rows are work discovery
+# produced — under the same statement snapshot; while the count is below
+# `cap` the whole batch inserts, at or past it nothing does. What comes
+# back with the yield is `capped`: the count after this batch has reached
+# the cap, the breach signal the caller halts the run on. The count never
+# comes back down within a run, so refusal after a breach is self-healing —
+# no flag to keep true.
 _ENQUEUE = sa.text(
     """
-INSERT INTO crawl.crawl_queue (run_id, domain_id, url, url_hash, depth)
-SELECT :run_id, :domain_id, u.url, u.url_hash, u.depth
-FROM unnest(CAST(:urls AS text[]), CAST(:hashes AS bytea[]), CAST(:depths AS int[]))
-     AS u(url, url_hash, depth)
-WHERE EXISTS (
-          SELECT 1 FROM crawl.domains d
-          WHERE d.id = :domain_id AND d.state = 'active'
-          FOR SHARE
-      )
-  AND EXISTS (SELECT 1 FROM crawl.runs r WHERE r.id = :run_id AND r.state = 'running')
-ON CONFLICT (run_id, url_hash) DO NOTHING
+WITH queued AS (
+    SELECT count(*) AS n
+    FROM crawl.crawl_queue
+    WHERE run_id = :run_id AND domain_id = :domain_id
+),
+inserted AS (
+    INSERT INTO crawl.crawl_queue (run_id, domain_id, url, url_hash, depth)
+    SELECT :run_id, :domain_id, u.url, u.url_hash, u.depth
+    FROM unnest(CAST(:urls AS text[]), CAST(:hashes AS bytea[]), CAST(:depths AS int[]))
+         AS u(url, url_hash, depth)
+    WHERE EXISTS (
+              SELECT 1 FROM crawl.domains d
+              WHERE d.id = :domain_id AND d.state = 'active'
+              FOR SHARE
+          )
+      AND EXISTS (SELECT 1 FROM crawl.runs r WHERE r.id = :run_id AND r.state = 'running')
+      AND (SELECT n FROM queued) < :cap
+    ON CONFLICT (run_id, url_hash) DO NOTHING
+    RETURNING id
+)
+SELECT (SELECT count(*) FROM inserted) AS added,
+       (SELECT n FROM queued) + (SELECT count(*) FROM inserted) >= :cap AS capped
+"""
+)
+
+# ADR-0040's recording. `state = 'running'` makes it first-signaller-wins:
+# a later in-flight re-signal — or a concurrent clean finish that got
+# there first — matches no row, so the run is failed exactly once, only by
+# a caller that found it still running.
+#
+# `_STATS` is the shape every finish writes (runs.py), shared rather than
+# duplicated — and this UPDATE is deliberately the SECOND statement of the
+# halt transaction, after the abandon. A single data-modifying CTE cannot
+# see a sibling CTE's writes (PostgreSQL runs them on one snapshot), so a
+# stats subquery beside the abandon CTE would count this breach's rows as
+# still `pending` and write `pages_abandoned = 0` — the clean finish
+# ADR-0040 forbids. Within one transaction the later statement sees the
+# earlier's writes; the transaction, not the statement count, is what
+# keeps the halt atomic.
+_HALT_RUN = sa.text(
+    f"""
+UPDATE crawl.runs
+SET state = 'failed', stop_reason = :reason, finished_at = now(),
+    stats = {_STATS}
+WHERE id = :run_id AND state = 'running'
 RETURNING id
 """
 )
@@ -382,25 +433,47 @@ class PostgresFrontier:
         return int(result.rowcount)
 
     async def enqueue(
-        self, run_id: RunId, domain_id: DomainId, urls: Sequence[tuple[str, int]]
-    ) -> int:
-        """Add (url, depth) pairs, deduplicated within the run.
+        self, run_id: RunId, domain_id: DomainId, urls: Sequence[tuple[str, int]], *, cap: int
+    ) -> Enqueued:
+        """Add (url, depth) pairs, deduplicated within the run, under the
+        domain's per-run cap (ADR-0040).
 
-        `ON CONFLICT DO NOTHING` rather than a SELECT-then-INSERT: the unique
-        index is already the constraint, and checking first is a race that
-        two workers discovering the same link will lose.
+        `ON CONFLICT DO NOTHING` rather than a SELECT-then-INSERT: the
+        unique index is already the constraint, and checking first is a
+        race that two workers discovering the same link will lose.
         """
         if not urls:
-            return 0
+            return Enqueued(added=0, capped=False)
         async with self._engine.begin() as conn:
-            result = await conn.execute(
-                _ENQUEUE,
-                {
-                    "run_id": int(run_id),
-                    "domain_id": int(domain_id),
-                    "urls": [fetchable_url(url) for url, _ in urls],
-                    "hashes": [url_hash(url) for url, _ in urls],
-                    "depths": [depth for _, depth in urls],
-                },
+            row = (
+                await conn.execute(
+                    _ENQUEUE,
+                    {
+                        "run_id": int(run_id),
+                        "domain_id": int(domain_id),
+                        "urls": [fetchable_url(url) for url, _ in urls],
+                        "hashes": [url_hash(url) for url, _ in urls],
+                        "depths": [depth for _, depth in urls],
+                        "cap": cap,
+                    },
+                )
+            ).one()
+        return Enqueued(added=int(row.added), capped=bool(row.capped))
+
+    async def halt_run(self, run_id: RunId, domain_id: DomainId, reason: str) -> RunHalt:
+        """Fail the run with `reason` and abandon its pending rows for the
+        domain, in one transaction (ADR-0040).
+
+        The abandon runs first so the stats written with the failure count
+        the rows it abandoned (see `_HALT_RUN`). The domain row is never
+        touched: it stays `active`, and the next run's count starts at
+        zero, below any cap.
+        """
+        async with self._engine.begin() as conn:
+            abandoned = await conn.execute(
+                _ABANDON, {"run_id": int(run_id), "domain_id": int(domain_id)}
             )
-            return len(result.fetchall())
+            halted = (
+                await conn.execute(_HALT_RUN, {"run_id": int(run_id), "reason": reason})
+            ).scalar_one_or_none()
+        return RunHalt(abandoned=int(abandoned.rowcount), transitioned=halted is not None)

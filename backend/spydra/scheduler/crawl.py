@@ -331,13 +331,43 @@ class PageCrawler:
             domain_deny=domain.deny_patterns,
         )
         links = found.links()
-        added = await self._frontier.enqueue(item.run_id, domain.id, links) if links else 0
+        outcome = (
+            await self._frontier.enqueue(item.run_id, domain.id, links, cap=domain.url_cap)
+            if links
+            else None
+        )
         log.debug(
             "links_discovered",
             accepted=len(links),
-            enqueued=added,
+            enqueued=outcome.added if outcome else 0,
             rejected={key: r.count for key, r in found.rejected.items()},
         )
+        if outcome is not None and outcome.capped:
+            await self._halt_for_cap(item, domain)
+
+    async def _halt_for_cap(self, item: ClaimedUrl, domain: Domain) -> None:
+        """ADR-0040: a cap breach is a run-scoped halt. The domain stays
+        `active` — a trap is a template defect, not a site refusal — its
+        pending rows in THIS run are abandoned, and the run is failed with
+        the cap named, so the breach is never reported as a clean finish."""
+        halt = await self._frontier.halt_run(
+            item.run_id,
+            domain.id,
+            f"url cap exceeded: {domain.url_cap} urls queued for {domain.host}",
+        )
+        if halt.transitioned:
+            # Spec 009 §1: an error is rare and actionable. Only the caller
+            # that moved the run to `failed` logs one; the in-flight tail
+            # after a breach is bounded by `max_concurrency`.
+            log.error(
+                "url_cap_exceeded",
+                cap=domain.url_cap,
+                abandoned=halt.abandoned,
+                host=domain.host,
+                action="review the domain's discovery rules; the next run starts clean",
+            )
+        else:
+            log.debug("url_cap_exceeded", cap=domain.url_cap, host=domain.host)
 
     async def _retry_or_fail(
         self,

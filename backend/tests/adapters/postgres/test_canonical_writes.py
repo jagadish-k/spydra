@@ -90,7 +90,7 @@ async def test_enqueue_stores_the_fetchable_spelling_under_the_canonical_hash(
     domain = await seed_domain(clean_crawl, HOST)
     run = await seed_run(clean_crawl, [int(domain)])
 
-    await PostgresFrontier(clean_crawl).enqueue(run, domain, [(SPELLINGS[which], 1)])
+    await PostgresFrontier(clean_crawl).enqueue(run, domain, [(SPELLINGS[which], 1)], cap=20_000)
 
     assert [(r.url, bytes(r.url_hash)) for r in await _queue(clean_crawl, run)] == [
         (FETCHABLE[which], sha(CANONICAL))
@@ -106,11 +106,13 @@ async def test_two_spellings_of_one_url_enqueue_one_row_holding_the_first(
     frontier = PostgresFrontier(clean_crawl)
     other = 1 - first
 
-    inserted = await frontier.enqueue(run, domain, [(SPELLINGS[first], 1), (SPELLINGS[other], 1)])
+    inserted = await frontier.enqueue(
+        run, domain, [(SPELLINGS[first], 1), (SPELLINGS[other], 1)], cap=20_000
+    )
     # A second call, as a second worker discovering the same link would make.
-    again = await frontier.enqueue(run, domain, [(f"{CANONICAL}#reviews", 2)])
+    again = await frontier.enqueue(run, domain, [(f"{CANONICAL}#reviews", 2)], cap=20_000)
 
-    assert (inserted, again) == (1, 0)
+    assert (inserted.added, again.added) == (1, 0)
     assert [r.url for r in await _queue(clean_crawl, run)] == [FETCHABLE[first]]
 
 
@@ -121,10 +123,10 @@ async def test_enqueue_keeps_two_different_pages_apart(clean_crawl: AsyncEngine)
     base = f"http://{HOST}/shop/cutting/discs"
 
     inserted = await PostgresFrontier(clean_crawl).enqueue(
-        run, domain, [(f"{base}/", 1), (f"{base}?page=2", 1)]
+        run, domain, [(f"{base}/", 1), (f"{base}?page=2", 1)], cap=20_000
     )
 
-    assert inserted == 2
+    assert inserted.added == 2
     assert {bytes(r.url_hash) for r in await _queue(clean_crawl, run)} == {
         sha(base),
         sha(f"{base}?page=2"),
@@ -148,7 +150,7 @@ async def test_enqueue_never_stores_credentials_or_a_fragment(
     domain = await seed_domain(clean_crawl, HOST)
     run = await seed_run(clean_crawl, [int(domain)])
 
-    await PostgresFrontier(clean_crawl).enqueue(run, domain, [(url, 1)])
+    await PostgresFrontier(clean_crawl).enqueue(run, domain, [(url, 1)], cap=20_000)
 
     (row,) = await _queue(clean_crawl, run)
     assert row.url == stored

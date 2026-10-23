@@ -112,6 +112,7 @@ export const domainsInCrawl = crawl.table("domains", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	consecutive403S: integer("consecutive_403s").default(0).notNull(),
 	configuredCrawlDelayMs: integer("configured_crawl_delay_ms").default(2000).notNull(),
+	urlCap: integer("url_cap").default(20000).notNull(),
 }, (table) => [
 	index("ix_domains_next_eligible_active").using("btree", table.nextEligibleAt.asc().nullsLast()).where(sql`(state = 'active'::crawl.domain_state)`),
 ]);

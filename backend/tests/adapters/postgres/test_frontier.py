@@ -486,10 +486,14 @@ async def test_enqueue_deduplicates_within_a_run_but_not_across_runs(
     f = frontier(engine)
     both = [("https://v.test/a", 0), ("https://v.test/b", 1)]
     again = [("https://v.test/a", 0)]
-    assert await f.enqueue(first, domain, both) == 2
-    assert await f.enqueue(first, domain, again) == 0, "a duplicate within the run"
-    assert await f.enqueue(second, domain, again) == 1, "a new run means new work"
-    assert await f.enqueue(first, domain, []) == 0
+    assert (await f.enqueue(first, domain, both, cap=20_000)).added == 2
+    assert (await f.enqueue(first, domain, again, cap=20_000)).added == 0, (
+        "a duplicate within the run"
+    )
+    assert (await f.enqueue(second, domain, again, cap=20_000)).added == 1, (
+        "a new run means new work"
+    )
+    assert (await f.enqueue(first, domain, [], cap=20_000)).added == 0
 
 
 async def test_enqueued_rows_are_claimable_with_their_depth(
@@ -503,7 +507,9 @@ async def test_enqueued_rows_are_claimable_with_their_depth(
     run = await seed_run(engine, [int(domain)])
 
     f = frontier(engine)
-    await f.enqueue(run, domain, [("https://v.test/deep", 2), ("https://v.test/top", 0)])
+    await f.enqueue(
+        run, domain, [("https://v.test/deep", 2), ("https://v.test/top", 0)], cap=20_000
+    )
 
     first = await f.claim()
     second = await f.claim()
