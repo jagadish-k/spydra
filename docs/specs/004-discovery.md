@@ -254,3 +254,96 @@ unset — is the backstop.
       browser.
 - [ ] An endpoint promoted from the network log enqueues as an ordinary URL
       against the per-domain gate.
+
+## 6. CSV seed files
+
+Onboarding many seeds fast, while templates still come from YAML
+(`spydra.seed_csv` + `spydra.load_seeds`, BUILD_PLAN 2.9). **Scaffolding
+with a deletion date**: `3.2` deletes the YAML loader and deletes these
+with it. No schema, no validator framework — the minimum format below, and
+nothing anyone could grow attached to.
+
+```csv
+host,seed_url,render_mode,crawl_delay_ms
+vantage-abrasives.test,https://vantage-abrasives.test/catalog/abrasives
+halden.fixtures:8099,http://halden.fixtures:8099/catalog,rendered,5000
+```
+
+**The header is the column contract** — exact, ordered, lowercase, and one
+of `host,seed_url` / `host,seed_url,render_mode` /
+`host,seed_url,render_mode,crawl_delay_ms`. A wrong or missing header
+refuses the whole file: inferring it turns row 1's data into column names
+and makes every later reject unnameable. Fields are stripped of surrounding
+whitespace (the one hand-edited forgiveness); blank lines are skipped; there
+is no comment syntax. Stdlib `csv` quoting, UTF-8.
+
+Columns and defaults, matching the YAML loader exactly: `render_mode`
+defaults `static`, `crawl_delay_ms` defaults `2000`, and
+**`respect_robots` is not a column** — fixed `true`, the domain default.
+`seed_url` must be an absolute http/https URL; `host` is cross-checked
+against its netloc (case-insensitive, port included) by the same rule as the
+YAML loader's — a seed is crawled under its domain's robots.txt and
+politeness, so it belongs under the domain it is on. Host validation is
+syntax-only: no DNS, no `getaddrinfo`, and nothing in the parser can make a
+network call.
+
+A CSV carries **no templates, ever** (ADR-0006 is untouched — a template
+cannot be expressed here). A template-less domain is crawled honestly: the
+structured (JSON-LD) rung runs without a template, every 200 lands in
+`unknown_pages` as `no_template`, the domain is never moved to
+`broken`/`awaiting_approval` by its template-less pages, and discovery never
+expands — the run crawls exactly the file's seeds and drains. Domains land
+`active`; the inbox says "give these domains templates".
+
+### Per-row rejects
+
+CSV is row-oriented: one typo in row 40 of 200 does not cost the file, and
+unlike YAML the rows share no structure — 200 independent facts, not one
+coherent template set. A rejected row is reported and skipped; the rest
+import. **The database transaction is still all-or-nothing** — rejects are
+removed before `apply` runs, so a partial import never half-writes.
+
+Rejects name the **file line number** (what the operator's editor shows;
+header is line 1, first data row line 2):
+
+| Token             | When                                                                                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `empty_host`      | host blank after strip                                                                                                                                                         |
+| `empty_seed`      | seed_url blank after strip                                                                                                                                                     |
+| `bad_url`         | no scheme or no netloc — a path-only seed, not a guess                                                                                                                         |
+| `off_scheme`      | scheme not http/https (`mailto:`, `javascript:`, …; rule §1.2)                                                                                                                 |
+| `host_mismatch`   | netloc ≠ host, case-insensitive, port included                                                                                                                                 |
+| `bad_render_mode` | not exactly `static`, `rendered` or `auto`                                                                                                                                     |
+| `bad_delay`       | not a whole number of milliseconds ≥ 0 (the CHECK, caught early)                                                                                                               |
+| `column_count`    | wrong field count for the header                                                                                                                                               |
+| `conflict`        | same host, different `render_mode`/`crawl_delay_ms` than an earlier accepted row — a domain has one setting, and picking one silently is the guess this loader refuses to make |
+
+An exact duplicate `(host, seed_url)` is **deduplicated silently**: the
+enqueue is `ON CONFLICT DO NOTHING`, so the second row's outcome is
+byte-identical to the first's and reporting it would report a non-failure.
+
+File-level refusals (`refused:`, nothing written, exit 1): a bad header; a
+header with no data rows; every data row rejected (no empty run is
+started). One refusal carries over from the YAML loader unchanged: a domain
+already `paused`, `broken` or `archived` makes `apply` refuse and roll back
+the **whole file** — a conflict with the world, not with a row's syntax;
+the operator removes that host's rows and re-runs.
+
+**Exit codes** — the only channel `make` has, and "imported with
+rejections" is not "success": `0` only when every data row imported (silent
+dedupes do not count against it); `1` when any row was rejected (the valid
+rows still imported — the summary says exactly what happened) or the file
+was refused. Rejects print to stderr one per line as
+`line N: <token> — <why>`; stdout carries the summary and
+`run N started from <path>`.
+
+### Acceptance
+
+- [ ] A file with one bad row imports the rest and names the failure — file
+      line and token; the bad row aborts nothing.
+- [ ] The header contract holds: the three spellings parse; anything else
+      refuses the file naming what was expected.
+- [ ] Exact duplicates dedupe silently; same-host setting conflicts reject
+      the later row naming both values and the earlier line.
+- [ ] Nothing in the parser can make a network call — import allowlist and
+      socket-block both proven by test; host validation is syntax-only.

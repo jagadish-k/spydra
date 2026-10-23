@@ -252,6 +252,43 @@ feature.
   discovery) — zero production change outside the two new modules, the
   Makefile and the two docs. Spec gap closed as new §6; BUILD_PLAN
   pointer fixed. No ADR (§6 of Decided). Open questions: two, below.
+- backend (2.9) — both modules, Makefile target, spec 004 §6 written;
+  tests and the `seeds.csv` fixture left to spydra-test (production-only
+  mandate). Decisions a reader cannot recover from the diff:
+  - **`off_scheme` before `bad_url`'s netloc check.** `mailto:` has a
+    scheme and no netloc; checking netloc first reported it `bad_url`.
+    Smoke-tested, found wrong, reordered — the pinned table names
+    mailto/javascript as `off_scheme`.
+  - **Header refusal is a `ValueError` from `parse`.** The import
+    allowlist cannot reach `spydra.domain.errors`, so the parser raises
+    stdlib `ValueError` and the CLI's `__main__` prints it with the
+    `refused:` prefix exactly as `load.py` prints `RefusedConfiguration`.
+  - **`load` returns `ImportResult(run_id | None, seed_file)` instead of
+    raising on empty files.** On every-row-rejected the operator must
+    still see the reject lines, which an exception from inside `load`
+    would strand; `run_id is None` means nothing was written and the CLI
+    composes the refusal (header-only vs all-rejected) from the rejects.
+    World-conflict `RefusedConfiguration` still propagates from `apply`
+    and rolls back the whole file.
+  - **Delay parsing is `isascii() and isdigit()`**, not `int()`: `int()`
+    accepts `"5_000"` (50) and `"+5"`, and a politeness floor the operator
+    did not write is the one mistake this loader refuses to make
+    silently. Negative and non-numeric are `bad_delay`.
+  - **An empty cell in a declared optional column is a reject**
+    (`bad_render_mode`/`bad_delay`), not the column default: defaults
+    belong to absent columns, which only the header can make absent.
+  - **Header match is case-sensitive and stripped** — "literally one of,
+    lowercase" pinned case; strip is the one hand-edited forgiveness and
+    applies to header fields as fields.
+    Verified: `make lint` (ruff + mypy --strict + eslint + prettier) clean;
+    `make test-api` 1187 passed, 2 skipped (parent-branch count; nothing
+    moved — `configuration.py` untouched). Parser semantics smoke-tested in
+    the api container against every token, the three header spellings,
+    dedupe, conflict, defaults and case-insensitive host compare (port
+    included). BUILD_PLAN pointer confirmed already fixed by the planner in
+    f6b8f42 — not redone. `make load-seeds` demo against Halden still to be
+    run (needs `phase1-exit` profile up; recorded here when done or handed
+    to integrator).
 
 ## Open questions
 
