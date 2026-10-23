@@ -452,6 +452,45 @@ test_run_lifecycle.py` (41): the fence (claim refuses paused + all three
   and the adapter file owns that name. Migration-both-ways stays with
   `test_migrations.py`'s AST symmetry guards + CI's `migrate-down` (that
   file's own header explains why a suite test must not run `downgrade`).
+- test (serialisation) — the reviewer's re-review finding closed: the
+  run-transition locks were shipped untested (deleting any left the suite
+  green). Six permanent interleaving tests, section 8 of
+  `test_run_lifecycle.py` (47 tests in the file now), all on the
+  deterministic two-engine harness (`_waiting_on_a_lock` + an uncommitted
+  transaction, with `waited and not done_early` asserted so a test cannot
+  pass against a writer that never blocked): **(1)** release holds the run
+  row `FOR SHARE`, a stop parks on its `FOR UPDATE` pre-abandon → the
+  release routes `pending` under the still-`running` run and commits, the
+  stop's abandon catches the committed row → `abandoned`, `abandoned == 1`,
+  stats `pages_abandoned == 1`, run `stopped`; **(2)** the mirror order —
+  a stop holds `FOR UPDATE` uncommitted, the release's preceding share
+  lock WAITS, wakes on commit and routes `abandoned`; **(3)** the sweep's
+  `FOR SHARE OF r` waits out an uncommitted stop and re-reads terminal
+  (EvalPlanQual) → the expired row routes `abandoned`, never
+  `pending`-on-terminal; **(4)** an enqueue arriving behind an uncommitted
+  stop blocks in the `run` CTE, wakes, re-reads `stopped`, inserts nothing
+  (`added == 0`, no row — fixture domain `active` on purpose: `discovered`
+  short-circuits before the run lock); **(5)** the enqueue-commits-first
+  mirror — the enqueue's share lock parks the stop until its rows are
+  committed, so the stop's abandon counts them (`abandoned == 1`); **(6)**
+  `halt_run`'s lock-first, the `failed`-edge twin of (1). **Mutations, each
+  red then restored green:** ML1 release `FOR SHARE` deleted → test 2 red
+  (the release never waits; routes `pending` onto the stopped run); ML2
+  sweep `FOR SHARE OF r` deleted → test 3 red; ML3 enqueue CTE lock
+  deleted (filter kept) → test 4 red; ML4 `stop_run` lock-first deleted →
+  tests 1 AND 5 red — the exact probe failure the backend described (the
+  abandon runs while parked on the run row, misses the in-flight row, the
+  release commits it `pending` after the stop; and the stop no longer
+  waits for an uncommitted enqueue); ML5 `halt_run` lock-first deleted →
+  test 6 red. **Coverage notes, stated honestly:** under ML1 test 1 stays
+  green — the stop's abandon then blocks on the _queue row_ the release's
+  routing UPDATE holds and still catches it, so the release share lock's
+  matching red is test 2 and the writer-side lock's is test 1 (ML4 proved
+  it with two reds); under ML3 test 5 stays green for the same
+  queue-row-locking reason, so the enqueue lock's matching red is test 4.
+  Every lock has a deterministic red; the queue-row locks are a second,
+  narrower net the interleavings do not need to rely on. `make lint` +
+  `make test-api` green (1155 passed, 2 skipped).
 
 ## Open questions
 

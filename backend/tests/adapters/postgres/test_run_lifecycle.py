@@ -30,16 +30,25 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from spydra.adapters.postgres.frontier import MAX_ATTEMPTS, PostgresFrontier
+from spydra.adapters.postgres.frontier import (
+    _ENQUEUE,
+    _LOCK_RUN_FOR_RELEASE,
+    _RELEASE_DOMAIN,
+    _RELEASE_QUEUE,
+    MAX_ATTEMPTS,
+    PostgresFrontier,
+    url_hash,
+)
 from spydra.adapters.postgres.runs import (
     _ABANDON_RUN,
     _FINISH_IF_DRAINED,
+    _LOCK_RUN_FOR_STOP,
     _STOP_RUN,
     STOP_REASON_OPERATOR,
     PostgresRuns,
 )
 from spydra.domain.ids import DomainId, RunId
-from spydra.ports.frontier import QueueItemState
+from spydra.ports.frontier import ClaimedUrl, QueueItemState
 from tests.adapters.postgres.seed import queue_row, seed_domain, seed_queue_row, seed_run
 from tests.adapters.postgres.test_enqueue_guard import _waiting_on_a_lock
 
@@ -642,3 +651,295 @@ async def test_a_stop_waiting_on_an_uncommitted_finish_misses(
     assert outcome.state == "completed"
     row = await run_row(engine, run)
     assert (row.state, row.stop_reason) == ("completed", None)
+
+
+# ---------------------------------------------------------------------------
+# 8. The serialisation — routing and discovery writers vs run transitions
+# ---------------------------------------------------------------------------
+#
+# The fences above say WHAT each writer decides; the locks say the decision
+# cannot be made against a run state that is about to change. A stop (or a
+# cap halt) committing between a routing writer's unlocked read of
+# `runs.state` and its own commit leaves a row `pending` on a terminal run —
+# unclaimable (the claim fence holds) but permanently unreported. Both
+# halves are pinned here, each as the deterministic interleaving the
+# reviewer proved:
+#
+# - the routing/discovery writers take the run row `FOR SHARE` (release:
+#   a preceding statement; sweep: in the expired CTE's locking clause;
+#   enqueue: the `run` CTE at the top), and
+# - `stop_run`/`halt_run` take it `FOR UPDATE` FIRST, so a routing share
+#   lock parks them BEFORE their abandon — without the writer-side lock
+#   the abandon runs while the release still holds the row, misses it,
+#   and the release commits it `pending` onto the stopped run.
+#
+# Two engine mechanics, learned from the probes this suite is built on:
+# share-vs-share does not conflict, so every `waited` below is observed on
+# the EXCLUSIVE side blocking (or the share side blocking behind it); and
+# the fixtures' domains must be `active` — a `discovered` domain
+# short-circuits the enqueue before the run lock is ever consulted.
+
+
+async def _claimed_in_flight_row(
+    engine: AsyncEngine, run: RunId, domain: DomainId
+) -> tuple[ClaimedUrl, int]:
+    """Claim the run's one row through the real frontier, so the release
+    interleavings drive a genuine lease, and return `(item, item_id)`."""
+    f = PostgresFrontier(engine)
+    item = await f.claim()
+    assert item is not None, "nothing was claimable"
+    return item, int(item.id)
+
+
+async def test_a_release_under_a_parked_stop_routes_pending_and_the_stop_catches_the_row(
+    clean_crawl: AsyncEngine, database_url: str
+) -> None:
+    """Release holds the run row `FOR SHARE`; the stop parks on its
+    `FOR UPDATE` BEFORE its abandon (the writer-side lock). The release
+    routes the row `pending` against the still-`running` run and commits;
+    the stop wakes, and its abandon — which had not run yet — sees the
+    committed `pending` row. The row ends `abandoned`, `abandoned == 1`,
+    the run `stopped`: the work is reported, not holed.
+
+    Delete the stop's lock-first and the abandon runs while parked on the
+    run row instead: it misses the in-flight row, the release commits it
+    `pending` after the stop, and both assertions below fail."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    await seed_queue_row(engine, run, domain, "https://v.test/a")
+    item, item_id = await _claimed_in_flight_row(engine, run, domain)
+
+    releaser = create_async_engine(database_url)
+    stopper = create_async_engine(database_url)
+    try:
+        async with releaser.connect() as a:
+            trans = await a.begin()
+            await a.execute(_LOCK_RUN_FOR_RELEASE, {"run_id": int(run)})
+            pending = asyncio.create_task(PostgresRuns(stopper).stop_run(run))
+            waited = await _waiting_on_a_lock(clean_crawl)
+            done_early = pending.done()
+            # The share lock held, the stop parked pre-abandon: the release
+            # is now free to route and commit under it.
+            await a.execute(_RELEASE_QUEUE, {"id": item_id, "lease": item.locked_until})
+            await a.execute(_RELEASE_DOMAIN, {"domain_id": int(domain)})
+            await trans.commit()
+        outcome = await asyncio.wait_for(pending, timeout=10)
+    finally:
+        await releaser.dispose()
+        await stopper.dispose()
+
+    assert waited and not done_early, "the stop did not park on the release's share lock"
+    assert outcome.transitioned is True
+    assert outcome.abandoned == 1, "the stop's abandon missed the released row"
+    assert (await queue_row(engine, item_id)).state == QueueItemState.ABANDONED
+    row = await run_row(engine, run)
+    assert row.state == "stopped"
+    assert row.stats is not None and row.stats["pages_abandoned"] == 1
+
+
+async def test_a_release_waiting_on_an_uncommitted_stop_routes_abandoned(
+    clean_crawl: AsyncEngine, database_url: str
+) -> None:
+    """The other order: the stop holds the run row `FOR UPDATE` with its
+    transaction open, and the release's preceding `FOR SHARE` must WAIT
+    for it, then route against the committed terminal state. Without the
+    share lock the release never waits: it routes `pending` against the
+    pre-stop snapshot, commits, and the row lands `pending` on a stopped
+    run — exactly the hole the serialisation exists to close."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    await seed_queue_row(engine, run, domain, "https://v.test/a")
+    item, item_id = await _claimed_in_flight_row(engine, run, domain)
+
+    stopper = create_async_engine(database_url)
+    releaser = create_async_engine(database_url)
+    try:
+        async with stopper.connect() as a:
+            trans = await a.begin()
+            await a.execute(_LOCK_RUN_FOR_STOP, {"run_id": int(run)})
+            pending = asyncio.create_task(PostgresFrontier(releaser).release(item))
+            waited = await _waiting_on_a_lock(clean_crawl)
+            done_early = pending.done()
+            await a.execute(_ABANDON_RUN, {"run_id": int(run)})
+            await a.execute(_STOP_RUN, {"run_id": int(run), "reason": STOP_REASON_OPERATOR})
+            await trans.commit()
+        released = await asyncio.wait_for(pending, timeout=10)
+    finally:
+        await stopper.dispose()
+        await releaser.dispose()
+
+    assert waited and not done_early, "the release did not wait for the stop"
+    assert released is True
+    assert (await queue_row(engine, item_id)).state == QueueItemState.ABANDONED
+    assert (await run_row(engine, run)).state == "stopped"
+
+
+async def test_a_sweep_waiting_on_an_uncommitted_stop_abandons_the_row(
+    clean_crawl: AsyncEngine, database_url: str
+) -> None:
+    """An expired lease on a run a stop is transitioning. The sweep's
+    `FOR SHARE OF r` — in the expired CTE's locking clause, so the routing
+    read and the row's fate are decided under one lock — must wait for the
+    stop, then re-read `stopped` (EvalPlanQual) and route `abandoned`,
+    never `pending`-on-terminal. Without the share lock the sweep reads
+    the pre-stop `running`, routes `pending`, and commits it onto the
+    stopped run."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    item_id = await _expired_row(engine, run, domain, "https://v.test/a")
+
+    stopper = create_async_engine(database_url)
+    sweeper = create_async_engine(database_url)
+    try:
+        async with stopper.connect() as a:
+            trans = await a.begin()
+            await a.execute(_LOCK_RUN_FOR_STOP, {"run_id": int(run)})
+            pending = asyncio.create_task(PostgresFrontier(sweeper).sweep_expired_leases())
+            waited = await _waiting_on_a_lock(clean_crawl)
+            done_early = pending.done()
+            await a.execute(_ABANDON_RUN, {"run_id": int(run)})
+            await a.execute(_STOP_RUN, {"run_id": int(run), "reason": STOP_REASON_OPERATOR})
+            await trans.commit()
+        recovered = await asyncio.wait_for(pending, timeout=10)
+    finally:
+        await stopper.dispose()
+        await sweeper.dispose()
+
+    assert waited and not done_early, "the sweep did not wait for the stop"
+    assert recovered == 1
+    assert (await queue_row(engine, item_id)).state == QueueItemState.ABANDONED
+    assert (await run_row(engine, run)).state == "stopped"
+
+
+async def test_an_enqueue_waiting_on_an_uncommitted_stop_inserts_nothing(
+    clean_crawl: AsyncEngine, database_url: str
+) -> None:
+    """The discovery writer: the enqueue's `run` CTE takes the run row
+    `FOR SHARE`, so an enqueue arriving behind an uncommitted stop blocks
+    BEFORE the insert, wakes on commit, re-reads `stopped`, and inserts
+    nothing — `added == 0`, no row `pending` on the terminal run. The
+    domain is `active` on purpose: a non-active domain short-circuits the
+    insert before the run lock is ever consulted, and the interleaving
+    would prove nothing about it."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+
+    stopper = create_async_engine(database_url)
+    enqueuer = create_async_engine(database_url)
+    try:
+        async with stopper.connect() as a:
+            trans = await a.begin()
+            await a.execute(_LOCK_RUN_FOR_STOP, {"run_id": int(run)})
+            pending = asyncio.create_task(
+                PostgresFrontier(enqueuer).enqueue(
+                    run, domain, [("https://v.test/late", 1)], cap=20_000
+                )
+            )
+            waited = await _waiting_on_a_lock(clean_crawl)
+            done_early = pending.done()
+            await a.execute(_ABANDON_RUN, {"run_id": int(run)})
+            await a.execute(_STOP_RUN, {"run_id": int(run), "reason": STOP_REASON_OPERATOR})
+            await trans.commit()
+        outcome = await asyncio.wait_for(pending, timeout=10)
+    finally:
+        await stopper.dispose()
+        await enqueuer.dispose()
+
+    assert waited and not done_early, "the enqueue did not wait for the stop"
+    assert (outcome.added, outcome.capped) == (0, False)
+    assert await _ids_of_run(engine, run) == [], "a row landed pending on the stopped run"
+    assert (await run_row(engine, run)).state == "stopped"
+
+
+async def test_a_stop_waiting_on_an_uncommitted_enqueue_abandons_its_rows(
+    clean_crawl: AsyncEngine, database_url: str
+) -> None:
+    """The mirror: the enqueue commits first, holding the run row `FOR
+    SHARE` until it does, so the stop parks on its `FOR UPDATE` and its
+    abandon — which runs only after the enqueue's rows are committed —
+    sees them. This is the enqueue's share lock doing the other half of
+    its job: the stop's report counts the discovered work, and no
+    discovered row survives a stop as `pending`."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    url = "https://v.test/discovered"
+
+    enqueuer = create_async_engine(database_url)
+    stopper = create_async_engine(database_url)
+    try:
+        async with enqueuer.connect() as a:
+            trans = await a.begin()
+            inserted = (
+                await a.execute(
+                    _ENQUEUE,
+                    {
+                        "run_id": int(run),
+                        "domain_id": int(domain),
+                        "urls": [url],
+                        "hashes": [url_hash(url)],
+                        "depths": [1],
+                        "cap": 20_000,
+                    },
+                )
+            ).one()
+            assert inserted.added == 1
+            pending = asyncio.create_task(PostgresRuns(stopper).stop_run(run))
+            waited = await _waiting_on_a_lock(clean_crawl)
+            done_early = pending.done()
+            await trans.commit()
+        outcome = await asyncio.wait_for(pending, timeout=10)
+    finally:
+        await enqueuer.dispose()
+        await stopper.dispose()
+
+    assert waited and not done_early, "the stop did not wait for the enqueue"
+    assert outcome.transitioned is True
+    assert outcome.abandoned == 1, "the stop's abandon never saw the discovered row"
+    ids = await _ids_of_run(engine, run)
+    assert len(ids) == 1 and (await queue_row(engine, ids[0])).state == QueueItemState.ABANDONED
+    assert (await run_row(engine, run)).state == "stopped"
+
+
+async def test_a_halt_parks_before_its_abandon_and_catches_a_row_released_under_it(
+    clean_crawl: AsyncEngine, database_url: str
+) -> None:
+    """`halt_run` carries the same writer-side lock as `stop_run` because
+    the `failed` edge has the identical shape and the identical hole: a
+    release holding the run row `FOR SHARE` must park the halt BEFORE its
+    abandon, so the released row is committed `pending` first and the
+    halt's domain-scoped abandon catches it."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    await seed_queue_row(engine, run, domain, "https://v.test/a")
+    item, item_id = await _claimed_in_flight_row(engine, run, domain)
+
+    releaser = create_async_engine(database_url)
+    halter = create_async_engine(database_url)
+    try:
+        async with releaser.connect() as a:
+            trans = await a.begin()
+            await a.execute(_LOCK_RUN_FOR_RELEASE, {"run_id": int(run)})
+            pending = asyncio.create_task(
+                PostgresFrontier(halter).halt_run(run, domain, "fixture halt")
+            )
+            waited = await _waiting_on_a_lock(clean_crawl)
+            done_early = pending.done()
+            await a.execute(_RELEASE_QUEUE, {"id": item_id, "lease": item.locked_until})
+            await a.execute(_RELEASE_DOMAIN, {"domain_id": int(domain)})
+            await trans.commit()
+        outcome = await asyncio.wait_for(pending, timeout=10)
+    finally:
+        await releaser.dispose()
+        await halter.dispose()
+
+    assert waited and not done_early, "the halt did not park on the release's share lock"
+    assert outcome.transitioned is True
+    assert outcome.abandoned == 1, "the halt's abandon missed the released row"
+    assert (await queue_row(engine, item_id)).state == QueueItemState.ABANDONED
+    assert (await run_row(engine, run)).state == "failed"
