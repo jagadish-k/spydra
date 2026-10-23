@@ -219,6 +219,16 @@ matched:
 This is where a facet trap is caught before it generates 40,000 URLs, and it
 is far cheaper than catching it mid-run.
 
+The mega-menu guard joins the report: when a `subcategory_links` rule spans
+two or more branches from one page — a site-wide menu's shape, not one
+container's tiles (§3a) — the report carries the finding from
+`spydra.discovery.mega_menu.whole_tree`: the spanning roots, the link count,
+the deepest chain, so the operator scopes the selector before approval. Its
+blind spot is deliberate and named: a menu nested under a single top-level
+branch is invisible to structure, and §3a's "prefer the path already in the
+crawl" check — `projected_urls_at_depth_5` with the rule set and with it
+unset — is the backstop.
+
 ## 5. Acceptance
 
 - [ ] `?b=2&a=1` and `?a=1&b=2` produce the same `url_hash`.

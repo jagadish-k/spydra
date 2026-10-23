@@ -157,6 +157,41 @@ exist), `docs/BUILD_PLAN.md` (integrator ticks 2.6 in the PR, WORKFLOW §4).
   `tests/fixtures/README.md` already maps both shapes to 2.6. No in-flight
   slice owns `discovery/`. First file for the implementer:
   `backend/spydra/discovery/mega_menu.py`. To **spydra-backend**.
+- spydra-backend — built `discovery/mega_menu.py` (pure, stdlib +
+  `domain.urls` + `discovery.links.Discovery` for the type): `whole_tree`
+  canonicalises accepted `subcategory_links`, keeps the path, dedupes to a
+  set, and finds spanning roots by pairwise segment-boundary ancestry
+  (`q.startswith(p + "/")`, `/` owning every other path — O(n²) slice
+  comparisons, deliberate: per-page link sets are small and each helper is
+  the contract's definition verbatim). `MegaMenuFinding(links, paths,
+branches, levels, roots)` — first four are ints (the acceptance reads
+  "11 links, 3 spanning branches, deepest chain 3 nodes"), `roots` is the
+  up-to-3 sorted sample. `levels` is `1 + max ancestor count` — ancestors
+  of one path nest (prefix forest), so the count is the chain. Spec 004 §4
+  gained the one planned paragraph (flag, function, projection backstop).
+  Decisions worth knowing:
+  - **`links`/`paths`/`branches` are counts, `roots` carries paths.** The
+    field list's parentheticals read two ways; "the link count" in the task
+    and "11 links, 3 spanning branches" in the acceptance pin the ints.
+    Redundancy of branches-as-tuple with roots-as-sample avoided.
+  - **No re-export from `discovery/__init__.py`** — that file is a bare
+    docstring; `links` and `canonical` are imported by full path
+    (`spydra.discovery.links.discover` in spec 004 §1), so `mega_menu`
+    follows. The spec paragraph names the full path too.
+  - **No try/except around `canonical_url`.** Accepted links are
+    post-canonicalisation by construction (`discover` rejects unparseable
+    before accepting); handling it would guard an impossible state.
+  - **`_ROOT_SAMPLE = 3` named alongside `_SPANNING_ROOTS`**, house style
+    of `links._SAMPLES`.
+    Smoke (throwaway, run in the api container, deleted): `nav a` on
+    `/shop/cutting/` fires with exactly the pinned numbers; `section.subcategories`
+    silent on `/shop/cutting/`, `/shop/grinding/belts/` (two roots, none
+    spanning — the plain-roots mutation case), `/shop/`; `EXIT_DISCOVERY`
+    silent on the exit seed; `/shop/finishing/` hidden tiles accepted
+    statically; 16 facet spellings of one leaf path collapse to one node.
+    Note for the test-writer: `discover` accepts **fetchable** spellings
+    (trailing slash kept, query kept) — build expected paths through
+    `canonical_url`, not `urlsplit(...).path`. To **spydra-test**.
 
 ## Open questions
 
