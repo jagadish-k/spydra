@@ -110,7 +110,13 @@ CREATE TABLE runs (
   domain_ids    BIGINT[] NOT NULL,     -- the selection this run covers
   trigger       TEXT NOT NULL DEFAULT 'manual',
   stats         JSONB NOT NULL DEFAULT '{}',  -- rolled up at completion
-  stop_reason   TEXT
+  stop_reason   TEXT,
+  -- ADR-0041: `completed` is the only terminal state allowed a NULL
+  -- stop_reason. `paused` is on the NULL side deliberately: it is not
+  -- terminal (the terminal set is completed|stopped|failed), it is
+  -- resumable, and it exists precisely to be resumed.
+  CONSTRAINT runs_terminal_stop_reason
+    CHECK (state IN ('running','paused','completed') OR stop_reason IS NOT NULL)
 );
 CREATE INDEX ON runs (started_at DESC);
 
@@ -313,6 +319,52 @@ discovered ──propose──> awaiting_approval ──approve──> active
 
 Transitions are a pure function in `domain/lifecycle.py`. Invalid transitions
 raise; they are not silently ignored.
+
+### Run lifecycle
+
+Explicit state on `runs.state` (ADR-0041). The invariant underneath: **a
+row is claimable if and only if its run is `running`** — enforced at the
+claim, and at the two other places a row can leave `in_flight` back to
+claimable (the lease sweep and the release path both send a row of a
+non-`running` run to `abandoned`), so a terminal run holds no pending rows
+and the stats written at its terminal transition stay honest.
+
+```
+running ──pause──> paused ──resume──> running
+   │                  │
+   │                  └────stop──────> stopped
+   ├──stop──> stopped
+   ├──drained──> completed
+   └──cap breach (ADR-0040)──> failed
+
+completed | stopped | failed  are terminal; nothing leaves them.
+```
+
+| Transition                  | Guarded predicate                   | Row / stats writes in the same transaction                                     |
+| --------------------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
+| `running → paused`          | `state = 'running'`                 | none — pause freezes dequeue, not discovery (in-flight rows still enqueue)     |
+| `paused → running`          | `state = 'paused'`                  | the drained-finish check: a run that drained while paused completes with stats |
+| `running\|paused → stopped` | `state IN ('running','paused')`     | run-scoped abandon of pending rows FIRST, then `_STATS` (ADR-0040's ordering)  |
+| `running → completed`       | `state = 'running'` + queue drained | `_STATS`                                                                       |
+| `running → failed`          | `state = 'running'`                 | domain-scoped abandon, then `stop_reason` + `_STATS` (ADR-0040)                |
+
+**Transitions are guarded SQL predicates, not a pure function** — unlike
+the domain lifecycle above. Every run transition is atomic with its row and
+stats writes in one transaction, and a pure function plus a separate write
+is exactly the check-then-act race the guarded predicate exists to prevent.
+There is also no caller for one: the callers are SQL transactions (stop,
+pause, resume, finish, halt). Do not "complete" the symmetry later.
+
+`stop_reason` vocabulary: `stopped by operator` (operator stop) and
+`url cap exceeded: {cap} urls queued for {host}` (cap breach, ADR-0040) —
+the only non-completed terminal paths that can fire today. The CHECK in
+§1 enforces structurally that every non-completed terminal row names its
+reason.
+
+Pause and stop are run-scoped — the whole run, all its domains, which is
+the only semantics an operator can drive (a file-load may create one run
+over several domains). Per-domain stop needs a driver that does not exist;
+ADR-0040's seam for it stays open until a multi-domain UI/API does.
 
 ---
 
