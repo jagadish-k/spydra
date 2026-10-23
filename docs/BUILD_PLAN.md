@@ -611,7 +611,7 @@ from the task above it.
       1185 passed, 2 skipped.
 
 - [ ] `2.9` **CSV seed parsing** with per-row validation and no HTTP
-      (spec 004 §4). Rejects report the row and the reason.
+      (spec 004 §6). Rejects report the row and the reason.
       **Done when:** a file with one bad row imports the rest and names the
       failure, and nothing in the parser can make a network call.
 
