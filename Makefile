@@ -52,7 +52,8 @@ flat = $(subst $(NL), ,$(1))
         test test-api test-bff test-web test-render e2e seed-dev \
         lint lint-api lint-bff lint-web fmt \
         fmt-staged fmt-staged-js typecheck-changed typecheck-changed-py \
-        types types-crawler types-ui generated generated-check check load phase1-exit
+        types types-crawler types-ui generated generated-check check load phase1-exit \
+        pause-run resume-run stop-run
 
 help: ## show the targets
 	@grep -E '^[a-zA-Z0-9_.-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "} {printf "  \033[1;36m%-22s\033[0m %s\n", $$1, $$2}' | sort
@@ -247,6 +248,18 @@ test-render:
 load: ## configure domains from YAML and start a run: make load f=path.yaml (BUILD_PLAN 1.14)
 	@test -n "$(f)" || { echo "usage: make load f=path/to/file.yaml (relative to backend/)"; exit 2; }
 	$(COMPOSE) run --rm api python -m spydra.load $(f)
+
+pause-run: ## pause a run: make pause-run r=42 (BUILD_PLAN 2.7)
+	@test -n "$(r)" || { echo "usage: make pause-run r=<run_id>"; exit 2; }
+	$(COMPOSE) run --rm api python -m spydra.runctl pause $(r)
+
+resume-run: ## resume a paused run: make resume-run r=42 (BUILD_PLAN 2.7)
+	@test -n "$(r)" || { echo "usage: make resume-run r=<run_id>"; exit 2; }
+	$(COMPOSE) run --rm api python -m spydra.runctl resume $(r)
+
+stop-run: ## stop a run, abandoning its pending rows: make stop-run r=42 (BUILD_PLAN 2.7)
+	@test -n "$(r)" || { echo "usage: make stop-run r=<run_id>"; exit 2; }
+	$(COMPOSE) run --rm api python -m spydra.runctl stop $(r)
 
 phase1-exit: ## phase 1's exit criterion against the live stack (ADR-0036)
 	scripts/phase1-exit.sh
