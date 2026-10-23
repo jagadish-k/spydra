@@ -70,6 +70,17 @@ WITH eligible AS (
       AND EXISTS (
           SELECT 1 FROM crawl.crawl_queue q0
           WHERE q0.domain_id = d.id AND q0.state = 'pending'
+          -- ADR-0041: a pending row is work only while its run is
+          -- running. One predicate buys both states: a terminal run's
+          -- rows stop being claimable (the domain is skipped entirely
+          -- rather than locked-then-empty), and a paused run's stop
+          -- being claimable without being touched — pause is resumable,
+          -- and that distinction is why both states exist. Cost: one PK
+          -- probe per candidate inside an EXISTS that already runs per
+          -- eligible domain; the guarded enqueue has carried the same
+          -- run-state EXISTS since 2.3.
+          AND EXISTS (SELECT 1 FROM crawl.runs r
+                      WHERE r.id = q0.run_id AND r.state = 'running')
       )
     ORDER BY d.next_eligible_at
     FOR UPDATE SKIP LOCKED          -- on domains: THE POLITENESS GATE.
@@ -163,7 +174,17 @@ WHERE id = :domain_id
 _RELEASE_QUEUE = sa.text(
     """
 UPDATE crawl.crawl_queue
-SET state = 'pending',
+SET state = CASE WHEN (SELECT r.state FROM crawl.runs r
+                       WHERE r.id = crawl_queue.run_id)
+                    IN ('completed', 'stopped', 'failed')
+               -- ADR-0041: claimable ⇔ run running. A row released after
+               -- its run went terminal (SIGTERM, backpressure, a claim
+               -- that raced the signal) must not land `pending`: the
+               -- claim fence would hold it unclaimable for ever,
+               -- unreported — a silent hole in the stats written at the
+               -- terminal transition. A paused run's row still returns
+               -- to `pending`: pause keeps every row, it freezes dequeue.
+               THEN 'abandoned' ELSE 'pending' END,
     locked_until = NULL,
     -- The attempt is given back too. Spec 002 §6's "no penalty" means no
     -- consecutive_failures, no backoff AND no attempt charged — otherwise
@@ -186,18 +207,32 @@ WHERE id = :domain_id
 _SWEEP = sa.text(
     """
 WITH expired AS (
-    SELECT id, domain_id, attempts
-    FROM crawl.crawl_queue
-    WHERE state = 'in_flight'
-      AND locked_until IS NOT NULL
-      AND locked_until < now()
-    FOR UPDATE SKIP LOCKED
+    SELECT q.id, q.domain_id, q.attempts, r.state AS run_state
+    FROM crawl.crawl_queue q
+    JOIN crawl.runs r ON r.id = q.run_id
+    WHERE q.state = 'in_flight'
+      AND q.locked_until IS NOT NULL
+      AND q.locked_until < now()
+    -- OF q: lock queue rows exactly as before. Locking the joined run
+    -- rows too would serialise every sweep against every run transition.
+    FOR UPDATE OF q SKIP LOCKED
 ),
 recovered AS (
     UPDATE crawl.crawl_queue q
-    SET state = CASE WHEN q.attempts >= :max_attempts THEN 'failed' ELSE 'pending' END,
+    SET state = CASE
+            WHEN e.attempts >= :max_attempts THEN 'failed'
+            -- ADR-0041: claimable ⇔ run running. A swept row of a
+            -- terminal run must not go back to `pending` — unclaimable
+            -- (the claim fence holds) but unreported, a silent hole in
+            -- the stats written at the terminal transition. `attempts`
+            -- still wins first: an exhausted row failed, whatever its
+            -- run did.
+            WHEN e.run_state IN ('completed', 'stopped', 'failed') THEN 'abandoned'
+            ELSE 'pending'
+        END,
         locked_until = NULL
-    WHERE q.id IN (SELECT id FROM expired)
+    FROM expired e
+    WHERE q.id = e.id
     RETURNING q.id, q.domain_id
 )
 SELECT count(*) AS recovered FROM recovered
@@ -272,7 +307,13 @@ inserted AS (
               WHERE d.id = :domain_id AND d.state = 'active'
               FOR SHARE
           )
-      AND EXISTS (SELECT 1 FROM crawl.runs r WHERE r.id = :run_id AND r.state = 'running')
+      -- ADR-0041: widened from `= 'running'` to admit `paused`. Pause
+      -- freezes dequeue, not discovery: a paused run's in-flight tail
+      -- still crawls, and dropping its links would make resume produce a
+      -- silently incomplete crawl — the worst failure mode a pause can
+      -- have, and it leaves no trace.
+      AND EXISTS (SELECT 1 FROM crawl.runs r
+                  WHERE r.id = :run_id AND r.state IN ('running', 'paused'))
       AND (SELECT n FROM queued) < :cap
     ON CONFLICT (run_id, url_hash) DO NOTHING
     RETURNING id
