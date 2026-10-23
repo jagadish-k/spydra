@@ -943,3 +943,140 @@ async def test_a_halt_parks_before_its_abandon_and_catches_a_row_released_under_
     assert outcome.abandoned == 1, "the halt's abandon missed the released row"
     assert (await queue_row(engine, item_id)).state == QueueItemState.ABANDONED
     assert (await run_row(engine, run)).state == "failed"
+
+
+# ---------------------------------------------------------------------------
+# 9. The transitions replay — every move writes its `run_state` event
+#     (BUILD_PLAN 2.8, ADR-0042)
+# ---------------------------------------------------------------------------
+
+
+async def _run_state_events(engine: AsyncEngine, run: RunId) -> list[dict[str, Any]]:
+    """The run's `run_state` payloads, in seq order — the rows 3.6's SSE
+    replay will send, and nothing else (each transition's event is the
+    whole point here, not the page/progress noise around it)."""
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            sa.text(
+                "SELECT seq, payload FROM crawl.run_events "
+                "WHERE run_id = :r AND kind = 'run_state' ORDER BY seq"
+            ),
+            {"r": int(run)},
+        )
+    return [dict(r.payload) for r in rows]
+
+
+async def test_every_operator_transition_writes_its_run_state_event(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Pause, resume, stop — each move leaves the event that replays it,
+    with spec 005 §3's shape: `state` always, `stop_reason` on the stop,
+    `stats` on the terminal transition only. And a fenced miss (a pause of
+    a run already paused) emits nothing — the event says a transition
+    happened, so a non-transition must not write one."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    # A pending row keeps the run undrained through pause and resume, so
+    # the stop at the end is the only terminal transition.
+    await seed_queue_row(engine, run, domain, "https://v.test/a")
+    runs = PostgresRuns(engine)
+
+    assert (await runs.pause_run(run)).transitioned
+    assert not (await runs.pause_run(run)).transitioned, "the fixture re-paused"
+    assert (await runs.resume_run(run)).transitioned
+    assert (await runs.stop_run(run)).transitioned
+
+    events = await _run_state_events(engine, run)
+    assert [e["state"] for e in events] == ["paused", "running", "stopped"]
+    assert set(events[0]) == {"state"}, "pause is resumable: no stats, no reason"
+    assert set(events[1]) == {"state"}, "resume is not terminal: no stats"
+    assert set(events[2]) == {"state", "stop_reason", "stats"}
+    assert events[2]["stop_reason"] == STOP_REASON_OPERATOR
+    assert events[2]["stats"]["pages_crawled"] == 0, "stats is the transition-time snapshot"
+
+
+async def test_resume_completing_a_drained_run_writes_both_events(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """A run that drained while paused is completed by the resume itself,
+    in the same transaction — so both the `running` and the `completed`
+    event exist, `completed` carrying the stats snapshot, with nothing in
+    between."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    await seed_queue_row(engine, run, domain, "https://v.test/a")
+    runs = PostgresRuns(engine)
+
+    assert (await runs.pause_run(run)).transitioned
+    async with engine.begin() as conn:
+        # The in-flight tail was the whole remaining queue: it closes done
+        # while the run is paused, leaving nothing to claim.
+        await conn.execute(
+            sa.text("UPDATE crawl.crawl_queue SET state = 'done' WHERE run_id = :r"),
+            {"r": int(run)},
+        )
+
+    outcome = await runs.resume_run(run)
+    assert outcome.stats is not None, "the fixture did not drain the run"
+
+    events = await _run_state_events(engine, run)
+    assert [e["state"] for e in events] == ["paused", "running", "completed"]
+    assert set(events[2]) == {"state", "stats"}
+    assert events[2]["stats"]["pages_crawled"] == 1
+
+
+async def test_finish_drained_writes_the_completed_event_for_runs_no_worker_owns(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The unowned finish: a worker SIGKILLed on the run's last row leaves
+    the sweep to retire it, and no one closes it — the transition emits the
+    terminal event itself (ADR-0042's answer to "who emits for a run
+    finished by `finish_drained`"). Every run the statement finishes gets
+    its own row, in the statement's own transaction."""
+    engine = clean_crawl
+    finished: list[RunId] = []
+    for n in range(2):
+        domain = await seed_domain(engine, f"two-drains-{n}.test")
+        run = await seed_run(engine, [int(domain)])
+        await seed_queue_row(engine, run, domain, f"https://v.test/{n}")
+        async with engine.begin() as conn:
+            await conn.execute(
+                sa.text("UPDATE crawl.crawl_queue SET state = 'done' WHERE run_id = :r"),
+                {"r": int(run)},
+            )
+        finished.append(run)
+
+    completed = await PostgresRuns(engine).finish_drained()
+    assert {r for r, _ in completed} == set(finished), "the fixture finished nothing"
+
+    for run in finished:
+        events = await _run_state_events(engine, run)
+        assert [e["state"] for e in events] == ["completed"]
+        assert set(events[0]) == {"state", "stats"}
+
+
+async def test_halt_run_writes_its_failed_event_with_the_reason_and_stats(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """2.5's cap-halt seam replayed: the `failed` edge's event carries the
+    stop_reason the operator will read (the cap, named) and the
+    transition-time stats snapshot — the same one written to `runs.stats`."""
+    engine = clean_crawl
+    domain = await seed_domain(engine)
+    run = await seed_run(engine, [int(domain)])
+    for n in range(3):
+        await seed_queue_row(engine, run, domain, f"https://v.test/{n}")
+
+    reason = "fixture halt"
+    halt = await PostgresFrontier(engine).halt_run(run, domain, reason)
+    assert halt.transitioned
+
+    events = await _run_state_events(engine, run)
+    assert [e["state"] for e in events] == ["failed"]
+    assert set(events[0]) == {"state", "stop_reason", "stats"}
+    assert events[0]["stop_reason"] == reason
+    # ADR-0040's ordering: the stats read runs after the abandon, so the
+    # event replays the same number `runs.stats` carries.
+    assert events[0]["stats"]["pages_abandoned"] == 3

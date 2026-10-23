@@ -258,31 +258,48 @@ has no consumer and adds none.
 
 ## Acceptance (from BUILD_PLAN 2.8's done-when)
 
-- [ ] Two real engines emitting concurrently into one run: `UNIQUE (run_id,
-  seq)` holds, every insert lands with its own seq — N concurrent emits
+- [x] Two real engines emitting concurrently into one run: `UNIQUE (run_id,
+seq)` holds, every insert lands with its own seq — N concurrent emits
       yield N rows, seqs exactly `1..N`, none dropped, none duplicated
-- [ ] `seq` is monotonic per run and **gap-free** (pinned): a rolled-back
+      (`test_run_events.py` §1: blocked-behind-uncommitted-reserve, 30
+      alternating rounds, 40-emit burst)
+- [x] `seq` is monotonic per run and **gap-free** (pinned): a rolled-back
       emission reserves nothing; a killed worker's in-flight transaction
-      leaves no hole
-- [ ] The trim holds the bound on a run that emits past it: a run emitting
+      leaves no hole (rollback discards reservation and insert together —
+      `test_a_rolled_back_emission_reserves_nothing_and_leaves_no_hole`,
+      and the transition probe
+      `test_a_rolled_back_transition_leaves_neither_state_nor_event`)
+- [x] The trim holds the bound on a run that emits past it: a run emitting
       5,000 + k events retains ≤ 5,000 while running, and the `run_state`
-      terminal row is always among them
-- [ ] The 2.5 seam replays: a cap-halted run has its `run_state` row —
+      terminal row is always among them (exactly `KEEP_EVENTS` retained,
+      first seq `hi - keep + 1` — the off-by-one pinned both edges)
+- [x] The 2.5 seam replays: a cap-halted run has its `run_state` row —
       `failed`, the `stop_reason`, transition-time `stats`
-- [ ] The 2.7 seams replay: a stopped run (and a paused, and a resumed run)
+      (`test_trap_crawls.py`, extended)
+- [x] The 2.7 seams replay: a stopped run (and a paused, and a resumed run)
       each have their `run_state` rows; every completion path — a worker's
       last close, the sweep's `finish_drained`, resume's drained finish —
       writes its `completed` `run_state` row even though no worker owns the
-      run in the last two
-- [ ] `domain_state` rows for the three-403 pause and the 1.11 halts;
+      run in the last two (`test_run_lifecycle.py` §9 at the adapter,
+      `test_run_control.py` through the live worker, the sweep's
+      unowned-finish case extended in `test_page_crawler.py`)
+- [x] `domain_state` rows for the three-403 pause and the 1.11 halts;
       `page` rows on `done` and final-`failed` closures only (none on
       retry/release/abandon); `progress` rows carry `depth` and are throttled
-      to ≥ 1 s per (run, domain)
-- [ ] No `asset` rows (pinned until 5.2)
-- [ ] Spec 009 discipline: a 1,000-page run still meets the line budget —
-      emission adds no log line above `debug`
-- [ ] Migration up/down/up; `make generated` clean (`next_seq` reaches
-      `crawl.generated.ts`); `make check` green
+      to ≥ 1 s per (run, domain) (`test_page_crawler.py`'s emission-set
+      section; the throttle crosses the window with a real 1.1 s sleep on
+      the crawler's own monotonic clock)
+- [x] No `asset` rows (pinned until 5.2) — the volume test's kind set is
+      capped at `{page, progress, domain_state, run_state}` and asserts no
+      `asset`
+- [x] Spec 009 discipline: a 1,000-page run still meets the line budget —
+      emission adds no log line above `debug` (1.13's budget tests green
+      and untouched; the volume test additionally asserts the info log
+      names no emission)
+- [x] Migration up/down/up; `make generated` clean (`next_seq` reaches
+      `crawl.generated.ts`); `make check` green — migration and generated
+      were backend's (proven down/up on the test DB per its handoff);
+      `make lint` and `make test-api` green from the test side
 
 ## Handoff log
 
@@ -331,6 +348,70 @@ id, stats` so the event carries the transition-time snapshot); worker
   4. `crawl.generated.ts` regenerated (next_seq reached it, line 243) —
      dev DB migrated first (`make migrate`), since drizzle introspects the
      live database.
+- test (2.8) — suite 1184 passed / 2 skipped / 1 xfailed (the defect below)
+  on `make test-api`; `make lint` green. **Fixture repairs first, own
+  commit:** the four sites the backend's handoff named now pass
+  `events=PostgresRunEvents(engine)` exactly as `worker.py` wires it (both
+  `build()`s and both `ClaimLoop`s) — the real adapter over the real test
+  engine, keeping every existing assertion honest. Suite green at that
+  point: 1159 passed.
+  **New `backend/tests/adapters/postgres/test_run_events.py`** (13 tests):
+  the two-engine race (blocked-behind-uncommitted-reserve → 30 alternating
+  commits → 40-emit burst = seqs exactly `1..102`), rollback discards
+  reservation and insert together (gap-free), the transition-rollback probe
+  (neither state nor event nor `next_seq` survives), JSONB payload
+  roundtrip, the trim at the shipped constant (exactly `KEEP_EVENTS`
+  retained, both edges), below-bound no-op, `running|paused` both swept,
+  terminal runs frozen in all three states, the ε between trims bounded by
+  emission, and the SSE truncation-detection arithmetic (`first > id+1`
+  ⇒ truncated, in-window ⇒ contiguous). **`test_run_lifecycle.py` §9:**
+  pause/resume/stop each write their `run_state` row with spec-005 shapes
+  (a fenced re-pause emits nothing), resume's drained finish writes
+  `running`+`completed` in one transaction, `finish_drained` writes the
+  unowned `completed` per run, `halt_run` writes `failed` with reason and
+  post-abandon stats. **`test_page_crawler.py`:** the emission set — done
+  close (`page` + `progress` with the exact key sets and real values, then
+  the finish's `run_state`), 403 close (`page` with the refusal's shape),
+  retry and release emit nothing (burst guard's negative space, both on one
+  run), the throttle on the real monotonic clock (two closes in-window →
+  one progress; a real 1.1 s sleep → two; three pages → three `page`s),
+  depth carried, the three-403 `domain_state`, the BREAK `domain_state`,
+  and the sweep-finish test extended with its unowned `completed` event.
+  **`test_run_control.py` / `test_trap_crawls.py`:** the live-worker seams
+  — stop/pause/resume/replay assertions on the real sequences, the
+  cap-halt's `failed` row with the reason and the abandoned count, no
+  `page` event for any abandoned row (stop and halt both), and the volume
+  test (Halden through the real process: `page` == closed rows, `progress`
+  ≤ elapsed+2 and < pages, kind set ⊆ the four, no `asset`, terminal
+  `run_state` newest, no emission line in the info log).
+  **Mutations — each red, restored, green:** counter increment removed
+  (`UniqueViolationError` on the second emit — the pinned no-retry design
+  fails loudly, no silent retry); trim live-runs filter dropped (terminal
+  tail deleted in all three states); trim `<=` → `<` (19 ≠ 20 — the
+  off-by-one); throttle window removed (progress per close); `page` event
+  added to the release path (caught by the burst guard's negative space);
+  `finish_drained`'s emission removed (unowned finish goes silent); depth
+  dropped from `progress` (key-set pin). "run_state moved out of the
+  transition transaction" is not observable without fault injection — the
+  crash window it opens is exactly what the rollback probe pins at the
+  mechanism level instead.
+  **Production defect found — red test pinned as `xfail(strict)`, not
+  fixed** (`test_page_crawler.py::
+test_the_never_matched_halt_names_the_state_the_domain_moved_to`):
+  `crawl.py`'s halted branch hard-codes `"state": "broken"` for every halt,
+  but `NEVER_MATCHED` moves the domain to `awaiting_approval`
+  (`domain/lifecycle.py`), so the event names a state the domain is not in.
+  The handoff comment's claim ("both move the domain to `broken`") is
+  wrong for `never_matched`. The three-403 event reports the actual moved
+  state (`moved.value`); the halted branch should do the same. Proven:
+  XFAIL(strict) today with the precise diff (`broken` vs
+  `awaiting_approval`), XPASS(strict) under the aimed fix — fixing the
+  production line will turn the suite red until the marker is removed.
+  **Reviewer note:** one test-data subtlety — `observation_seed.
+seed_observation` writes no `template_id`, and the health sample counts
+  only observations a product template made, so the never_matched fixture
+  pins the template on its seeded rows (the BREAK fixture is unaffected:
+  regressions read the prior's `content_hash`, not its template).
 
 ## Open questions
 

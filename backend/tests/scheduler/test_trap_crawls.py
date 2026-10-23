@@ -311,6 +311,27 @@ async def test_a_cap_breach_fails_the_run_with_the_cap_named_and_the_next_run_is
     lines = [line for line in log.read_text().splitlines() if "url_cap_exceeded" in line]
     assert len(lines) == 1, lines
 
+    # 2.8: the halt replayed — one `failed` `run_state` row carrying the
+    # cap reason the operator reads and the same transition-time snapshot
+    # `runs.stats` holds. It is followed only by the in-flight tail's page
+    # events (ADR-0040's bounded tail closes on the failed run), never
+    # another transition.
+    halted_events = await rows(
+        engine,
+        "SELECT seq, kind, payload FROM crawl.run_events WHERE run_id = :r ORDER BY seq",
+        r=int(run1),
+    )
+    halted_run_states = [dict(r.payload) for r in halted_events if r.kind == "run_state"]
+    assert [p["state"] for p in halted_run_states] == ["failed"]
+    assert halted_run_states[0]["stop_reason"] == breach.stop_reason
+    assert halted_run_states[0]["stats"]["pages_abandoned"] == breach.stats["pages_abandoned"]
+    # The mass abandon is a number, not a burst: no page event for any of
+    # the rows the halt abandoned — only the pages that really closed,
+    # including the bounded tail that finished after the halt.
+    assert len([r for r in halted_events if r.kind == "page"]) == len(
+        [r for r in run1_rows if r.state == "done"]
+    )
+
 
 # ---------------------------------------------------------------------------
 # 4. First-signaller-wins, one claim at a time (ADR-0040's in-flight tail)

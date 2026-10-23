@@ -25,6 +25,7 @@ worker-process harness's own slow fixture pages.
 """
 
 import asyncio
+import time
 from pathlib import Path
 from subprocess import Popen
 
@@ -190,6 +191,25 @@ async def test_a_run_stopped_mid_crawl_reports_the_work_it_did_not_do(
         )
     )[0].s == "active"
 
+    # 2.8: the stop replayed — one `stopped` `run_state` event, the reason
+    # and the same abandoned number the stats carry. The rows the stop
+    # abandoned are that number, not a burst of `page` events. (The
+    # in-flight tail's `page` events may legitimately follow the
+    # `run_state` row: the tail closes after the stop, ADR-0041's bounded
+    # cost — so the transition is selected, not assumed to be newest.)
+    stopped = await rows(
+        engine,
+        "SELECT seq, kind, payload FROM crawl.run_events WHERE run_id = :r ORDER BY seq",
+        r=int(run),
+    )
+    transitions = [dict(r.payload) for r in stopped if r.kind == "run_state"]
+    assert [p["state"] for p in transitions] == ["stopped"]
+    assert transitions[0]["stop_reason"] == "stopped by operator"
+    assert transitions[0]["stats"]["pages_abandoned"] == states.count("abandoned")
+    assert len([r for r in stopped if r.kind == "page"]) == states.count("done"), (
+        "an abandoned row emitted a page event"
+    )
+
 
 async def test_a_row_cancelled_after_stop_is_released_abandoned(
     clean_crawl: AsyncEngine, database_url: str, tmp_path: Path
@@ -315,6 +335,19 @@ async def test_pause_freezes_claiming_keeps_every_row_and_resume_completes(
         )
     )[0].s == "active"
 
+    # 2.8: the whole operator sequence replayed, in order — pause, resume,
+    # and the crawl's own completed close — with spec 005 §3's shape per
+    # event (a bare `state` for the resumable pair, stats on the terminal).
+    replayed = await rows(
+        engine,
+        "SELECT kind, payload FROM crawl.run_events WHERE run_id = :r ORDER BY seq",
+        r=int(run),
+    )
+    states_seen = [dict(r.payload) for r in replayed if r.kind == "run_state"]
+    assert [p["state"] for p in states_seen] == ["paused", "running", "completed"]
+    assert set(states_seen[0]) == {"state"} and set(states_seen[1]) == {"state"}
+    assert states_seen[2]["stats"]["pages_crawled"] == finished.stats["pages_crawled"]
+
 
 async def test_the_in_flight_tail_of_a_paused_run_closes_done_and_discovers(
     clean_crawl: AsyncEngine,
@@ -424,3 +457,76 @@ async def test_resume_completes_a_run_that_drained_while_paused(
     finished = (await rows(engine, "SELECT stats FROM crawl.runs WHERE id = :r", r=int(run)))[0]
     assert finished.stats["pages_crawled"] == 1
     assert finished.stats["pages_abandoned"] == 0
+
+    # 2.8: the unownable close replayed — paused, then resume's `running`
+    # and its same-transaction `completed`, the terminal event no worker
+    # could ever have emitted because none of the run's rows will ever
+    # close again.
+    replayed = await rows(
+        engine,
+        "SELECT kind, payload FROM crawl.run_events WHERE run_id = :r ORDER BY seq",
+        r=int(run),
+    )
+    states_seen = [dict(r.payload) for r in replayed if r.kind == "run_state"]
+    assert [p["state"] for p in states_seen] == ["paused", "running", "completed"]
+
+
+# ---------------------------------------------------------------------------
+# 5. Volume discipline: events are rows, not log lines (BUILD_PLAN 2.8)
+# ---------------------------------------------------------------------------
+
+
+async def test_a_halden_crawl_emits_events_like_a_projection_not_a_flood(
+    clean_crawl: AsyncEngine, database_url: str, tmp_path: Path
+) -> None:
+    """The whole 2.8 contract at crawl size, through the real process: one
+    `page` event per closed row, `progress` inside its one-per-second
+    throttle, only the kinds spec 001 §1 names (no `asset` until 5.2), the
+    terminal `run_state` newest — and not one log line above `debug` for
+    any of it (spec 009 §1; the 1.13 line-budget test holds the total)."""
+    engine = clean_crawl
+    log = tmp_path / "worker.log"
+    with FixtureSite() as site:
+        domain, run, _ = await seed_halden(engine, site.base_url)
+        started = time.monotonic()
+        with worker(database_url, log, WORKER_STATIC="1") as proc:
+            await wait_completed(engine, proc, log, run, what="the crawl to complete")
+            proc.terminate()
+            proc.wait(timeout=30)
+        elapsed = time.monotonic() - started
+
+    kinds = [
+        r.k
+        for r in await rows(
+            engine,
+            "SELECT kind AS k FROM crawl.run_events WHERE run_id = :r ORDER BY seq",
+            r=int(run),
+        )
+    ]
+    done = await queue_states(engine, int(run))
+    assert set(done) == {"done"}, "the fixture crawl did not complete cleanly"
+
+    # One page event per closed row — the projection is complete.
+    assert kinds.count("page") == len(done)
+    # The throttle: at most one progress per second of crawl, plus the
+    # one that opens the window and the one that closes it.
+    assert kinds.count("progress") <= elapsed + 2, "progress was not throttled"
+    assert kinds.count("progress") < len(done), (
+        "a progress per close: the flood spec 005 §3 forbids"
+    )
+    # The pinned vocabulary, and nothing 5.2 does not owe yet.
+    assert set(kinds) <= {"page", "progress", "domain_state", "run_state"}
+    assert "asset" not in kinds
+    assert kinds[-1] == "run_state", "the terminal event is not the newest row"
+
+    terminal = (
+        await rows(
+            engine,
+            "SELECT payload FROM crawl.run_events WHERE run_id = :r ORDER BY seq DESC LIMIT 1",
+            r=int(run),
+        )
+    )[0]
+    assert dict(terminal.payload)["state"] == "completed"
+
+    # Emission added no log line: the info log names no event.
+    assert not [line for line in log.read_text().splitlines() if "emit" in line.lower()]
