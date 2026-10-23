@@ -549,7 +549,7 @@ from the task above it.
       the domain is untouched and the next run starts clean. 24 acceptance
       tests over three files; 13 mutations, all red.
 
-- [ ] `2.6` **Mega-menu containment** (spec 004 §3a): a `subcategory_links`
+- [x] `2.6` **Mega-menu containment** (spec 004 §3a): a `subcategory_links`
       rule is scoped to its container, and the dry-run reports when a rule
       discovers the whole tree at depth 0. **This is the discovery bug that
       looks like a working rule** — it finds everything, so it reads as
@@ -557,6 +557,17 @@ from the task above it.
       **Done when:** a `nav a` rule on `2.1`'s mega-menu fixture is caught by
       the dry-run, and a fixture whose subcategory links are `display:none`
       is still discovered (spec 004 §5).
+      **Done:** `discovery/mega_menu.py` `whole_tree` — a prefix forest over
+      the accepted paths, a finding iff ≥ 2 roots span it. `nav a` over
+      Halden's mega-menu fires (11 links, 3 branches, deepest chain 3); one
+      container's scoped tiles — the false positive this task exists to
+      prevent — stay silent, two roots and neither spanning. The
+      `display:none` subcategories need no reveal: the static fetch already
+      sees them (spec 004 §5, Case A). Two blind spots named in the
+      docstring — a menu nested under one top-level branch, and a menu that
+      also links Home — both held for `2.10`'s projection
+      (`projected_urls_at_depth_5`) as backstop. 14 tests over the fixture
+      site; 9 mutations, all red.
 
 - [ ] `2.7` **Run lifecycle** — create, pause, stop, complete, and
       `runs.stats` rolled up at completion (spec 001 §1). Abandoned rows are

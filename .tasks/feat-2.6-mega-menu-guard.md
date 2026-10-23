@@ -229,6 +229,38 @@ ancestor count`, roots sample = sorted canonical top-category paths) — no
      untouched by this slice. No production defects found. To
      **spydra-reviewer**.
 
+- integrator (on `feat/2.6-mega-menu-guard` @ `322efaf`, base
+  `feat/2.5-trap-defences`):
+  - **Gate.** Legs run individually, all green: `make lint` 0 ·
+    `make types` 0, clean tree · `make generated` 0, clean tree ·
+    `make test-api` **1089 passed, 2 skipped** — 1091 collected =
+    1076 at the 2.5 tip (verified by a worktree collect) + the 14
+    authored items + one auto-parametrised case:
+    `test_required_is_inert.py::…[mega_menu.py]` gains a parameter
+    because a new production module appeared, so the count arithmetic
+    closes exactly · `make test-bff` 0 fail · `make test-web` 10 pass ·
+    **`make test-render` 57/57 green** — the DNS flake named in
+    spydra-test's note did not appear, so no environmental declaration
+    and no `--no-verify`: every leg passed and the push rode the gate.
+  - **Scope.** `git diff --stat feat/2.5-trap-defences...HEAD`: exactly
+    four files — `backend/spydra/discovery/mega_menu.py` (new),
+    `backend/tests/discovery/test_mega_menu.py` (new),
+    `docs/specs/004-discovery.md` (+10), this task file. Nothing
+    outside; no findings. The untracked `.tasks/pr-2.5-body.md` (the
+    2.5 slice's PR body) is not this slice's and was left uncommitted.
+    Commit subjects imperative, ≤ 72 chars (the noun-phrase test
+    subject matches 2.3/2.5 house style).
+  - **BUILD_PLAN 2.6 ticked** — `**Done:**` line in the plan's density:
+    prefix forest, ≥ 2 spanning roots, fires/silent pinned, Case A
+    free, both blind spots named with 2.10's projection as backstop.
+  - **PR handoff.** Pushed `feat/2.6-mega-menu-guard` (no
+    `--no-verify` — all legs green). `gh` is not installed on this
+    host, so the PR body is `.tasks/pr-2.6-body.md`; the human opens
+    `feat/2.5-trap-defences...feat/2.6-mega-menu-guard`. **Stacked**:
+    2.5 sits on PR #26 (`feat/2.4-dedupe-recrawl`) — merge #26, merge
+    2.5's PR, then retarget this one to `develop` in turn. Not merged
+    by the integrator.
+
 ## Open questions
 
 1. Should the `whole_tree` flag ever _block_ template approval rather than
