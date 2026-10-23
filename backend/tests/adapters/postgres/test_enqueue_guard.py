@@ -83,10 +83,18 @@ async def test_a_domain_that_is_not_active_gets_nothing(
     assert await queue(clean_crawl, run) == {}
 
 
-@pytest.mark.parametrize("state", ["completed", "stopped", "paused"])
-async def test_a_run_that_is_not_running_gets_nothing(clean_crawl: AsyncEngine, state: str) -> None:
+@pytest.mark.parametrize("state", ["completed", "stopped"])
+async def test_a_terminal_run_gets_nothing(clean_crawl: AsyncEngine, state: str) -> None:
+    """Terminal runs only: a `paused` run's discovery still enqueues
+    (ADR-0041 — pause freezes dequeue, not discovery); that positive case
+    lives in 2.7's lifecycle tests. `stopped` carries a stop_reason because
+    the terminal-stop_reason CHECK (2.7) rejects a bare one."""
     domain, run = await live(clean_crawl)
-    await set_state(clean_crawl, "runs", int(run), state)
+    async with clean_crawl.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE crawl.runs SET state = :s, stop_reason = 'fixture' WHERE id = :i"),
+            {"s": state, "i": int(run)},
+        )
 
     assert (await PostgresFrontier(clean_crawl).enqueue(run, domain, LINKS, cap=20_000)).added == 0
     assert await queue(clean_crawl, run) == {}
