@@ -1,0 +1,4 @@
+host,seed_url,render_mode,crawl_delay_ms
+halden.fixtures:8099,http://halden.fixtures:8099/shop/cutting/,static,500
+halden.fixtures:8099,http://halden.fixtures:8099/shop/cutting/blades/,static,500
+vantage-abrasives.test,https://elsewhere.test/catalog/abrasives/discs/,static,2000

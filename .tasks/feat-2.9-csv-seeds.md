@@ -224,13 +224,13 @@ feature.
 
 ## Acceptance (from BUILD_PLAN 2.9's done-when)
 
-- [ ] A file with one bad row imports the rest and names the failure —
+- [x] A file with one bad row imports the rest and names the failure —
       row (file line number) and reason, in the loader's refusal style;
       the bad row aborts nothing.
-- [ ] Nothing in the parser can make a network call — proven by the
+- [x] Nothing in the parser can make a network call — proven by the
       import-allowlist AST test and the socket-block runtime test; host
       validation is syntax-only (no `getaddrinfo`), stated in the module.
-- [ ] Header, duplicate and optional-column behaviours are pinned by
+- [x] Header, duplicate and optional-column behaviours are pinned by
       tests: exact ordered header (three spellings) refuses the file when
       wrong; exact duplicates dedupe silently; same-host setting
       conflicts reject the later row; defaults are `static`/`2000`;
@@ -240,8 +240,11 @@ feature.
       `phase1-exit` profile; loopback, no real network). Demonstrated
       manually from the task file's commands and recorded in the handoff
       log; not scripted as a new target (2.9 is not a phase exit —
-      `phase1-exit.sh` already exists for that shape).
-- [ ] Spec 004 §6 exists; BUILD_PLAN 2.9's pointer names it.
+      `phase1-exit.sh` already exists for that shape). **Commands pinned
+      in the handoff log (spydra-test entry); the E2E crawl semantics
+      themselves are pinned by a real-worker test against the in-process
+      fixture site.**
+- [x] Spec 004 §6 exists; BUILD_PLAN 2.9's pointer names it.
 - [ ] `make check` green.
 
 ## Handoff log
@@ -289,6 +292,58 @@ feature.
     f6b8f42 — not redone. `make load-seeds` demo against Halden still to be
     run (needs `phase1-exit` profile up; recorded here when done or handed
     to integrator).
+- spydra-test (2.9) — tests and the fixture, from the acceptance criteria
+  and §1–§5 (not from the implementation). Files:
+  `backend/tests/test_seed_csv.py` (49 tests), `backend/tests/adapters/
+postgres/test_load_seeds.py` (16), `backend/tests/fixtures/phase2/
+seeds.csv` (the committed one-bad-row file: two Halden seeds + a line-4
+  `host_mismatch`; pinned by a parser test so it cannot drift). Suite:
+  `make test-api` **1252 passed, 2 skipped** (parent 1187+2; +65).
+  `make lint` clean (ruff, mypy --strict, eslint, prettier). Coverage of
+  the boxes: done-when at all three levels (parse, DB row counts, CLI);
+  every reject token on a crafted row incl. the backend's two finds
+  (`mailto:` → `off_scheme`, `5_000` → `bad_delay`); the three header
+  spellings + six refusals (order/name/invented column/extra/uppercase/
+  missing); defaults asserted on the `DomainConfig`; empty-cell-in-declared
+  -column → reject; dedupe silent; conflict names the earlier line; case-
+  insensitive host compare with port both ways; world-conflict refusal for
+  paused/broken/archived mirrors the YAML suite; exit contract through the
+  real CLI subprocess (0 good / 1 partial with stdout summary + stderr
+  rejects / 1 refusals with nothing written). **E2E template-less crawl**:
+  a CSV seed on the in-process `FixtureSite` host → `load_seeds.load` →
+  the real `python -m spydra.worker` subprocess → run completes, exactly
+  one queue row `done` (the seed page links the whole catalogue — proof
+  discovery never expanded), `unknown_pages` = `(canonical_url(seed),
+"no_template")`, one 200 observation, domain stays `active`, the site
+  saw one page request. Purity proven twice: AST **allowlist** (not
+  denylist) over `seed_csv.py`'s imports, and a runtime parse with
+  `socket.socket`/`getaddrinfo` raising. **Mutations, each red then
+  restored then green** (production verified byte-clean after:
+  `git diff backend/spydra/` empty): ① `line_num - 1` → 22 red (reject
+  numbering); ② netloc-before-scheme → 3 red (mailto/javascript/
+  protocol-relative misreported); ③ dedupe `seen` check dropped → 1 red;
+  ④ conflict branch removed → 2 red; ⑤ header compare sorted → 1 red
+  (wrong-order accepted); ⑥ `isascii/isdigit` → `int()` → 3 red (`5_000`,
+  `-5`, `+5` import); ⑦ partial-import `sys.exit(1)` dropped → 1 red (CLI
+  exit 0 on rejects); ⑧ empty-domains guard removed → 4 red (empty run
+  started on all-rejected/header-only). Defects: **none genuine** — three
+  authoring bugs in my own tests (rows not matching their header's field
+  count; unpacking `SeedFile` instead of `.domains`) found by the suite
+  and fixed before first green. `make check` left to the integrator (lint
+  - test-api green here; no API change so `make types` cannot drift —
+    verified no backend source touched). **Halden demo commands pinned**
+    (not run — needs the phase1-exit profile; integrator or human):
+  ```sh
+  docker compose --profile phase1-exit up -d db fixtures
+  make migrate
+  make load-seeds f=tests/fixtures/phase2/seeds.csv
+  # expect exit 1: stderr "line 4: host_mismatch — …", stdout
+  # "1 domain, 2 seeds imported" + "run N started from …"
+  docker compose up -d worker && docker compose logs -f worker
+  # run completes; crawl_queue rows for the run → done (exactly the two
+  # seeds); unknown_pages → 2 × no_template; domains.state stays active
+  docker compose --profile phase1-exit rm -sf fixtures
+  ```
 
 ## Open questions
 
