@@ -269,6 +269,27 @@ Docs:
 
 ## Handoff log
 
+- **Review pass (2026-10-24, this session) — three findings, all fixed.**
+  1. **Toggle dark-mode knob (blocking):** the knob shipped `bg-ink-inverse`,
+     which is `#16191f` in dark mode against the theme-constant brand track —
+     a ~2.2:1, near-invisible state indicator. Now `bg-brand-subtle`, the same
+     constant the Button/Spinner/Checkbox already use. The on-brand-ink
+     handoff sentence below claimed this was already true; it is corrected in
+     place with a note.
+  2. **Button `State=active` (non-blocking):** UI_STATES §3a names
+     default·hover·active·focus·disabled·loading; the `active:` arm was
+     missing entirely. Added one pressed utility per variant — existing tokens
+     only, same hue one step past hover (`active:bg-brand-hover` /
+     `active:bg-subtle` + `active:border-line-strong` /
+     `active:border-state-broken` + `active:bg-state-broken-tint`); nothing
+     scales. The one rule holds: pressed is an interaction state, colour
+     carries it. Marked in the Figma-arm mapping bullet below.
+  3. **LineChart live marker (non-blocking):** the pulse ring and last-point
+     dot were hard-coded `viz-1` indigo for every series while the strokes
+     indexed `SERIES_CLASSES`. Markers now index `SERIES_INK_CLASSES` by the
+     same series index (`fill="currentColor"` picks up the `text-viz-*`
+     class), so a second series' live marker matches its stroke. Series-1
+     live renders exactly as before.
 - **Tests — the variant matrix (2026-10-24, this pass).** 94 new tests over
   three files in `frontend/tests/`: `components-3a.test.tsx` (39) ·
   `components-3b.test.tsx` (49) · `design-system.test.tsx` (6), plus the
@@ -339,12 +360,14 @@ Docs:
   Spinner · Empty state · Error state were untouched by Half A and carry no
   recorded id (name only). `DESIGN_SYSTEM.md` §"The coded library" is the
   prop-signature reference, one row per component.
-  - **Figma-arm → React mapping (recorded in DESIGN_SYSTEM too):** hover and
-    focus variants are `hover:` / `focus-visible:` utilities, not props — a
-    prop that says "hover" fights the browser's own hover. Every persistent
-    state (tone, kind, shape, sort, result, level, trend, side, loading,
-    submitting, unavailable) is a prop. Static-render tests can still
-    distinguish every arm: the classes are in the markup.
+  - **Figma-arm → React mapping (recorded in DESIGN_SYSTEM too):** hover,
+    focus and pressed variants are `hover:` / `focus-visible:` / `active:`
+    utilities, not props — a prop that says "hover" fights the browser's own
+    hover. Every persistent state (tone, kind, shape, sort, result, level,
+    trend, side, loading, submitting, unavailable) is a prop. Static-render
+    tests can still distinguish every arm: the classes are in the markup.
+    (Button's `State=active` arm was added in the review pass — one existing
+    token per variant, same hue one step past hover; nothing scales.)
   - **Token gap found — `bg-hover`:** `--sp-bg-hover` exists in both themes
     but `tailwind-theme.css` maps no `--color-hover`, so `hover:bg-hover`
     silently generates nothing (the exact trap DESIGN_SYSTEM §Tokens
@@ -353,9 +376,13 @@ Docs:
     `--color-hover: var(--sp-bg-hover);` and swap the seven call sites.
   - **On-brand ink:** `text-ink-inverse` flips per theme and would go
     dark-on-indigo in dark mode, so filled-brand surfaces (Button primary,
-    Spinner `onBrand`, Checkbox/Toggle marks) use `text-brand-subtle`
+    Spinner `onBrand`, the Checkbox mark) use `text-brand-subtle`
     (#eef0fb, theme-constant). Candidate for a real `--sp-on-brand` token in
-    the same token pass.
+    the same token pass. _Correction from review:_ this sentence originally
+    claimed the Toggle knob too, which was false — the knob shipped
+    `bg-ink-inverse` and was near-invisible on the brand track in dark mode
+    (~2.2:1). It is now `bg-brand-subtle`, so the list above is finally
+    accurate.
   - **The two mandated behaviours:** `MetricTile value={null}` renders the
     unavailable tile (em dash, no error); `loading` swaps the value for a
     skeleton bar. `Skeleton shape="row"` is `h-row-comfortable` — the spacing

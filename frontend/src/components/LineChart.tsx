@@ -15,6 +15,10 @@ export interface LineChartProps {
 
 const SERIES_CLASSES = ["stroke-viz-1", "stroke-viz-2"] as const;
 
+// Marker ink per series (fill="currentColor" picks it up); indexing by the
+// same series index keeps a live marker the colour of its own stroke.
+const SERIES_INK_CLASSES = ["text-viz-1", "text-viz-2"] as const;
+
 const W = 100;
 const H = 40;
 
@@ -107,7 +111,7 @@ export function LineChart({
                   cx={point.x}
                   cy={point.y}
                   r="2.5"
-                  className="motion-safe:animate-ping text-viz-1"
+                  className={`motion-safe:animate-ping ${SERIES_INK_CLASSES[index] ?? SERIES_INK_CLASSES[0]!}`}
                   fill="currentColor"
                   opacity="0.6"
                 />
@@ -115,7 +119,10 @@ export function LineChart({
                   cx={point.x}
                   cy={point.y}
                   r="1.5"
-                  className="fill-viz-1"
+                  className={
+                    SERIES_INK_CLASSES[index] ?? SERIES_INK_CLASSES[0]!
+                  }
+                  fill="currentColor"
                 />
               </g>
             );

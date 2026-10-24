@@ -167,7 +167,8 @@ Thirty-one components in `frontend/src/components/`, one file per component:
 props in, markup out, no fetching (spec 006 §1). Variant axes follow
 `UI_STATES.md` §3 against the Figma library re-measured in
 [`COMPONENTS.md`](COMPONENTS.md); the first line of each file names its Figma
-component. Hover and focus arms are `hover:` / `focus-visible:` utilities, not
+component. Hover, focus and pressed arms are `hover:` / `focus-visible:` /
+`active:` utilities, not
 props — a prop that says "hover" would fight the browser's own hover. Ephemeral
 state (spinner, skeleton) consumes the skeleton/disabled token pairs; every
 persistent state is a prop.
