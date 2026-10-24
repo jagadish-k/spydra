@@ -308,6 +308,37 @@ touches these paths.
   review per the umbrella's flow — this slice ships no component tests by
   directive; the design-system.test.tsx edit is a guard adjustment, not a
   new test).
+- test — added `frontend/tests/stories.test.ts` (3 tests), verified
+  2026-10-24. **The drift guard:** every `src/components/*.tsx` excluding
+  `*.stories.tsx` and `ThemeToggle.tsx` must have a sibling
+  `<Name>.stories.tsx`; every stories file must export ≥1 named story
+  (`export const` beyond default/meta — the implementer's shape is
+  uniformly `export const X: Story =` beside `export default meta`, 143/143,
+  zero `export const meta`; the guard counts any `export const` except
+  `meta`, so it stays honest under CSF's other spelling too). No count
+  assertions (31/143 are today's numbers, not the contract — later slices
+  add components and the guard must let them). **Palette-guard claim
+  verified TRUE, not duplicated:** `design-system.test.tsx` "all 31 files
+  scanned" scans `[...files, ...storyFiles]`, and `palette-guard.test.ts`
+  walks all of `src/` recursively with `.tsx` in scope — stories are
+  covered twice over. **Preview shape guard:** `globalTypes.theme.toolbar`
+  must list `"light"` and `"dark"` (order-tolerant items-array capture) and
+  the decorator must set `data-theme` on `document.documentElement`
+  (accepts `setAttribute("data-theme")` — what the implementer wrote — or
+  `dataset.theme`). Static regex, not import: preview is JSX-bearing TSX
+  deliberately outside `tsconfig.include`; for config-of-config the shape
+  is the contract (comment in the file says so). Suite **110/110**
+  (107 + 3), `make lint` green. Mutations, all red then restored green:
+  deleted `Tag.stories.tsx` → sibling test red; stripped story exports from
+  `StatePill.stories.tsx` → zero-story test red; `preview.tsx`
+  `"data-theme"` → `"x-theme"` → preview-wiring test red. **One pre-existing
+  defect noticed, not fixed (outside owned files):** `make fmt`'s frontend
+  leg is `prettier --write src` while `lint-web` checks `.` — a formatting
+  slip in `frontend/tests/` or `.storybook/` can be seen by lint but not
+  repaired by `make fmt` (hit it: new test needed in-container
+  `prettier --write tests/stories.test.ts`). One-line fix in the fmt
+  recipe when its owner next touches the Makefile. **Hand off to
+  `spydra-reviewer`.**
 
 ## Open questions
 
