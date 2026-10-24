@@ -4,6 +4,11 @@
 templates active with no run, or a run seeded against domains still in
 `discovered`, and the operator would have to work out which half happened.
 
+**Refusing a domain, two ways.** By default a domain in a state a file
+cannot approve raises and rolls back everything; `skip_refused=True`
+records the refusal and skips that domain — the CSV loader's per-domain
+stance (2.9) — inside the same single transaction.
+
 **Templates are versioned, never edited in place** (AGENTS.md rule 12,
 ADR-0006). Loading a file again writes the next version of each template and
 deactivates the previous active one for the same pattern, which is what
@@ -13,6 +18,7 @@ that produced them.
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
@@ -102,16 +108,65 @@ ON CONFLICT (run_id, url_hash) DO NOTHING
 )
 
 
+def _refusal_text(host: str, state: DomainState) -> str:
+    """The say-why both refusal modes share. The raising path appends
+    "Nothing was written." because there it is true; the recorded path
+    reports per domain, where the rest of the file may well have written."""
+    return (
+        f"{host} is {state.value}. A file cannot move it back to active: "
+        "resume a paused domain, or re-review a broken one, as its own "
+        "decision (spec 001 §2, ADR-0004)."
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class DomainRefusal:
+    """A domain the file cannot approve, recorded rather than raised when
+    `apply(skip_refused=True)`. The message is the same say-why the raised
+    `RefusedConfiguration` carries."""
+
+    host: str
+    state: DomainState
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class ApplyOutcome:
+    """What one `apply` wrote. `run_id is None` only when `skip_refused`
+    and every domain was refused — no run is started over nothing."""
+
+    run_id: RunId | None
+    refusals: tuple[DomainRefusal, ...]
+
+
 class PostgresConfiguration:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
 
-    async def apply(self, domains: Sequence[DomainConfig]) -> RunId:
+    async def apply(
+        self, domains: Sequence[DomainConfig], *, skip_refused: bool = False
+    ) -> ApplyOutcome:
+        """Write every domain and start the run, in one transaction.
+
+        A domain in a state a file cannot approve (`paused`, `broken`,
+        `archived`) raises by default and rolls the whole file back — the
+        YAML loader's contract. `skip_refused=True` records the refusal and
+        skips that domain's seeds instead — the CSV loader's per-domain
+        stance — while the transaction stays all-or-nothing for everything
+        it does write: a real database error still rolls back the lot.
+        """
+        refusals: list[DomainRefusal] = []
         async with self._engine.begin() as conn:
             seeded: list[tuple[int, str]] = []
             domain_ids: list[int] = []
             for domain in domains:
-                domain_id = await self._domain(conn, domain)
+                found = await self._domain(conn, domain)
+                if isinstance(found, DomainRefusal):
+                    if not skip_refused:
+                        raise RefusedConfiguration(f"{found.message} Nothing was written.")
+                    refusals.append(found)
+                    continue
+                domain_id = found
                 for row in domain.template_rows():
                     await conn.execute(
                         _DEACTIVATE, {"domain_id": domain_id, "url_pattern": row["url_pattern"]}
@@ -128,6 +183,11 @@ class PostgresConfiguration:
                 domain_ids.append(domain_id)
                 seeded.extend((domain_id, url) for url in domain.seeds)
 
+            if refusals and not domain_ids:
+                # skip_refused and every domain refused: no run over nothing.
+                # An empty `domains` sequence itself still starts an empty
+                # run, as it always has — only the YAML loader can send one.
+                return ApplyOutcome(run_id=None, refusals=tuple(refusals))
             run_id = RunId(
                 (
                     # Every domain the file names, seeds or not: the run's
@@ -145,10 +205,10 @@ class PostgresConfiguration:
                         "url_hash": url_hash(url),
                     },
                 )
-        return run_id
+        return ApplyOutcome(run_id=run_id, refusals=tuple(refusals))
 
     @staticmethod
-    async def _domain(conn: AsyncConnection, domain: DomainConfig) -> int:
+    async def _domain(conn: AsyncConnection, domain: DomainConfig) -> int | DomainRefusal:
         settings = {
             "host": domain.host,
             "render_mode": domain.render_mode.value,
@@ -163,10 +223,8 @@ class PostgresConfiguration:
         state = DomainState(row.state)
         path = _APPROVAL_PATH.get(state)
         if path is None:
-            raise RefusedConfiguration(
-                f"{domain.host} is {state.value}. A file cannot move it back to active: "
-                "resume a paused domain, or re-review a broken one, as its own decision "
-                "(spec 001 §2, ADR-0004). Nothing was written."
+            return DomainRefusal(
+                host=domain.host, state=state, message=_refusal_text(domain.host, state)
             )
         for event in path:
             state = transition(state, event)

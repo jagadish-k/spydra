@@ -29,10 +29,19 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from spydra.adapters.postgres.run_events import emit_in
+from spydra.adapters.postgres.runs import _STATS
 from spydra.domain.enums import RenderMode
 from spydra.domain.ids import DomainId, QueueItemId, RunId
 from spydra.domain.urls import fetchable_url, url_hash
-from spydra.ports.frontier import EVERY_RENDER_MODE, MAX_ATTEMPTS, ClaimedUrl, Completion
+from spydra.ports.frontier import (
+    EVERY_RENDER_MODE,
+    MAX_ATTEMPTS,
+    ClaimedUrl,
+    Completion,
+    Enqueued,
+    RunHalt,
+)
 
 __all__ = ["LEASE_SECONDS", "MAX_ATTEMPTS", "PostgresFrontier", "url_hash"]
 
@@ -62,6 +71,17 @@ WITH eligible AS (
       AND EXISTS (
           SELECT 1 FROM crawl.crawl_queue q0
           WHERE q0.domain_id = d.id AND q0.state = 'pending'
+          -- ADR-0041: a pending row is work only while its run is
+          -- running. One predicate buys both states: a terminal run's
+          -- rows stop being claimable (the domain is skipped entirely
+          -- rather than locked-then-empty), and a paused run's stop
+          -- being claimable without being touched — pause is resumable,
+          -- and that distinction is why both states exist. Cost: one PK
+          -- probe per candidate inside an EXISTS that already runs per
+          -- eligible domain; the guarded enqueue has carried the same
+          -- run-state EXISTS since 2.3.
+          AND EXISTS (SELECT 1 FROM crawl.runs r
+                      WHERE r.id = q0.run_id AND r.state = 'running')
       )
     ORDER BY d.next_eligible_at
     FOR UPDATE SKIP LOCKED          -- on domains: THE POLITENESS GATE.
@@ -152,10 +172,35 @@ WHERE id = :domain_id
 
 # Release: PENDING again, no penalty — but the gate must be given back
 # (spec 002 §6, and the port's own docstring).
+#
+# **The run row is share-locked BEFORE the routing statement** (ADR-0041).
+# A stop or cap-halt committing between this statement's read and the
+# release's commit would leave the row `pending` on a terminal run —
+# unclaimable (the claim fence holds) but permanently unreported. `FOR
+# SHARE` is the 2.3/`_ENQUEUE` pattern turned on the run row: the terminal
+# writers take it `FOR UPDATE` before their abandon, so either they commit
+# first and this statement reads the terminal state, or they wait and
+# their abandon sees the row this release returns to `pending`.
+_LOCK_RUN_FOR_RELEASE = sa.text(
+    """
+SELECT id FROM crawl.runs WHERE id = :run_id FOR SHARE
+"""
+)
+
 _RELEASE_QUEUE = sa.text(
     """
 UPDATE crawl.crawl_queue
-SET state = 'pending',
+SET state = CASE WHEN (SELECT r.state FROM crawl.runs r
+                       WHERE r.id = crawl_queue.run_id)
+                    IN ('completed', 'stopped', 'failed')
+               -- ADR-0041: claimable ⇔ run running. A row released after
+               -- its run went terminal (SIGTERM, backpressure, a claim
+               -- that raced the signal) must not land `pending`: the
+               -- claim fence would hold it unclaimable for ever,
+               -- unreported — a silent hole in the stats written at the
+               -- terminal transition. A paused run's row still returns
+               -- to `pending`: pause keeps every row, it freezes dequeue.
+               THEN 'abandoned' ELSE 'pending' END,
     locked_until = NULL,
     -- The attempt is given back too. Spec 002 §6's "no penalty" means no
     -- consecutive_failures, no backoff AND no attempt charged — otherwise
@@ -175,25 +220,62 @@ WHERE id = :domain_id
 )
 
 # The sweep. Spec 002 §3, and load-bearing since ADR-0026.
+#
+# The run row is share-locked **in the statement** (`FOR SHARE OF r`),
+# the `_ENQUEUE` pattern turned on the run row (ADR-0041): the routing
+# CASE's read of `r.state` and the row's fate are decided atomically under
+# a lock the terminal writers (`stop_run`, `halt_run`) take exclusively
+# before their abandon — so a swept row of a run that stops mid-sweep
+# routes `abandoned`, never `pending`-on-terminal. In the statement, not
+# a preceding one: a lock taken by an earlier statement of this
+# transaction holds a *different* snapshot's candidate set, and a row
+# expiring between the two would route unlocked.
 _SWEEP = sa.text(
     """
 WITH expired AS (
-    SELECT id, domain_id, attempts
-    FROM crawl.crawl_queue
-    WHERE state = 'in_flight'
-      AND locked_until IS NOT NULL
-      AND locked_until < now()
-    FOR UPDATE SKIP LOCKED
+    SELECT q.id, q.domain_id, q.attempts, r.state AS run_state
+    FROM crawl.crawl_queue q
+    JOIN crawl.runs r ON r.id = q.run_id
+    WHERE q.state = 'in_flight'
+      AND q.locked_until IS NOT NULL
+      AND q.locked_until < now()
+    -- OF q: lock queue rows exactly as before. No SKIP LOCKED on r: a
+    -- terminal writer holding the run row exclusively is exactly what
+    -- this sweep must wait for, and it holds it only for microseconds.
+    FOR UPDATE OF q SKIP LOCKED FOR SHARE OF r
 ),
 recovered AS (
     UPDATE crawl.crawl_queue q
-    SET state = CASE WHEN q.attempts >= :max_attempts THEN 'failed' ELSE 'pending' END,
+    SET state = CASE
+            WHEN e.attempts >= :max_attempts THEN 'failed'
+            -- ADR-0041: claimable ⇔ run running. A swept row of a
+            -- terminal run must not go back to `pending` — unclaimable
+            -- (the claim fence holds) but unreported, a silent hole in
+            -- the stats written at the terminal transition. `attempts`
+            -- still wins first: an exhausted row failed, whatever its
+            -- run did.
+            WHEN e.run_state IN ('completed', 'stopped', 'failed') THEN 'abandoned'
+            ELSE 'pending'
+        END,
         locked_until = NULL
-    WHERE q.id IN (SELECT id FROM expired)
+    FROM expired e
+    WHERE q.id = e.id
     RETURNING q.id, q.domain_id
 )
 SELECT count(*) AS recovered FROM recovered
 """
+)
+
+# The `progress` event's counts (BUILD_PLAN 2.8): one grouped read per
+# page close, taken after the close committed so it includes the row the
+# event is about.
+_QUEUE_COUNTS = sa.text(
+    """
+    SELECT state, count(*) AS n
+    FROM crawl.crawl_queue
+    WHERE run_id = :run_id AND domain_id = :domain_id
+    GROUP BY state
+    """
 )
 
 # Reconcile by RECOUNT, not by decrement. Spec 001 §1 calls in_flight a cache;
@@ -226,32 +308,106 @@ WHERE run_id = :run_id AND domain_id = :domain_id AND state = 'pending'
 
 # One statement per page, and only into a live run on an active domain.
 #
-# **The guard is in the INSERT, under a share lock on the domain row.** A
-# check made first and an insert made after is a race: another worker can
-# halt the domain (`BREAK`, a 403 pause) and abandon its pending rows in
-# between, and rows inserted after that are claimed by nobody, so the run
-# never drains (2.3 review finding 1, reproduced). `FOR SHARE` makes a
-# concurrent halt's `UPDATE domains` wait for this insert to commit, so its
-# abandon sees these rows; an insert that waited on a halt re-reads the state
-# and inserts nothing. The run must still be `running`: a worker whose lease
-# was lost can otherwise add work to a run the sweep already finished.
+# **Two share locks, two writers fenced.** The domain row's `FOR SHARE`
+# (in the INSERT's WHERE, unchanged) fences the 2.3 *domain* halts (`BREAK`,
+# a 403 pause): a concurrent halt's `UPDATE domains` waits for this insert
+# to commit, so its abandon sees these rows, and an insert that waited on a
+# halt re-reads the state and inserts nothing. The run row's `FOR SHARE OF
+# r` (in the `run` CTE at the top) fences the *run* transitions — stop and
+# the cap halt lock that row `FOR UPDATE` before their abandon, and the
+# finish paths UPDATE it — so a stop committing after this snapshot cannot
+# leave discovered rows `pending` on a terminal run: this insert either
+# completes first and the stop's abandon sees the rows, or waits on the
+# run row and re-reads the terminal state (EvalPlanQual) and inserts
+# nothing. The same mechanism the sweep's `FOR SHARE OF r` uses (ADR-0041).
+# The lock is a CTE rather than the domain lock's inline EXISTS because it
+# must be taken before the INSERT runs, and read once.
 #
 # `unnest` makes it one round trip whatever the page links to: a mega-menu
 # page re-sends hundreds of links, almost all of them conflicts.
+#
+# The cap (ADR-0040) joins those guards. `queued` counts the run's rows for
+# the domain in every state — abandoned and failed rows are work discovery
+# produced — under the same statement snapshot; while the count is below
+# `cap` the whole batch inserts, at or past it nothing does. What comes
+# back with the yield is `capped`: the count after this batch has reached
+# the cap, the breach signal the caller halts the run on. The count never
+# comes back down within a run, so refusal after a breach is self-healing —
+# no flag to keep true.
 _ENQUEUE = sa.text(
     """
-INSERT INTO crawl.crawl_queue (run_id, domain_id, url, url_hash, depth)
-SELECT :run_id, :domain_id, u.url, u.url_hash, u.depth
-FROM unnest(CAST(:urls AS text[]), CAST(:hashes AS bytea[]), CAST(:depths AS int[]))
-     AS u(url, url_hash, depth)
-WHERE EXISTS (
-          SELECT 1 FROM crawl.domains d
-          WHERE d.id = :domain_id AND d.state = 'active'
-          FOR SHARE
-      )
-  AND EXISTS (SELECT 1 FROM crawl.runs r WHERE r.id = :run_id AND r.state = 'running')
-ON CONFLICT (run_id, url_hash) DO NOTHING
-RETURNING id
+WITH run AS (
+    SELECT r.id
+    FROM crawl.runs r
+    WHERE r.id = :run_id AND r.state IN ('running', 'paused')
+    FOR SHARE OF r
+),
+queued AS (
+    SELECT count(*) AS n
+    FROM crawl.crawl_queue
+    WHERE run_id = :run_id AND domain_id = :domain_id
+),
+inserted AS (
+    INSERT INTO crawl.crawl_queue (run_id, domain_id, url, url_hash, depth)
+    SELECT :run_id, :domain_id, u.url, u.url_hash, u.depth
+    FROM unnest(CAST(:urls AS text[]), CAST(:hashes AS bytea[]), CAST(:depths AS int[]))
+         AS u(url, url_hash, depth)
+    WHERE EXISTS (
+              SELECT 1 FROM crawl.domains d
+              WHERE d.id = :domain_id AND d.state = 'active'
+              FOR SHARE
+          )
+      -- ADR-0041: widened from `= 'running'` to admit `paused`. Pause
+      -- freezes dequeue, not discovery: a paused run's in-flight tail
+      -- still crawls, and dropping its links would make resume produce a
+      -- silently incomplete crawl — the worst failure mode a pause can
+      -- have, and it leaves no trace.
+      AND EXISTS (SELECT 1 FROM run)
+      AND (SELECT n FROM queued) < :cap
+    ON CONFLICT (run_id, url_hash) DO NOTHING
+    RETURNING id
+)
+SELECT (SELECT count(*) FROM inserted) AS added,
+       (SELECT n FROM queued) + (SELECT count(*) FROM inserted) >= :cap AS capped
+"""
+)
+
+# Same serialisation for the cap halt (ADR-0041): the `failed` edge has
+# the same abandon-then-transition shape as stop, so the routing writers'
+# `FOR SHARE` needs the same exclusive counterpoint or a release racing a
+# breach-halt lands `pending` on a failed run.
+_LOCK_RUN_FOR_HALT = sa.text(
+    """
+SELECT id FROM crawl.runs WHERE id = :run_id AND state = 'running' FOR UPDATE
+"""
+)
+
+
+# ADR-0040's recording. `state = 'running'` makes it first-signaller-wins:
+# a later in-flight re-signal — or a concurrent clean finish that got
+# there first — matches no row, so the run is failed exactly once, only by
+# a caller that found it still running.
+#
+# `_STATS` is the shape every finish writes (runs.py), shared rather than
+# duplicated — and this UPDATE is deliberately the SECOND statement of the
+# halt transaction, after the abandon. A single data-modifying CTE cannot
+# see a sibling CTE's writes (PostgreSQL runs them on one snapshot), so a
+# stats subquery beside the abandon CTE would count this breach's rows as
+# still `pending` and write `pages_abandoned = 0` — the clean finish
+# ADR-0040 forbids. Within one transaction the later statement sees the
+# earlier's writes; the transaction, not the statement count, is what
+# keeps the halt atomic.
+#
+# Returns `stats` too (2.8): the `run_state` event emitted beside the
+# transition carries the transition-time snapshot, the same one written to
+# `runs.stats` here.
+_HALT_RUN = sa.text(
+    f"""
+UPDATE crawl.runs
+SET state = 'failed', stop_reason = :reason, finished_at = now(),
+    stats = {_STATS}
+WHERE id = :run_id AND state = 'running'
+RETURNING id, stats
 """
 )
 
@@ -345,8 +501,13 @@ class PostgresFrontier:
 
         Fenced like `complete`: a row this lease already closed, or lost, is
         left alone, so a release on shutdown cannot reopen a finished page.
+
+        The run row is share-locked first (see `_LOCK_RUN_FOR_RELEASE`) so
+        the pending-vs-abandoned routing cannot race a terminal
+        transition (ADR-0041).
         """
         async with self._engine.begin() as conn:
+            await conn.execute(_LOCK_RUN_FOR_RELEASE, {"run_id": int(item.run_id)})
             released = (
                 await conn.execute(_RELEASE_QUEUE, {"id": int(item.id), "lease": item.locked_until})
             ).scalar_one_or_none()
@@ -382,25 +543,78 @@ class PostgresFrontier:
         return int(result.rowcount)
 
     async def enqueue(
-        self, run_id: RunId, domain_id: DomainId, urls: Sequence[tuple[str, int]]
-    ) -> int:
-        """Add (url, depth) pairs, deduplicated within the run.
+        self, run_id: RunId, domain_id: DomainId, urls: Sequence[tuple[str, int]], *, cap: int
+    ) -> Enqueued:
+        """Add (url, depth) pairs, deduplicated within the run, under the
+        domain's per-run cap (ADR-0040).
 
-        `ON CONFLICT DO NOTHING` rather than a SELECT-then-INSERT: the unique
-        index is already the constraint, and checking first is a race that
-        two workers discovering the same link will lose.
+        `ON CONFLICT DO NOTHING` rather than a SELECT-then-INSERT: the
+        unique index is already the constraint, and checking first is a
+        race that two workers discovering the same link will lose.
         """
         if not urls:
-            return 0
+            return Enqueued(added=0, capped=False)
         async with self._engine.begin() as conn:
-            result = await conn.execute(
-                _ENQUEUE,
-                {
-                    "run_id": int(run_id),
-                    "domain_id": int(domain_id),
-                    "urls": [fetchable_url(url) for url, _ in urls],
-                    "hashes": [url_hash(url) for url, _ in urls],
-                    "depths": [depth for _, depth in urls],
-                },
+            row = (
+                await conn.execute(
+                    _ENQUEUE,
+                    {
+                        "run_id": int(run_id),
+                        "domain_id": int(domain_id),
+                        "urls": [fetchable_url(url) for url, _ in urls],
+                        "hashes": [url_hash(url) for url, _ in urls],
+                        "depths": [depth for _, depth in urls],
+                        "cap": cap,
+                    },
+                )
+            ).one()
+        return Enqueued(added=int(row.added), capped=bool(row.capped))
+
+    async def halt_run(self, run_id: RunId, domain_id: DomainId, reason: str) -> RunHalt:
+        """Fail the run with `reason` and abandon its pending rows for the
+        domain, in one transaction (ADR-0040).
+
+        The abandon runs first so the stats written with the failure count
+        the rows it abandoned (see `_HALT_RUN`). The domain row is never
+        touched: it stays `active`, and the next run's count starts at
+        zero, below any cap. The run row is locked `FOR UPDATE` before the
+        abandon (see `_LOCK_RUN_FOR_HALT`) so the release/sweep routing
+        cannot return a row to `pending` on this transition (ADR-0041).
+
+        The `failed` `run_state` event is written in this same transaction
+        (ADR-0042): the lock is already held, so the seq reservation costs
+        nothing, and the event exists iff the transition happened.
+        """
+        async with self._engine.begin() as conn:
+            await conn.execute(_LOCK_RUN_FOR_HALT, {"run_id": int(run_id)})
+            abandoned = await conn.execute(
+                _ABANDON, {"run_id": int(run_id), "domain_id": int(domain_id)}
             )
-            return len(result.fetchall())
+            halted = (
+                await conn.execute(_HALT_RUN, {"run_id": int(run_id), "reason": reason})
+            ).first()
+            if halted is not None:
+                await emit_in(
+                    conn,
+                    run_id,
+                    "run_state",
+                    {
+                        "state": "failed",
+                        "stop_reason": reason,
+                        "stats": dict(halted.stats),
+                    },
+                )
+        return RunHalt(abandoned=int(abandoned.rowcount), transitioned=halted is not None)
+
+    async def queue_counts(self, run_id: RunId, domain_id: DomainId) -> dict[str, int]:
+        """The (run, domain)'s queue rows by state — the `progress` event's
+        payload (BUILD_PLAN 2.8, spec 005 §3). One grouped read on this,
+        the frontier's own table; `pending` is the payload's `queued`."""
+        async with self._engine.begin() as conn:
+            rows = (
+                await conn.execute(
+                    _QUEUE_COUNTS,
+                    {"run_id": int(run_id), "domain_id": int(domain_id)},
+                )
+            ).all()
+        return {row.state: int(row.n) for row in rows}

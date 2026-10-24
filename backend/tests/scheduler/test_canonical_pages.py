@@ -30,6 +30,7 @@ from spydra.adapters.postgres.domains import PostgresDomains
 from spydra.adapters.postgres.frontier import PostgresFrontier
 from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.adapters.postgres.pages import PostgresPages
+from spydra.adapters.postgres.run_events import PostgresRunEvents
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates
 from spydra.domain.enums import FetchPath
@@ -82,6 +83,7 @@ def build(engine: AsyncEngine, static: HttpxFetcher) -> PageCrawler:
             templates=PostgresTemplates(engine),
             observations=observations,
             runs=PostgresRuns(engine),
+            events=PostgresRunEvents(engine),
         ),
         writer=ObservationWriter(observations, PostgresAssets(engine)),
         chain=ExtractionChain([StructuredStrategy(), SelectorStrategy()]),
@@ -110,7 +112,9 @@ async def crawl_all(engine: AsyncEngine, base: str, paths: list[str]) -> tuple[D
     domain = await seed_domain(engine, base.removeprefix("http://"))
     run = await seed_run(engine, [int(domain)])
     frontier = PostgresFrontier(engine)
-    assert await frontier.enqueue(run, domain, [(base + p, 1) for p in paths]) == len(paths)
+    assert (
+        await frontier.enqueue(run, domain, [(base + p, 1) for p in paths], cap=20_000)
+    ).added == len(paths)
 
     static = HttpxFetcher(SystemClock())
     try:

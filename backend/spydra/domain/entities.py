@@ -137,6 +137,11 @@ class Domain:
     consecutive_403s: int = 0
     configured_crawl_delay_ms: int = 2000
     max_depth: int = 5
+    # ADR-0040's per-run queue ceiling, enforced inside the guarded enqueue.
+    # On the domain, not the run, because like `max_depth` it is crawl shape
+    # the operator tunes per site; a breach halts the RUN and never touches
+    # this row's state.
+    url_cap: int = 20000
     deny_patterns: tuple[str, ...] = ()
 
     @property

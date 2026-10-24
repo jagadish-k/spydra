@@ -41,6 +41,8 @@ CREATE TABLE domains (
   -- and spec 002 §4's decay stops here, never below (BUILD_PLAN 1.13).
   configured_crawl_delay_ms INT NOT NULL DEFAULT 2000
     CHECK (configured_crawl_delay_ms >= 0),
+  -- ADR-0040: the per-run queue ceiling, enforced inside the guarded enqueue.
+  url_cap         INT NOT NULL DEFAULT 20000 CHECK (url_cap > 0),
   notes           TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- ADR-0026: the counter gates claiming, so a negative one is impolite
@@ -108,7 +110,18 @@ CREATE TABLE runs (
   domain_ids    BIGINT[] NOT NULL,     -- the selection this run covers
   trigger       TEXT NOT NULL DEFAULT 'manual',
   stats         JSONB NOT NULL DEFAULT '{}',  -- rolled up at completion
-  stop_reason   TEXT
+  stop_reason   TEXT,
+  -- ADR-0042 (2.8, late column): the per-run event counter every
+  -- `run_events` emission reserves on — one UPDATE .. RETURNING whose own
+  -- row lock serialises reservers, so run_events.seq is per-run monotonic
+  -- AND gap-free by construction.
+  next_seq      BIGINT NOT NULL DEFAULT 0,
+  -- ADR-0041: `completed` is the only terminal state allowed a NULL
+  -- stop_reason. `paused` is on the NULL side deliberately: it is not
+  -- terminal (the terminal set is completed|stopped|failed), it is
+  -- resumable, and it exists precisely to be resumed.
+  CONSTRAINT runs_terminal_stop_reason
+    CHECK (state IN ('running','paused','completed') OR stop_reason IS NOT NULL)
 );
 CREATE INDEX ON runs (started_at DESC);
 
@@ -218,6 +231,10 @@ CREATE UNIQUE INDEX uq_unknown_pages_open
 
 -- Bounded per-run event log. Exists so an SSE client that reconnects with
 -- Last-Event-ID can be backfilled rather than shown a gap (ADR-0012).
+-- Kinds written (2.8, ADR-0042): 'progress' | 'page' | 'domain_state' |
+-- 'run_state' — 'asset' waits for 5.2 — at most the last 5,000 per run
+-- (trimmed while the run is live; seq is reserved gap-free from
+-- runs.next_seq).
 CREATE TABLE run_events (
   id        BIGSERIAL PRIMARY KEY,
   run_id    BIGINT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -311,6 +328,59 @@ discovered ──propose──> awaiting_approval ──approve──> active
 
 Transitions are a pure function in `domain/lifecycle.py`. Invalid transitions
 raise; they are not silently ignored.
+
+### Run lifecycle
+
+Explicit state on `runs.state` (ADR-0041). The invariant underneath: **a
+row is claimable if and only if its run is `running`** — enforced at the
+claim, and at the writers that could put a row on a non-`running` run
+against the operator's intent. The two routing writers (the lease sweep
+and the release path) send a row of a non-`running` run to `abandoned`,
+deciding under a share lock on the run row; the discovery writer (the
+guarded enqueue) locks the run row `FOR SHARE` in a CTE at the top of its
+statement, so a stop landing mid-enqueue either sees the rows via its
+abandon or the enqueue re-reads the terminal state and inserts nothing.
+The terminal writers (`stop_run`, the cap halt) take the run row
+`FOR UPDATE` before their abandon — the pairing that makes **a terminal
+run holds no pending rows** true at the write, and keeps the stats written
+at the terminal transition honest.
+
+```
+running ──pause──> paused ──resume──> running
+   │                  │
+   │                  └────stop──────> stopped
+   ├──stop──> stopped
+   ├──drained──> completed
+   └──cap breach (ADR-0040)──> failed
+
+completed | stopped | failed  are terminal; nothing leaves them.
+```
+
+| Transition                  | Guarded predicate                   | Row / stats writes in the same transaction                                     |
+| --------------------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
+| `running → paused`          | `state = 'running'`                 | none — pause freezes dequeue, not discovery (in-flight rows still enqueue)     |
+| `paused → running`          | `state = 'paused'`                  | the drained-finish check: a run that drained while paused completes with stats |
+| `running\|paused → stopped` | `state IN ('running','paused')`     | run-scoped abandon of pending rows FIRST, then `_STATS` (ADR-0040's ordering)  |
+| `running → completed`       | `state = 'running'` + queue drained | `_STATS`                                                                       |
+| `running → failed`          | `state = 'running'`                 | domain-scoped abandon, then `stop_reason` + `_STATS` (ADR-0040)                |
+
+**Transitions are guarded SQL predicates, not a pure function** — unlike
+the domain lifecycle above. Every run transition is atomic with its row and
+stats writes in one transaction, and a pure function plus a separate write
+is exactly the check-then-act race the guarded predicate exists to prevent.
+There is also no caller for one: the callers are SQL transactions (stop,
+pause, resume, finish, halt). Do not "complete" the symmetry later.
+
+`stop_reason` vocabulary: `stopped by operator` (operator stop) and
+`url cap exceeded: {cap} urls queued for {host}` (cap breach, ADR-0040) —
+the only non-completed terminal paths that can fire today. The CHECK in
+§1 enforces structurally that every non-completed terminal row names its
+reason.
+
+Pause and stop are run-scoped — the whole run, all its domains, which is
+the only semantics an operator can drive (a file-load may create one run
+over several domains). Per-domain stop needs a driver that does not exist;
+ADR-0040's seam for it stays open until a multi-domain UI/API does.
 
 ---
 

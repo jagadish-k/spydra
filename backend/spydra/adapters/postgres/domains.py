@@ -19,7 +19,7 @@ _GET = sa.text(
 SELECT id, host, state::text AS state, render_mode, crawl_delay_ms,
        configured_crawl_delay_ms, max_concurrency, asset_concurrency,
        respect_robots, next_eligible_at, consecutive_failures,
-       consecutive_403s, user_agent, max_depth, deny_patterns
+       consecutive_403s, user_agent, max_depth, url_cap, deny_patterns
 FROM crawl.domains
 WHERE id = :id
 """
@@ -56,6 +56,7 @@ class PostgresDomains:
             consecutive_403s=row["consecutive_403s"],
             user_agent=row["user_agent"],
             max_depth=row["max_depth"],
+            url_cap=row["url_cap"],
             deny_patterns=tuple(row["deny_patterns"]),
         )
 

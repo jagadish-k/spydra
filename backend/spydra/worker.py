@@ -34,6 +34,7 @@ from spydra.adapters.postgres.domains import PostgresDomains
 from spydra.adapters.postgres.frontier import PostgresFrontier
 from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.adapters.postgres.pages import PostgresPages
+from spydra.adapters.postgres.run_events import PostgresRunEvents
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates
 from spydra.extraction import ExtractionChain, SelectorStrategy, StructuredStrategy
@@ -66,6 +67,7 @@ async def main() -> None:
     )
     observations = PostgresObservations(engine)
     runs = PostgresRuns(engine)
+    events = PostgresRunEvents(engine)
     assets = PostgresAssets(engine)
     frontier = PostgresFrontier(engine)
     crawler = PageCrawler(
@@ -76,6 +78,7 @@ async def main() -> None:
             templates=PostgresTemplates(engine),
             observations=observations,
             runs=runs,
+            events=events,
         ),
         writer=ObservationWriter(observations, assets),
         chain=ExtractionChain([StructuredStrategy(), SelectorStrategy()]),
@@ -97,6 +100,7 @@ async def main() -> None:
                 frontier=frontier,
                 assets=assets,
                 runs=runs,
+                events=events,
                 pressure=pressure,
                 crawler=crawler,
             )

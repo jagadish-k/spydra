@@ -34,12 +34,13 @@ from spydra.adapters.postgres.domains import PostgresDomains
 from spydra.adapters.postgres.frontier import PostgresFrontier
 from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.adapters.postgres.pages import PostgresPages
+from spydra.adapters.postgres.run_events import PostgresRunEvents
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates, extraction_to_json
 from spydra.domain.enums import FetchPath, RenderMode
 from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchedPage, FetchRequest
-from spydra.domain.ids import DomainId, RunId
+from spydra.domain.ids import DomainId, RunId, TemplateId
 from spydra.extraction import (
     ExtractionChain,
     SelectorStrategy,
@@ -55,7 +56,7 @@ from spydra.scheduler.politeness import PolitenessGate
 from spydra.scheduler.pools import RENDERED_MODES, STATIC_MODES, ClaimLoop, Pool
 from spydra.scheduler.render_budget import RenderBudget
 from spydra.scheduler.robots import RobotsCache
-from tests.adapters.postgres.observation_seed import unknown_rows
+from tests.adapters.postgres.observation_seed import seed_observation, seed_page, unknown_rows
 from tests.adapters.postgres.seed import (
     domain_row,
     queue_row,
@@ -156,6 +157,7 @@ def build(
             templates=PostgresTemplates(engine),
             observations=observations,
             runs=runs or PostgresRuns(engine),
+            events=PostgresRunEvents(engine),
         ),
         writer=ObservationWriter(observations, PostgresAssets(engine)),
         chain=ExtractionChain([StructuredStrategy(), SelectorStrategy()]),
@@ -771,6 +773,7 @@ async def test_the_loop_backs_off_while_the_sidecar_is_unavailable(
         frontier=PostgresFrontier(clean_crawl),
         assets=PostgresAssets(clean_crawl),
         runs=PostgresRuns(clean_crawl),
+        events=PostgresRunEvents(clean_crawl),
         pressure=AssetPressure(),
         crawler=crawler,
     )
@@ -806,6 +809,7 @@ async def test_the_sweep_finishes_a_run_whose_last_row_it_retired(
         frontier=PostgresFrontier(clean_crawl),
         assets=PostgresAssets(clean_crawl),
         runs=PostgresRuns(clean_crawl),
+        events=PostgresRunEvents(clean_crawl),
         pressure=AssetPressure(),
         crawler=build(
             clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200)), unused_renderer()
@@ -826,6 +830,18 @@ async def test_the_sweep_finishes_a_run_whose_last_row_it_retired(
             )
         ).scalar_one()
     assert state == "completed"
+    # 2.8: no worker ever closed that run's last row, so only the
+    # transition could have written its terminal event — and it did.
+    async with clean_crawl.connect() as conn:
+        terminal = (
+            await conn.execute(
+                sa.text(
+                    "SELECT kind, payload FROM crawl.run_events WHERE run_id = :r ORDER BY seq"
+                ),
+                {"r": int(run)},
+            )
+        ).all()
+    assert [(k, dict(p)["state"]) for k, p in terminal] == [("run_state", "completed")]
 
 
 async def test_a_render_slot_that_does_not_free_up_is_backpressure() -> None:
@@ -851,3 +867,270 @@ async def test_a_render_slot_that_does_not_free_up_is_backpressure() -> None:
     with pytest.raises(Backpressure):
         await budget.fetch(request)
     holder.cancel()
+
+
+# ---------------------------------------------------------------------------
+# The emission set (BUILD_PLAN 2.8, ADR-0042): which outcomes leave an
+# event, and with which payload
+# ---------------------------------------------------------------------------
+
+
+async def run_events(engine: AsyncEngine, run: RunId) -> list[tuple[str, dict[str, object]]]:
+    """The run's events in seq order: `(kind, payload)`."""
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            sa.text("SELECT kind, payload FROM crawl.run_events WHERE run_id = :r ORDER BY seq"),
+            {"r": int(run)},
+        )
+    return [(str(r.kind), dict(r.payload)) for r in rows]
+
+
+async def _template_id(engine: AsyncEngine, domain: DomainId) -> int:
+    async with engine.connect() as conn:
+        return int(
+            (
+                await conn.execute(
+                    sa.text("SELECT id FROM crawl.templates WHERE domain_id = :d"),
+                    {"d": int(domain)},
+                )
+            ).scalar_one()
+        )
+
+
+async def test_a_done_close_emits_one_page_event_and_one_throttled_progress(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The happy path's whole projection: `page` with spec 005 §3's five
+    keys and the real numbers (the fetched status, the observation's
+    strategy and field count, `ok` for a `done` close), then `progress`.
+    And the run's own close: the last row's finish writes the terminal
+    `run_state` in the transition's transaction."""
+    domain = await seed_crawl_domain(clean_crawl, with_template=True)
+    run = await seed_run(clean_crawl, [int(domain)])
+    url = f"{BASE}/catalog/abrasives/discs/rfd-115-060"
+    await seed_queue_row(clean_crawl, run, domain, url)
+    crawler = build(
+        clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200, PRODUCT)), unused_renderer()
+    )
+
+    await claim_and_crawl(clean_crawl, crawler, domain)
+
+    kinds = [kind for kind, _ in await run_events(clean_crawl, run)]
+    assert kinds == ["page", "progress", "run_state"]
+
+    page, progress, terminal = (p for _, p in await run_events(clean_crawl, run))
+    assert set(page) == {"url", "status", "strategy", "fields", "ok"}
+    assert page["url"] == url
+    assert page["status"] == 200
+    assert page["ok"] is True
+    assert isinstance(page["strategy"], str), "the observation's strategy, or null if none"
+    assert isinstance(page["fields"], int) and page["fields"] >= 1, "fixture page extracts fields"
+
+    assert set(progress) == {"domain", "queued", "in_flight", "done", "failed", "depth"}
+    assert progress["domain"] == HOST
+    assert progress["done"] == 1 and progress["queued"] == 0
+    assert progress["in_flight"] == 0 and progress["failed"] == 0
+    assert progress["depth"] == 0
+
+    assert set(terminal) == {"state", "stats"}
+    assert terminal["state"] == "completed"
+
+
+async def test_a_final_failed_close_emits_its_page_event_with_the_refusal(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """A 403 is a final failure: the `page` event exists — a refusal is an
+    outcome — with `ok` false, the refusal's status, and the nulls of a
+    close that wrote no observation."""
+    domain = await seed_crawl_domain(clean_crawl, with_template=True)
+    run = await seed_run(clean_crawl, [int(domain)])
+    await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/a")
+    crawler = build(
+        clean_crawl,
+        ScriptedFetcher(FetchPath.STATIC, always(403, "<h1>No</h1>")),
+        unused_renderer(),
+    )
+
+    await claim_and_crawl(clean_crawl, crawler, domain)
+
+    page = next(p for kind, p in await run_events(clean_crawl, run) if kind == "page")
+    assert (page["status"], page["ok"], page["strategy"], page["fields"]) == (403, False, None, 0)
+
+
+async def test_a_retry_close_and_a_backpressure_release_emit_nothing(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The negative space of the emission set: a retry-`pending` close is
+    not an outcome, and a `release` is backpressure — nothing happened.
+    Neither leaves any event of any kind."""
+    domain = await seed_crawl_domain(clean_crawl, with_template=True)
+    run = await seed_run(clean_crawl, [int(domain)])
+    row = await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/a")
+
+    retrying = build(
+        clean_crawl,
+        ScriptedFetcher(FetchPath.STATIC, raising(FetchFailed("refused"))),
+        unused_renderer(),
+    )
+    await claim_and_crawl(clean_crawl, retrying, domain)
+    assert await run_events(clean_crawl, run) == [], "a retry emitted an event"
+
+    # Same run, same domain: the retried row is claimed again and this
+    # time the fetch is refused by our own infrastructure — a release,
+    # not an outcome.
+    released = build(
+        clean_crawl,
+        ScriptedFetcher(FetchPath.STATIC, raising(Backpressure("sidecar full"))),
+        unused_renderer(),
+    )
+    await claim_and_crawl(clean_crawl, released, domain)
+    assert await run_events(clean_crawl, run) == [], "a release emitted an event"
+    assert (await queue_row(clean_crawl, row)).state == QueueItemState.PENDING
+
+
+async def test_progress_is_throttled_to_one_per_run_and_domain_per_second(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Two closes inside the window, one progress; the next close past it,
+    another. The clock is the crawler's own monotonic one, so the window
+    below is a real sleep on real time — the only honest way to cross it."""
+    domain = await seed_crawl_domain(clean_crawl, with_template=True)
+    run = await seed_run(clean_crawl, [int(domain)])
+    for n in range(3):
+        await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/p{n}")
+    crawler = build(
+        clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200, PRODUCT)), unused_renderer()
+    )
+
+    await claim_and_crawl(clean_crawl, crawler, domain)
+    await claim_and_crawl(clean_crawl, crawler, domain)
+    assert len([1 for kind, _ in await run_events(clean_crawl, run) if kind == "progress"]) == 1, (
+        "two closes inside one second each emitted a progress"
+    )
+
+    await asyncio.sleep(1.1)
+    await claim_and_crawl(clean_crawl, crawler, domain)
+    assert len([1 for kind, _ in await run_events(clean_crawl, run) if kind == "progress"]) == 2, (
+        "a close past the window emitted no progress"
+    )
+    assert len([1 for kind, _ in await run_events(clean_crawl, run) if kind == "page"]) == 3
+
+
+async def test_progress_carries_the_closed_pages_depth(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """Spec 002 §7: the depth an event carries is the depth of the page
+    whose close triggered it — not the queue's maximum, not the seed's."""
+    domain = await seed_crawl_domain(clean_crawl, with_template=True)
+    run = await seed_run(clean_crawl, [int(domain)])
+    await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/deep", depth=3)
+    crawler = build(
+        clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200, PRODUCT)), unused_renderer()
+    )
+
+    await claim_and_crawl(clean_crawl, crawler, domain)
+
+    progress = next(p for kind, p in await run_events(clean_crawl, run) if kind == "progress")
+    assert progress["depth"] == 3
+
+
+async def test_three_403s_emit_the_domain_state_pause_event(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """The domain event the pause path owes (spec 005 §3): the host, the
+    state the domain moved to, and the machine reason. The two rows the
+    pause abandons emit no `page` events — the burst guard's small case."""
+    domain = await seed_crawl_domain(clean_crawl, with_template=True)
+    run = await seed_run(clean_crawl, [int(domain)])
+    for n in range(5):
+        await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/p{n}")
+    crawler = build(
+        clean_crawl,
+        ScriptedFetcher(FetchPath.STATIC, always(403, "<h1>No</h1>")),
+        unused_renderer(),
+    )
+
+    for _ in range(3):
+        await claim_and_crawl(clean_crawl, crawler, domain)
+
+    events = await run_events(clean_crawl, run)
+    moved = [p for kind, p in events if kind == "domain_state"]
+    assert moved == [{"domain": HOST, "state": "paused", "reason": "three_403s"}]
+    # Three refusals closed three rows; the two abandoned rows are a
+    # number in the run's stats, not two thousand events.
+    assert len([1 for kind, _ in events if kind == "page"]) == 3
+
+
+async def test_the_break_halt_emits_its_domain_state_event(clean_crawl: AsyncEngine) -> None:
+    """ADR-0027's halt: a template that used to work stopped working, and
+    the fifth page's verdict says so. The event names the host, `broken`
+    — the state the domain moved to — and the machine reason."""
+    domain = await seed_crawl_domain(clean_crawl, with_template=True)
+    earlier = await seed_run(clean_crawl, [int(domain)])
+    run = await seed_run(clean_crawl, [int(domain)])
+    template = await _template_id(clean_crawl, domain)
+    # Four pages that used to extract: this run will crawl them empty.
+    urls = [f"{BASE}/catalog/redesigned-{n}" for n in range(4)]
+    for url in urls:
+        page = await seed_page(clean_crawl, domain, url, template_id=TemplateId(template))
+        await seed_observation(clean_crawl, page, earlier, empty=False)
+    for url in [*urls, f"{BASE}/catalog/redesigned-4"]:
+        await seed_queue_row(clean_crawl, run, domain, url)
+
+    crawler = build(
+        clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200, STUB_ONLY)), unused_renderer()
+    )
+    for _ in range(5):
+        await claim_and_crawl(clean_crawl, crawler, domain)
+
+    moved = [p for kind, p in await run_events(clean_crawl, run) if kind == "domain_state"]
+    assert moved == [{"domain": HOST, "state": "broken", "reason": "break"}]
+    states = await queue_states(clean_crawl, run)
+    assert states == ["done"] * 5, "the fixture did not crawl five pages"
+    # The same oracle the NEVER_MATCHED edge pins below: the event names
+    # the state the domain row actually moved to.
+    assert (await domain_row(clean_crawl, domain)).state == moved[0]["state"]
+
+
+async def test_the_never_matched_halt_names_the_state_the_domain_moved_to(
+    clean_crawl: AsyncEngine,
+) -> None:
+    """ADR-0030's halt: a first run whose template never worked sends the
+    domain back to review — `awaiting_approval`, not `broken`; nothing used
+    to work, so "this used to work" would be a lie. The event's `state` is
+    the domain's state, exactly as the three-403 event reports `paused` and
+    the BREAK edge (above) reports `broken`: the fix computes the state
+    from the lifecycle, so both edges are pinned — this one against the
+    domain row itself, the strongest oracle."""
+    domain = await seed_crawl_domain(clean_crawl, with_template=True)
+    run = await seed_run(clean_crawl, [int(domain)])
+    template = await _template_id(clean_crawl, domain)
+    # Four empty product pages this run has already observed: the fifth
+    # close is the verdict's minimum sample, all of it empty. The seeded
+    # rows carry the product template, because the health sample counts
+    # only observations a product template made (`_RUN_PAGES`).
+    for n in range(4):
+        url = f"{BASE}/catalog/unmatched-{n}"
+        page = await seed_page(clean_crawl, domain, url, template_id=TemplateId(template))
+        await seed_observation(clean_crawl, page, run, empty=True)
+    async with clean_crawl.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "UPDATE crawl.page_observations SET template_id = :t "
+                "WHERE run_id = :r AND template_id IS NULL"
+            ),
+            {"t": template, "r": int(run)},
+        )
+    await seed_queue_row(clean_crawl, run, domain, f"{BASE}/catalog/unmatched-4")
+
+    crawler = build(
+        clean_crawl, ScriptedFetcher(FetchPath.STATIC, always(200, STUB_ONLY)), unused_renderer()
+    )
+    await claim_and_crawl(clean_crawl, crawler, domain)
+
+    domain_after = await domain_row(clean_crawl, domain)
+    moved = [p for kind, p in await run_events(clean_crawl, run) if kind == "domain_state"]
+    assert domain_after.state == "awaiting_approval", "the fixture did not reach review"
+    assert moved == [{"domain": HOST, "state": domain_after.state, "reason": "never_matched"}], (
+        "the event must name the state the domain moved to"
+    )

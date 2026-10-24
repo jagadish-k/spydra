@@ -43,18 +43,20 @@ from spydra.adapters.http.auto_fetcher import AutoFetcher
 from spydra.adapters.postgres.domains import PostgresDomains
 from spydra.adapters.postgres.observations import PostgresObservations
 from spydra.adapters.postgres.pages import PostgresPages
+from spydra.adapters.postgres.run_events import PostgresRunEvents
 from spydra.adapters.postgres.runs import PostgresRuns
 from spydra.adapters.postgres.templates import PostgresTemplates, matching
 from spydra.discovery.canonical import canonical_link
 from spydra.discovery.links import discover
 from spydra.domain.entities import Domain, Template
-from spydra.domain.enums import DomainEvent, PageKind, RenderMode, UnknownReason
+from spydra.domain.enums import DomainEvent, DomainState, PageKind, RenderMode, UnknownReason
 from spydra.domain.errors import Backpressure, FetchFailed
 from spydra.domain.fetch import FetchedPage, FetchRequest
+from spydra.domain.lifecycle import transition
 from spydra.domain.urls import canonical_url
 from spydra.extraction.chain import ChainResult, ExtractionChain
 from spydra.extraction.validation import empty_extraction
-from spydra.observations.writer import CrawledPage, ObservationWriter
+from spydra.observations.writer import CrawledPage, ObservationWriter, WriteOutcome
 from spydra.ports.clock import Clock
 from spydra.ports.fetcher import Fetcher
 from spydra.ports.frontier import MAX_ATTEMPTS, ClaimedUrl, Completion, Frontier, QueueItemState
@@ -72,6 +74,28 @@ log = structlog.get_logger(__name__)
 # fails the same way while the sidecar is down, so the report is rate-limited
 # rather than one line per claim, which would break spec 009 §5's budget.
 RENDER_UNAVAILABLE_EVERY_S = 60.0
+
+# Spec 005 §3: `progress` is coalesced to at most one event per (run,
+# domain) per second — a busy run otherwise emits thousands of events the
+# UI cannot use. In-process by design (ADR-0042): N replicas emit at most
+# N/s/domain, and the SSE endpoint can coalesce further on read.
+PROGRESS_MIN_INTERVAL_S = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class _PageOutcome:
+    """What a closing row projects into its `page` event (spec 005 §3's
+    keys) — everything `_close` cannot know from the claimed row.
+
+    `status` is the fetched HTTP status, `None` when no request was made
+    (robots, a fetch that never answered); `strategy` and `fields` come from
+    the observation and are `None`/0 when the close wrote none.
+    """
+
+    host: str
+    status: int | None
+    strategy: str | None = None
+    fields: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +128,7 @@ class Repositories:
     templates: PostgresTemplates
     observations: PostgresObservations
     runs: PostgresRuns
+    events: PostgresRunEvents
 
 
 class PageCrawler:
@@ -130,6 +155,8 @@ class PageCrawler:
         self._user_agent = user_agent
         self._clock = clock
         self._render_reported_at: float | None = None
+        # (run_id, domain_id) → monotonic time of the last `progress` emit.
+        self._progress_at: dict[tuple[int, int], float] = {}
 
     async def crawl(self, item: ClaimedUrl) -> bool:
         """Crawl one claimed URL. `True` asks the loop to back off before its
@@ -153,7 +180,9 @@ class PageCrawler:
             # No request was made, so the politeness state is left exactly
             # as it was: nothing happened that the gate could decide about.
             log.debug("robots_disallowed")
-            await self._close(item, QueueItemState.FAILED, _unchanged(domain))
+            await self._close(
+                item, QueueItemState.FAILED, _unchanged(domain), _PageOutcome(domain.host, None)
+            )
             return False
 
         request = FetchRequest(url=item.url, user_agent=user_agent)
@@ -166,7 +195,12 @@ class PageCrawler:
             await self._frontier.release(item)
             return True
         except FetchFailed:
-            await self._retry_or_fail(item, self._gate.on_fetch_error(state), "fetch_failed")
+            await self._retry_or_fail(
+                item,
+                self._gate.on_fetch_error(state),
+                "fetch_failed",
+                page=_PageOutcome(domain.host, None),
+            )
             return False
 
         template = matching(await self._repos.templates.active_for(domain.id), _path(item.url))
@@ -193,20 +227,38 @@ class PageCrawler:
         if status == 403:
             log.warning("refused", status=status, consecutive_403s=decision.consecutive_403s)
             # Only a 403 this claim actually recorded counts toward the pause.
-            if await self._close(item, QueueItemState.FAILED, decision):
-                await self._pause_if_blocked(item, decision)
+            refused = _PageOutcome(domain.host, 403)
+            if await self._close(item, QueueItemState.FAILED, decision, refused):
+                await self._pause_if_blocked(item, decision, domain)
             return False
         if status in RATE_LIMIT_STATUSES:
             # Spec 009 §1 puts "backoff applied" at warning.
             log.warning("backoff", status=status, crawl_delay_ms=decision.crawl_delay_ms)
         if status in RATE_LIMIT_STATUSES or status >= 500:
-            await self._retry_or_fail(item, decision, "server_refused", status=status)
+            await self._retry_or_fail(
+                item,
+                decision,
+                "server_refused",
+                page=_PageOutcome(domain.host, status),
+                status=status,
+            )
             return False
 
         if result is None:
             result = await self._chain.extract(fetched, template)
-        await self._observe(item, domain, fetched, template, result)
-        await self._close(item, QueueItemState.DONE, decision)
+        outcome = await self._observe(item, domain, fetched, template, result)
+        observation = outcome.observation
+        await self._close(
+            item,
+            QueueItemState.DONE,
+            decision,
+            _PageOutcome(
+                domain.host,
+                fetched.http_status,
+                strategy=observation.strategy.value if observation.strategy is not None else None,
+                fields=len(observation.fields),
+            ),
+        )
         return False
 
     async def abort(self, item: ClaimedUrl) -> None:
@@ -225,7 +277,11 @@ class PageCrawler:
         domain = await self._repos.domains.get(item.domain_id)
         state = _politeness(domain, RobotsRules.unrestricted())
         await self._retry_or_fail(
-            item, self._gate.on_server_error(state), "crawl_crashed", inbox=False
+            item,
+            self._gate.on_server_error(state),
+            "crawl_crashed",
+            page=_PageOutcome(domain.host, None),
+            inbox=False,
         )
 
     async def _second_chance(
@@ -261,7 +317,7 @@ class PageCrawler:
         fetched: FetchedPage,
         template: Template | None,
         result: ChainResult,
-    ) -> None:
+    ) -> WriteOutcome:
         # Spec 004 §2 step 7: the page's own canonical names the `pages` row,
         # so two URLs for one product are one page. Resolved against the URL
         # the body came from (redirects are followed), and honoured only on a
@@ -301,14 +357,30 @@ class PageCrawler:
             # will never be claimed, so they are recorded as work not done
             # and the run can finish instead of waiting on them for ever.
             abandoned = await self._frontier.abandon_domain(item.run_id, domain.id)
+            # The 1.11 halts' event (ADR-0042). The verdict names the state:
+            # both halt edges exist only from `active` (domain/lifecycle.py),
+            # so the pure `transition` is the state the domain moved to —
+            # `broken` for BREAK, `awaiting_approval` for NEVER_MATCHED
+            # (ADR-0030), never a hard-coded one.
+            if outcome.event is not None:
+                await self._repos.events.emit(
+                    item.run_id,
+                    "domain_state",
+                    {
+                        "domain": domain.host,
+                        "state": transition(DomainState.ACTIVE, outcome.event).value,
+                        "reason": outcome.event.value,
+                    },
+                )
             log.error(
                 "domain_halted",
                 verdict=outcome.event,
                 abandoned=abandoned,
                 action="review the domain's template against its current pages",
             )
-            return
+            return outcome
         await self._discover(item, domain, fetched, template)
+        return outcome
 
     async def _discover(
         self, item: ClaimedUrl, domain: Domain, fetched: FetchedPage, template: Template | None
@@ -331,13 +403,43 @@ class PageCrawler:
             domain_deny=domain.deny_patterns,
         )
         links = found.links()
-        added = await self._frontier.enqueue(item.run_id, domain.id, links) if links else 0
+        outcome = (
+            await self._frontier.enqueue(item.run_id, domain.id, links, cap=domain.url_cap)
+            if links
+            else None
+        )
         log.debug(
             "links_discovered",
             accepted=len(links),
-            enqueued=added,
+            enqueued=outcome.added if outcome else 0,
             rejected={key: r.count for key, r in found.rejected.items()},
         )
+        if outcome is not None and outcome.capped:
+            await self._halt_for_cap(item, domain)
+
+    async def _halt_for_cap(self, item: ClaimedUrl, domain: Domain) -> None:
+        """ADR-0040: a cap breach is a run-scoped halt. The domain stays
+        `active` — a trap is a template defect, not a site refusal — its
+        pending rows in THIS run are abandoned, and the run is failed with
+        the cap named, so the breach is never reported as a clean finish."""
+        halt = await self._frontier.halt_run(
+            item.run_id,
+            domain.id,
+            f"url cap exceeded: {domain.url_cap} urls queued for {domain.host}",
+        )
+        if halt.transitioned:
+            # Spec 009 §1: an error is rare and actionable. Only the caller
+            # that moved the run to `failed` logs one; the in-flight tail
+            # after a breach is bounded by `max_concurrency`.
+            log.error(
+                "url_cap_exceeded",
+                cap=domain.url_cap,
+                abandoned=halt.abandoned,
+                host=domain.host,
+                action="review the domain's discovery rules; the next run starts clean",
+            )
+        else:
+            log.debug("url_cap_exceeded", cap=domain.url_cap, host=domain.host)
 
     async def _retry_or_fail(
         self,
@@ -345,12 +447,13 @@ class PageCrawler:
         decision: Decision,
         why: str,
         *,
+        page: _PageOutcome,
         inbox: bool = True,
         **detail: Any,
     ) -> None:
         final = item.attempts >= MAX_ATTEMPTS
         state = QueueItemState.FAILED if final else QueueItemState.PENDING
-        if not await self._close(item, state, decision):
+        if not await self._close(item, state, decision, page):
             return
         if final and inbox:
             await self._repos.observations.record_unknown(
@@ -360,7 +463,7 @@ class PageCrawler:
         else:
             log.debug(f"{why}_will_retry", **detail)
 
-    async def _pause_if_blocked(self, item: ClaimedUrl, decision: Decision) -> None:
+    async def _pause_if_blocked(self, item: ClaimedUrl, decision: Decision, domain: Domain) -> None:
         if not decision.pause_domain:
             return
         moved = await self._repos.domains.apply(item.domain_id, DomainEvent.BLOCK)
@@ -368,6 +471,11 @@ class PageCrawler:
         if decision.abandon_queue:
             abandoned = await self._frontier.abandon_domain(item.run_id, item.domain_id)
         if moved is not None:
+            await self._repos.events.emit(
+                item.run_id,
+                "domain_state",
+                {"domain": domain.host, "state": moved.value, "reason": "three_403s"},
+            )
             log.error(
                 "domain_paused",
                 reason="three consecutive 403s",
@@ -377,15 +485,64 @@ class PageCrawler:
         await self._finish(item)
 
     async def _close(
-        self, item: ClaimedUrl, state: QueueItemState, decision: Decision | Completion
+        self,
+        item: ClaimedUrl,
+        state: QueueItemState,
+        decision: Decision | Completion,
+        page: _PageOutcome,
     ) -> bool:
         """`False` when this claim no longer held the row, so nothing that
-        depends on having closed it (an inbox row, a run finish) follows."""
+        depends on having closed it (an inbox row, a run finish) follows.
+
+        A `done` or final-`failed` close also projects itself into the run's
+        event log (BUILD_PLAN 2.8): the `page` event, then a throttled
+        `progress`. Retry-`pending` and `release`d closes emit nothing — a
+        retry is not an outcome and backpressure made nothing happen; the
+        mass abandon of a stop is `run_state.stats.pages_abandoned`'s
+        number, not thousands of events (ADR-0042).
+        """
         if not await self._frontier.complete(item, _completion(state, decision)):
             log.warning("lease_lost", action="none; the row's current holder completes it")
             return False
+        if state in (QueueItemState.DONE, QueueItemState.FAILED):
+            await self._repos.events.emit(
+                item.run_id,
+                "page",
+                {
+                    "url": item.url,
+                    "status": page.status,
+                    "strategy": page.strategy,
+                    "fields": page.fields,
+                    "ok": state is QueueItemState.DONE,
+                },
+            )
+            await self._progress(item, page)
         await self._finish(item)
         return True
+
+    async def _progress(self, item: ClaimedUrl, page: _PageOutcome) -> None:
+        """The run monitor's heartbeat, after a close that moved the
+        counts. Throttled per (run, domain) on the monotonic clock; `depth`
+        is the closed page's own (spec 002 §7)."""
+        key = (int(item.run_id), int(item.domain_id))
+        now = self._clock.monotonic()
+        last = self._progress_at.get(key)
+        if last is not None and now - last < PROGRESS_MIN_INTERVAL_S:
+            return
+        self._progress_at[key] = now
+        counts = await self._frontier.queue_counts(item.run_id, item.domain_id)
+        await self._repos.events.emit(
+            item.run_id,
+            "progress",
+            {
+                "domain": page.host,
+                "queued": counts.get("pending", 0),
+                "in_flight": counts.get("in_flight", 0),
+                "done": counts.get("done", 0),
+                "failed": counts.get("failed", 0),
+                "depth": item.depth,
+            },
+        )
 
     def _report_render_unavailable(self) -> None:
         now = self._clock.monotonic()

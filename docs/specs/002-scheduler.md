@@ -202,6 +202,12 @@ image-heavy catalogue builds a queue that outlives the run by hours.
 The current depth is emitted on every progress event — it is the signal the
 run monitor surfaces, and it belongs on screen rather than in a log.
 
+`progress` events are written by the worker at most once per (run, domain)
+per second (BUILD_PLAN 2.8, ADR-0042): the throttle is in-process on the
+monotonic clock, so N worker replicas emit at most N/s/domain and the SSE
+endpoint (spec 005 §3) can coalesce further on read. The depth an event
+carries is the depth of the page whose close triggered it.
+
 ## 8. Throughput expectations
 
 Page throughput is `min(workers, eligible_domains)`. With 2–3 domains active

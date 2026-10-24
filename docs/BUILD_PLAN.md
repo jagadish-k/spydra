@@ -532,19 +532,24 @@ from the task above it.
       in one guarded statement: only into a running run on an active domain.
       Listing pages are outside the extraction verdict (ADR-0039).
 
-- [ ] `2.4` **Dedupe within a run and breadth-first enqueue** — `UNIQUE
+- [x] `2.4` **Dedupe within a run and breadth-first enqueue** — `UNIQUE
 (run_id, url_hash)` (spec 001 §1) with listings drained before
       products, which is what keeps the frontier full (spec 002 §1).
       **Done when:** the same URL discovered twice in one run enqueues once
       and in a _later_ run enqueues again, because that is a re-crawl.
 
-- [ ] `2.5` **Trap defences** (spec 004 §3): per-run and per-domain URL caps,
+- [x] `2.5` **Trap defences** (spec 004 §3): per-run and per-domain URL caps,
       the depth cap, repeating-path detection, scheme and length rejects.
       **Done when:** `2.1`'s unbounded trap terminates, and a run breaching
-      the per-domain cap halts that domain and names the cap as the reason
-      rather than reporting a clean finish.
+      the per-domain cap fails with the cap named as the stop reason while
+      the domain stays `active`, rather than reporting a clean finish.
+      **Done:** three structural rejects in `discover()`, `domains.url_cap`
+      behind an in-statement count guard in the guarded enqueue, and a
+      run-scoped breach halt (ADR-0040) — the run fails with the cap named,
+      the domain is untouched and the next run starts clean. 24 acceptance
+      tests over three files; 13 mutations, all red.
 
-- [ ] `2.6` **Mega-menu containment** (spec 004 §3a): a `subcategory_links`
+- [x] `2.6` **Mega-menu containment** (spec 004 §3a): a `subcategory_links`
       rule is scoped to its container, and the dry-run reports when a rule
       discovers the whole tree at depth 0. **This is the discovery bug that
       looks like a working rule** — it finds everything, so it reads as
@@ -552,31 +557,119 @@ from the task above it.
       **Done when:** a `nav a` rule on `2.1`'s mega-menu fixture is caught by
       the dry-run, and a fixture whose subcategory links are `display:none`
       is still discovered (spec 004 §5).
+      **Done:** `discovery/mega_menu.py` `whole_tree` — a prefix forest over
+      the accepted paths, a finding iff ≥ 2 roots span it. `nav a` over
+      Halden's mega-menu fires (11 links, 3 branches, deepest chain 3); one
+      container's scoped tiles — the false positive this task exists to
+      prevent — stay silent, two roots and neither spanning. The
+      `display:none` subcategories need no reveal: the static fetch already
+      sees them (spec 004 §5, Case A). Two blind spots named in the
+      docstring — a menu nested under one top-level branch, and a menu that
+      also links Home — both held for `2.10`'s projection
+      (`projected_urls_at_depth_5`) as backstop. 14 tests over the fixture
+      site; 9 mutations, all red.
 
-- [ ] `2.7` **Run lifecycle** — create, pause, stop, complete, and
+- [x] `2.7` **Run lifecycle** — create, pause, stop, complete, and
       `runs.stats` rolled up at completion (spec 001 §1). Abandoned rows are
       reported, never deleted (ADR-0004).
       **Done when:** a stopped run reports the work it did not do, and
       `stop_reason` is set for every non-`completed` terminal state.
+      **Done:** pause/resume/stop plus a drained finish that completes the run
+      when the frontier empties; a row is claimable iff its run is `running`,
+      fenced in the claim's `EXISTS` (ADR-0041). Sweep/release route by run
+      state — abandoned rows are counted, never deleted. Enqueue widened to
+      `running|paused`: pause freezes dequeue, not discovery. `stop_reason`
+      CHECK constraint (migration `e5f2c9a71b34`) set for every
+      non-`completed` terminal state. Routing and discovery writers are
+      serialised against terminal writers — the reviewer caught the race
+      twice, first the row routing, then the enqueue CTE, and the locks are
+      pinned by interleaving tests. `runctl` CLI plus `make run-pause`
+      /`run-resume`/`run-stop`/`run-status`. 63 tests, 16 mutations, all red.
 
-- [ ] `2.8` **`run_events` writer** — monotonic `seq` per run, the bounded
+- [x] `2.8` **`run_events` writer** — monotonic `seq` per run, the bounded
       log that lets a reconnecting SSE client be backfilled rather than shown
       a gap (spec 001 §1, ADR-0012). Built here because the worker emits
       them; `1.13`'s worker deliberately emits none.
       **Done when:** `UNIQUE (run_id, seq)` holds under two workers emitting
       concurrently, and the log is bounded rather than growing with the run.
+      **Done:** events go through `PostgresRunEvents.emit_in` (ADR-0042) with
+      `seq` reserved from `runs.next_seq` inside the emitting transaction
+      (migration `f4b2d6a91c03`, backfilled) — gap-free and trim-proof, the
+      `UNIQUE (run_id, seq)` pinned by two real engines emitting concurrently.
+      Emission set: `page` on closes only (a mass abandon is a number, never
+      a burst), `progress` at most 1/s/domain carrying depth, `domain_state`
+      on every actual move — the three-403 pause and the 1.11 halts, with the
+      state the domain really moved to — and `run_state` inside every
+      transition transaction, including the unowned drained finish and the
+      cap halt replaying ADR-0040's transition-time stats snapshot; `asset`
+      deliberately deferred to `5.2`. Bounded at keep-last-5,000 per run,
+      trimmed in the claim loop's sweep beat, live runs only. One production
+      defect found by the acceptance tests and fixed in-slice: halt events
+      hard-coded `state: broken`, so a never-matched halt claimed the domain
+      had broken when it had moved to `awaiting_approval` — pinned
+      `xfail(strict)`, fixed to the lifecycle-computed state, unpinned.
+      1185 passed, 2 skipped.
 
-- [ ] `2.9` **CSV seed parsing** with per-row validation and no HTTP
-      (spec 004 §4). Rejects report the row and the reason.
+- [x] `2.9` **CSV seed parsing** with per-row validation and no HTTP
+      (spec 004 §6). Rejects report the row and the reason.
       **Done when:** a file with one bad row imports the rest and names the
       failure, and nothing in the parser can make a network call.
+      **Done:** `seed_csv.py` (pure parser) + `load_seeds.py` (loader +
+      CLI, `make load-seeds`) — both die with `load.py` in 3.2, said so in
+      the docstrings. Exact ordered header in three spellings, wrong or
+      missing refuses the file; nine reject tokens naming the file line
+      number, `load.py`'s name-why-fix style; fields stripped, blanks
+      (after strip) skipped, exact duplicates deduped silently, same-host
+      setting conflicts reject the later row. Partial import at the parse
+      level over an untouched all-or-nothing `apply` — 200 independent
+      facts, one typo in row 40 must not cost the file. Purity proven
+      twice: AST import **allowlist** over the parser and a runtime parse
+      with `socket`/`getaddrinfo` raising; host validation is syntax-only.
+      66 tests, 8 mutations each red-then-green. Two review fixes:
+      blank-after-strip skip (a `,`-only row is blank — flagged to the
+      human as a judgement call) and the allowlist now catches relative
+      imports (`from . import x` was invisible). Demoed live against
+      Halden: line-4 `host_mismatch` on stderr with exit 1, the other
+      rows imported, the run completed on exactly the two seeds, 2 ×
+      `no_template`, domain stayed `active`. 1253 passed, 2 skipped.
 
-- [ ] `2.10` **Dry-run discovery as a library function** (spec 004 §4) —
+- [x] `2.10` **Dry-run discovery as a library function** (spec 004 §4) —
       what _would_ be enqueued, grouped by matching rule, with no writes.
       The seeds screen (`3.13`) and the review screen (`3.14`) both call it,
       which is why it is a function and not an endpoint.
       **Done when:** it reports counts per rule against `2.1`'s fixtures and
       provably writes nothing — asserted, not assumed.
+      **Done:** `discovery/dry_run.py` — one async function, one page fetch,
+      everything shareable shared: `discover` (the engine, `depth=0` on
+      `final_url`), its per-reason rejected tally **verbatim** (`off_host` /
+      `deny_pattern:<pattern>`), `whole_tree` on the full discovery before
+      samples are capped (2.6's finding reaches the report it was shaped
+      for), `_SAMPLES`, `RobotsCache` and `Fetchers.for_mode` at the caller.
+      `projected_urls_at_max_depth` is the renamed key — a deterministic
+      multiplicative-fan-out **estimate** (three closed-form branches:
+      geometric `f>1`, linear `f=1`, page total `f=0`), never a count of
+      known URLs; the rename happened while nothing consumed it. Robots is
+      fetch-and-check: a disallowing or 5xx robots.txt fails closed into a
+      notice with **zero** page requests, exactly the crawl's posture —
+      never trust-but-log, never a silent zero. `zero_links_static`: the
+      ambiguous 200-via-STATIC with zero accepted links reported loudly
+      (AUTO listings get no rendered second chance, ADR-0039); a rendered
+      zero is an unambiguous broken selector and stays silent. Writes
+      nothing, proven three ways: an AST import allowlist (with
+      `scheduler.robots` pinned in turn to stdlib + domain + ports, so the
+      purity is transitive), a counting fetcher (exactly one page request,
+      one robots when `respect_robots=True`), and a real-engine test
+      counting every `crawl` table (enumerated from `pg_tables`) before and
+      after. 27 tests, 11 mutations each red-then-green; spec 004 §4 gained
+      the estimate-semantics paragraph and a self-consistent example, §3a's
+      set-equality check reworded to the projection comparison (count
+      equality can never prove set equality from one page — a rule whose
+      removal leaves the projection unchanged enqueues nothing the others
+      don't, delete it). Demoed in-container against Halden: exit seed
+      `/shop/cutting/` → products 1, tiles 3, projection 484; the discs
+      leaf → products `PER_PAGE`, one next page, facets 16 into the deny
+      tally, 4 off-host, projection 55 — the dry-run half of the exit line.
+      1281 passed, 2 skipped.
 
 **Exit:** a category seed yields the full product set for the fixture site's
 catalogue without leaving the host and without a facet explosion; the dry-run

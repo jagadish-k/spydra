@@ -68,7 +68,7 @@ async def test_an_active_domain_in_a_running_run_is_enqueued(clean_crawl: AsyncE
     enqueue that had stopped inserting anything."""
     domain, run = await live(clean_crawl)
 
-    assert await PostgresFrontier(clean_crawl).enqueue(run, domain, LINKS) == 2
+    assert (await PostgresFrontier(clean_crawl).enqueue(run, domain, LINKS, cap=20_000)).added == 2
     assert await queue(clean_crawl, run) == {u: "pending" for u, _ in LINKS}
 
 
@@ -79,16 +79,24 @@ async def test_a_domain_that_is_not_active_gets_nothing(
     domain, run = await live(clean_crawl)
     await set_state(clean_crawl, "domains", int(domain), state)
 
-    assert await PostgresFrontier(clean_crawl).enqueue(run, domain, LINKS) == 0
+    assert (await PostgresFrontier(clean_crawl).enqueue(run, domain, LINKS, cap=20_000)).added == 0
     assert await queue(clean_crawl, run) == {}
 
 
-@pytest.mark.parametrize("state", ["completed", "stopped", "paused"])
-async def test_a_run_that_is_not_running_gets_nothing(clean_crawl: AsyncEngine, state: str) -> None:
+@pytest.mark.parametrize("state", ["completed", "stopped"])
+async def test_a_terminal_run_gets_nothing(clean_crawl: AsyncEngine, state: str) -> None:
+    """Terminal runs only: a `paused` run's discovery still enqueues
+    (ADR-0041 — pause freezes dequeue, not discovery); that positive case
+    lives in 2.7's lifecycle tests. `stopped` carries a stop_reason because
+    the terminal-stop_reason CHECK (2.7) rejects a bare one."""
     domain, run = await live(clean_crawl)
-    await set_state(clean_crawl, "runs", int(run), state)
+    async with clean_crawl.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE crawl.runs SET state = :s, stop_reason = 'fixture' WHERE id = :i"),
+            {"s": state, "i": int(run)},
+        )
 
-    assert await PostgresFrontier(clean_crawl).enqueue(run, domain, LINKS) == 0
+    assert (await PostgresFrontier(clean_crawl).enqueue(run, domain, LINKS, cap=20_000)).added == 0
     assert await queue(clean_crawl, run) == {}
 
 
@@ -108,7 +116,7 @@ async def test_duplicates_in_one_call_are_one_row_and_the_count_is_of_new_rows(
         (f"{already}/", 1),
     ]
 
-    assert await PostgresFrontier(clean_crawl).enqueue(run, domain, urls) == 2
+    assert (await PostgresFrontier(clean_crawl).enqueue(run, domain, urls, cap=20_000)).added == 2
     assert set(await queue(clean_crawl, run)) == {
         already,
         f"{BASE}/shop/p/HT-CD-001",
@@ -163,17 +171,19 @@ async def test_an_enqueue_racing_a_halt_waits_for_it_and_inserts_nothing(
                 {"r": int(run), "d": int(domain)},
             )
 
-            pending = asyncio.create_task(PostgresFrontier(enqueuer).enqueue(run, domain, LINKS))
+            pending = asyncio.create_task(
+                PostgresFrontier(enqueuer).enqueue(run, domain, LINKS, cap=20_000)
+            )
             waited = await _waiting_on_a_lock(clean_crawl)
             done_early = pending.done()
             await trans.commit()
-        added = await asyncio.wait_for(pending, timeout=10)
+        outcome = await asyncio.wait_for(pending, timeout=10)
     finally:
         await halter.dispose()
         await enqueuer.dispose()
 
     assert waited and not done_early, "the enqueue did not wait for the halt"
-    assert added == 0
+    assert (outcome.added, outcome.capped) == (0, False)
     assert await queue(clean_crawl, run) == {}
 
 
