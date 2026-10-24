@@ -610,10 +610,28 @@ from the task above it.
       `xfail(strict)`, fixed to the lifecycle-computed state, unpinned.
       1185 passed, 2 skipped.
 
-- [ ] `2.9` **CSV seed parsing** with per-row validation and no HTTP
+- [x] `2.9` **CSV seed parsing** with per-row validation and no HTTP
       (spec 004 §6). Rejects report the row and the reason.
       **Done when:** a file with one bad row imports the rest and names the
       failure, and nothing in the parser can make a network call.
+      **Done:** `seed_csv.py` (pure parser) + `load_seeds.py` (loader +
+      CLI, `make load-seeds`) — both die with `load.py` in 3.2, said so in
+      the docstrings. Exact ordered header in three spellings, wrong or
+      missing refuses the file; nine reject tokens naming the file line
+      number, `load.py`'s name-why-fix style; fields stripped, blanks
+      (after strip) skipped, exact duplicates deduped silently, same-host
+      setting conflicts reject the later row. Partial import at the parse
+      level over an untouched all-or-nothing `apply` — 200 independent
+      facts, one typo in row 40 must not cost the file. Purity proven
+      twice: AST import **allowlist** over the parser and a runtime parse
+      with `socket`/`getaddrinfo` raising; host validation is syntax-only.
+      66 tests, 8 mutations each red-then-green. Two review fixes:
+      blank-after-strip skip (a `,`-only row is blank — flagged to the
+      human as a judgement call) and the allowlist now catches relative
+      imports (`from . import x` was invisible). Demoed live against
+      Halden: line-4 `host_mismatch` on stderr with exit 1, the other
+      rows imported, the run completed on exactly the two seeds, 2 ×
+      `no_template`, domain stayed `active`. 1253 passed, 2 skipped.
 
 - [ ] `2.10` **Dry-run discovery as a library function** (spec 004 §4) —
       what _would_ be enqueued, grouped by matching rule, with no writes.

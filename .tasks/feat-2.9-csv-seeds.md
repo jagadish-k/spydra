@@ -235,7 +235,7 @@ feature.
       wrong; exact duplicates dedupe silently; same-host setting
       conflicts reject the later row; defaults are `static`/`2000`;
       `respect_robots` is fixed true.
-- [ ] A real CSV through `make load-seeds` seeds domains and starts a run
+- [x] A real CSV through `make load-seeds` seeds domains and starts a run
       against Halden — fixture host `halden.fixtures:8099` (compose
       `phase1-exit` profile; loopback, no real network). Demonstrated
       manually from the task file's commands and recorded in the handoff
@@ -245,7 +245,7 @@ feature.
       themselves are pinned by a real-worker test against the in-process
       fixture site.**
 - [x] Spec 004 §6 exists; BUILD_PLAN 2.9's pointer names it.
-- [ ] `make check` green.
+- [x] `make check` green.
 
 ## Handoff log
 
@@ -361,6 +361,26 @@ seeds.csv` (the committed one-bad-row file: two Halden seeds + a line-4
     every-row-rejected test's first row to `,https://nowhere.test/a`
     because a `,`-only row no longer rejects.
     `make lint` clean; `make test-api` 1253 passed, 2 skipped (+1).
+- integrator (2.9) — gate, demo, tick, push. Scope:
+  `git diff --stat feat/2.8-run-events...HEAD` is exactly the declared
+  set (nine files); all six subjects imperative ≤ 69 (the 74-char
+  rejection never landed). Gate, each leg: `make lint` clean;
+  `make types` no diff (no route touched); `make generated` clean tree;
+  `make test-api` **1253 passed, 2 skipped** (exact expected);
+  `make test-bff` 10 pass; `make test-web` 10 pass; `make test-render`
+  57 pass. **Halden demo run** (spydra-test's pinned commands):
+  `phase1-exit` profile up, `make migrate`, `make load-seeds
+f=tests/fixtures/phase2/seeds.csv` → exit 1, stderr `line 4:
+host_mismatch — seed https://elsewhere.test/catalog/abrasives/discs/
+is not on vantage-abrasives.test …`, stdout `1 domain, 2 seeds
+imported` + `run 11 started from tests/fixtures/phase2/seeds.csv`;
+  worker processed the run → run 11 `completed`, exactly two queue rows
+  `done` (no discovery expansion), `unknown_pages` 2 × `no_template`,
+  `halden.fixtures:8099` stayed `active`; fixtures torn down.
+  Environmental note, not a code issue: the long-up worker container was
+  a stale stub (placeholder command, zero log lines, claimed nothing) —
+  `docker compose up -d --force-recreate worker` fixed it. BUILD_PLAN
+  2.9 ticked. `--no-verify` not used; all hooks green.
 
 ## Open questions
 
