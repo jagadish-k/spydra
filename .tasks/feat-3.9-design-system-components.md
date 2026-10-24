@@ -269,6 +269,25 @@ Docs:
 
 ## Handoff log
 
+- **Tests — pins for the review fixes (3b454e8) (2026-10-24, this pass).**
+  Three pins added to the existing files (no fork), suite now **107/107**
+  (`make test-web`, prettier/eslint/tsc clean; components restored
+  byte-identical after mutations — only test files modified):
+  - **Toggle knob ink** (`components-3b`): the knob carries `bg-brand-subtle`
+    and not `bg-ink-inverse`, asserted at class level with a comment saying
+    why — the dark sweep asserts markup _identity_ between themes and so
+    cannot see colour; only the class pins the ~2.2:1 dark knob-on-track
+    contrast this caught.
+  - **Button pressed arms** (`components-3a`): every variant renders at
+    least one `active:` utility, and the four variants' pressed signatures
+    are pairwise distinct — the same standard as the other axis assertions.
+  - **LineChart live markers** (`components-3b`): with two live series the
+    pulse ring **and** dot each appear once with `viz-1` and once with
+    `viz-2` (counts, plus `animate-ping text-viz-2`); one-series live
+    renders unchanged (`viz-1` twice, no `viz-2`).
+  - **Mutations — each red, restored, green (107/107):** knob reverted to
+    `bg-ink-inverse` → RED; primary's `active:bg-brand-hover` dropped → RED;
+    both markers hard-coded `text-viz-1` → RED.
 - **Review pass (2026-10-24, this session) — three findings, all fixed.**
   1. **Toggle dark-mode knob (blocking):** the knob shipped `bg-ink-inverse`,
      which is `#16191f` in dark mode against the theme-constant brand track —

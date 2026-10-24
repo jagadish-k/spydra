@@ -395,6 +395,16 @@ test("Toggle: off and on are distinct arms", () => {
   expect(on).toContain("bg-brand");
 });
 
+test("Toggle: the knob is the on-brand ink in both themes", () => {
+  // Asserted at class level on purpose: the dark sweep asserts markup
+  // identity between themes, so it cannot see colour — only the class can
+  // pin this fix. bg-ink-inverse is #16191f on the theme-constant brand
+  // track in dark mode: a ~2.2:1, near-invisible state indicator.
+  const markup = arm(Toggle, { checked: true });
+  expect(markup).toContain("bg-brand-subtle");
+  expect(markup).not.toContain("bg-ink-inverse");
+});
+
 test("Toggle: disabled reduces the switch; focus arm is drawn", () => {
   const markup = arm(Toggle, { checked: false, disabled: true });
   expect(markup).toContain("disabled");
@@ -659,6 +669,18 @@ test("LineChart: one series draws viz-1; two draw viz-1 and viz-2", () => {
 test("LineChart: live pulses the last point; static does not", () => {
   expect(arm(LineChart, { series: ONE, live: true })).toContain("animate-ping");
   expect(arm(LineChart, { series: ONE })).not.toContain("animate-ping");
+});
+
+test("LineChart: each live marker follows its own series' ink", () => {
+  // pulse ring + dot both index the series ink — a hard-coded viz-1 would
+  // paint the second series' marker indigo under a green stroke (3b454e8).
+  const two = arm(LineChart, { series: TWO, live: true });
+  expect(two.match(/text-viz-1/g)?.length).toBe(2); // series 1: pulse + dot
+  expect(two.match(/text-viz-2/g)?.length).toBe(2); // series 2: pulse + dot
+  expect(two).toContain("animate-ping text-viz-2");
+  const one = arm(LineChart, { series: ONE, live: true });
+  expect(one.match(/text-viz-1/g)?.length).toBe(2);
+  expect(one).not.toContain("text-viz-2"); // one-series live renders unchanged
 });
 
 test("LineChart: no-data draws the grid and the label, never fake axes", () => {

@@ -60,6 +60,24 @@ test("Button: every variant renders distinct markup", () => {
   expect(variants[3]![1]).toContain("text-state-broken");
 });
 
+test("Button: every variant carries its own pressed (active:) arm", () => {
+  const pressedByVariant = (
+    ["primary", "secondary", "ghost", "danger"] as const
+  ).map((variant) => {
+    const pressed = (
+      arm(Button, { variant, children: "Go" }).match(/active:[a-z0-9-]+/g) ?? []
+    )
+      .sort()
+      .join(" ");
+    expect(
+      pressed.length,
+      `${variant} renders no active: utility — no pressed feedback`,
+    ).toBeGreaterThan(0);
+    return [variant, pressed] as const;
+  });
+  expectDistinct(pressedByVariant);
+});
+
 test("Button: sm and md sizes are distinguishable", () => {
   expect(arm(Button, { size: "sm", children: "Go" })).not.toBe(
     arm(Button, { size: "md", children: "Go" }),
