@@ -350,7 +350,17 @@ touches these paths.
 - **Chromatic as gate vs advisor:** `--exit-zero-on-changes` is pinned for
   bootstrap; once the human accepts a baseline, decide whether unaccepted
   visual diffs should fail CI (drop the flag) — human's call, later.
+  **Reviewer's note:** when that day comes, the CI checkout
+  (`actions/checkout@v5`, default depth 1) must go `fetch-depth: 0` —
+  Chromatic's baseline attribution needs git history; a shallow clone
+  degrades it to capture-everything.
 - **Dark-theme Chromatic coverage** (duplicated stories or `--args`
   capture): deferred deliberately; toolbar covers human review.
 - **tsc 7 × SB shipped types** — expected clean (`skipLibCheck` on);
   if not, escalate rather than exclude.
+
+- review-closeout (integrator session, 2026-10-25): two notes from the
+  reviewer folded in — (1) `docs/DEVELOPMENT.md` (the three target
+  one-liners) was touched outside the declared owned list; the edit is
+  correct and desirable, ownership declared here; (2) the fetch-depth
+  note appended to the Chromatic open question above. No code changed.
