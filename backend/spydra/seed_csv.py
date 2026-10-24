@@ -90,10 +90,14 @@ def parse(text: str) -> SeedFile:
     seen: set[tuple[str, str]] = set()
 
     for row in reader:
-        if not row:  # a blank line carries no row to reject
+        row = [field.strip() for field in row]
+        if not any(row):
+            # Blank, or blank after stripping (csv yields ['   '] for a
+            # spaces-only line — padding, not a row): skipped silently, per
+            # spec 004 §6. A "," line is blank the same way — every field
+            # strips to empty; a row with any content in it still rejects.
             continue
         line = reader.line_num
-        row = [field.strip() for field in row]
 
         if len(row) != len(header):
             reject(

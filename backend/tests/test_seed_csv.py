@@ -57,8 +57,15 @@ def test_the_parser_imports_only_what_the_contract_pins() -> None:
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             imported.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.append(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                # Relative imports must be recorded, not skipped: `from . import
+                # x` carries module=None and was invisible to the old
+                # `and node.module` guard, against refused-by-default.
+                imported.append("." * node.level + (node.module or ""))
+            else:
+                assert node.module is not None  # a level-0 import always names one
+                imported.append(node.module)
 
     assert imported, "the walk read no imports; the test proves nothing"
     offending = [
@@ -225,6 +232,21 @@ def test_rejects_carry_file_line_numbers_not_row_indices() -> None:
     assert (reject.line, reject.token) == (4, "host_mismatch")
     (domain,) = result.domains
     assert domain.seeds == ("https://example.com/a", "https://example.com/c")
+
+
+def test_a_spaces_only_line_is_blank_after_stripping_and_skipped() -> None:
+    """`csv.reader` yields `['   ']` for it — one field of padding, not a
+    row (a `column_count` reject for it was a review finding). The line
+    still counts: file numbering is what the editor shows."""
+    result = parse(
+        "host,seed_url\n"
+        "   \n"  # line 2 — spaces only: blank after stripping
+        "example.com,https://elsewhere.test/a\n"  # line 3 — still line 3
+    )
+
+    (reject,) = result.rejects
+    assert (reject.line, reject.token) == (3, "host_mismatch")
+    assert result.domains == ()
 
 
 _TWO_COLUMN = "host,seed_url"
@@ -418,7 +440,9 @@ def test_domains_keep_first_accepted_order_and_seeds_keep_file_order() -> None:
 
 def test_a_file_where_every_row_is_rejected_parses_to_no_domains() -> None:
     """The loader's refusal input: the rejects must survive to be printed."""
-    result = parse("host,seed_url\n,\nexample.com,https://elsewhere.test/x\n")
+    # The first row carries a seed: a `,`-only row is blank after stripping
+    # now, and empty_host needs a row with content in it.
+    result = parse("host,seed_url\n,https://nowhere.test/a\nexample.com,https://elsewhere.test/x\n")
 
     assert result.domains == ()
     assert [reject.token for reject in result.rejects] == ["empty_host", "host_mismatch"]

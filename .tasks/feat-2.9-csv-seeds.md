@@ -344,6 +344,23 @@ seeds.csv` (the committed one-bad-row file: two Halden seeds + a line-4
   # seeds); unknown_pages → 2 × no_template; domains.state stays active
   docker compose --profile phase1-exit rm -sf fixtures
   ```
+- backend (2.9 review fixes, decided-by-integrator, both findings closed):
+  - **Blank-after-strip.** A spaces-only line (`csv.reader` yields
+    `['   ']`) was a `column_count` reject; spec §6 says blank lines skip
+    silently. Now: strip first, then `not any(row)` ⇒ skip — one check
+    covering both the empty yield and whitespace padding. Consequence
+    kept deliberately: a `,`-only row (every field strips to empty) is
+    blank too; `empty_host`/`empty_seed` still fire on any row with
+    content in it. Spec §6 wording now "lines blank after stripping".
+  - **Test edits under the review-fix exception** (normally spydra-test's
+    file): the allowlist walk recorded only truthy `node.module`, so
+    `from . import x` (module None) was invisible against its own
+    refused-by-default promise — relative imports now record as
+    `"." * level + module` and offend; added the spaces-only test
+    (+1, pins the skip and physical line numbering); adjusted the
+    every-row-rejected test's first row to `,https://nowhere.test/a`
+    because a `,`-only row no longer rejects.
+    `make lint` clean; `make test-api` 1253 passed, 2 skipped (+1).
 
 ## Open questions
 

@@ -274,8 +274,9 @@ of `host,seed_url` / `host,seed_url,render_mode` /
 `host,seed_url,render_mode,crawl_delay_ms`. A wrong or missing header
 refuses the whole file: inferring it turns row 1's data into column names
 and makes every later reject unnameable. Fields are stripped of surrounding
-whitespace (the one hand-edited forgiveness); blank lines are skipped; there
-is no comment syntax. Stdlib `csv` quoting, UTF-8.
+whitespace (the one hand-edited forgiveness); lines blank after stripping
+are skipped silently; there is no comment syntax. Stdlib `csv` quoting,
+UTF-8.
 
 Columns and defaults, matching the YAML loader exactly: `render_mode`
 defaults `static`, `crawl_delay_ms` defaults `2000`, and
