@@ -356,6 +356,25 @@ nowhere), `docs/BUILD_PLAN.md` (integrator ticks 2.10 in the PR).
   tail made linear. `make test-api` 1283 collected (1256 + 27), all green;
   `make lint` clean; `make generated` no diff (bff/web/render suites also
   run green — the change adds one backend test file). To **spydra-reviewer**.
+- backend (review fixes) — reviewer verdict: no blocking findings,
+  arbitration to the module. Four small fixes, one commit:
+  1. Spec 004 §4's example projection said `2140`, which its own counts
+     (p=48, n=1, s=11 → t=60, f=12, D=5) do not produce — now
+     `1,357,260` (the true `60·(12⁵−1)/11`), with one prose clause
+     stating it derives from the example's own counts so a reader can
+     recompute it.
+  2. `final_url` added to the example JSON (between `http_status` and
+     `notices`, the dataclass's field order) so the example keys equal
+     the report fields exactly, as the shape test asserts.
+  3. `tests/discovery/test_dry_run.py` (**review-fix exception**, 2.9's
+     precedent): the page-`FetchFailed` and `Backpressure` outcomes now
+     assert `page_calls == 1` like every other outcome — one attempt,
+     then report/raise; neither path retries.
+  4. Same file (**review-fix exception**): the bare
+     `# type: ignore[arg-type]` on `inspect.getfile` gained its one-line
+     why, in server.py:274's trailing style.
+     `make lint` clean; `make test-api` green — 1281 passed, 2 skipped
+     (1283 collected, the review baseline, +0: assertion-only edits).
 
 ## Open questions
 

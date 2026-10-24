@@ -231,9 +231,10 @@ matched:
     "levels": 3,
     "roots": ["/shop/cutting", "/shop/finishing", "/shop/grinding"]
   },
-  "projected_urls_at_max_depth": 2140,
+  "projected_urls_at_max_depth": 1357260,
   "fetch_path": "static",
   "http_status": 200,
+  "final_url": "https://halden.test/shop/cutting/discs",
   "notices": []
 }
 ```
@@ -271,12 +272,14 @@ projected = t                          f = 0
 ```
 
 It is not a count of known URLs, not a set, and it cannot see dedupe or the
-site's closure: those live on pages it did not fetch. On Halden, `nav a` on
-`/shop/cutting/` (`t = 11`, `f = 11`, `D = 5`) projects 177,155 — the model
-says "if every page yields 11 new listings, by depth 5 you visit ~177k
-URLs", which is the hazard signal, not a prediction: the real crawl dedupes
-a finite site down to its 11 categories. The scoped leaf's rules
-(`t = 11`, `f = 1`) project 55. That gap is the whole point.
+site's closure: those live on pages it did not fetch. The example above
+derives its 1,357,260 from its own counts (`t = 60`, `f = 12`, `D = 5`) —
+any reader can recompute it, which is the point of an example. On Halden,
+`nav a` on `/shop/cutting/` (`t = 11`, `f = 11`, `D = 5`) projects 177,155
+— the model says "if every page yields 11 new listings, by depth 5 you
+visit ~177k URLs", which is the hazard signal, not a prediction: the real
+crawl dedupes a finite site down to its 11 categories. The scoped leaf's
+rules (`t = 11`, `f = 1`) project 55. That gap is the whole point.
 
 The mega-menu guard joins the report: when a `subcategory_links` rule spans
 two or more branches from one page — a site-wide menu's shape, not one

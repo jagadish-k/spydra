@@ -557,7 +557,7 @@ _ROBOTS_ALLOWED_IMPORTS = (
 def _imports_of(module: object) -> list[str]:
     """Every module `module` imports, relative imports recorded rather than
     skipped (2.9's fix: `from . import x` must be visible to the allowlist)."""
-    source = Path(inspect.getfile(module)).read_text(encoding="utf-8")  # type: ignore[arg-type]
+    source = Path(inspect.getfile(module)).read_text(encoding="utf-8")  # type: ignore[arg-type]  # inspect.getfile is Any-typed for `object`; the path is a real .py
     imported: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
@@ -722,12 +722,14 @@ async def test_a_non_200_page_reports_the_status_and_runs_no_discovery() -> None
 async def test_a_page_that_never_answered_reports_fetch_failed() -> None:
     static = Answering(answer=lambda request: FetchFailed("connection refused"))
 
-    report, _, _ = await scripted(exit_rules(), DISCS, static=static)
+    report, _, page = await scripted(exit_rules(), DISCS, static=static)
 
     assert report.notices == (FETCH_FAILED,)
     assert report.http_status is None and report.final_url == ""
     assert report.fetch_path is FetchPath.STATIC
     assert not report.matched
+    # One attempt was made — the failure is reported, not retried past.
+    assert page.page_calls == 1
 
 
 async def test_backpressure_from_the_page_fetcher_propagates() -> None:
@@ -735,14 +737,13 @@ async def test_backpressure_from_the_page_fetcher_propagates() -> None:
     supplier's doing, and a dry-run has no row to requeue — the caller
     retries, so nothing is swallowed into a notice."""
     static = Answering()
+    page = Answering(answer=lambda request: Backpressure("sidecar busy"))
 
     with pytest.raises(Backpressure):
-        await scripted(
-            exit_rules(),
-            DISCS,
-            page=Answering(answer=lambda request: Backpressure("sidecar busy")),
-            static=static,
-        )
+        await scripted(exit_rules(), DISCS, page=page, static=static)
+
+    # One attempt, then the raise — propagation is not a retry.
+    assert page.page_calls == 1
 
 
 # ---------------------------------------------------------------------------
