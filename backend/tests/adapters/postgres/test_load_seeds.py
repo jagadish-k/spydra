@@ -23,9 +23,12 @@ What is held:
   exactly the file's seeds and drains (no discovery expansion), every 200
   is an `unknown_pages` row saying `no_template`, the domain never moves,
   the run completes.
-- **The world-conflict refusal** carried from the YAML loader: a domain
-  already `paused`/`broken`/`archived` refuses the whole file, nothing
-  written.
+- **A refused domain is refused alone** (the human's 2.9 decision): a CSV
+  naming a `paused`/`broken`/`archived` domain skips that domain's rows
+  and imports the rest — per-host `refused:` stderr naming the state and
+  ADR-0004, exit 1; the refused domain's row untouched, no queue rows for
+  its seeds, the run covering exactly what imported. Every domain refused
+  → nothing written, no run.
 - **The CLI's exit contract**, as `make load-seeds` runs it.
 """
 
@@ -40,7 +43,6 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from spydra.adapters.postgres.configuration import PostgresConfiguration
-from spydra.domain.errors import RefusedConfiguration
 from spydra.domain.urls import canonical_url
 from spydra.load_seeds import load
 from tests.conftest import BACKEND_ROOT
@@ -243,32 +245,100 @@ async def test_reloading_re_seeds_the_active_domain_into_a_new_run_and_updates_s
 
 
 # ---------------------------------------------------------------------------
-# The world-conflict refusal, carried from the YAML loader
+# A refused domain is refused alone: the rest of the file imports (2.9)
 # ---------------------------------------------------------------------------
+
+# One good host and one host the world has moved, with TWO rows naming the
+# refused host — the refusal is per domain, so both lines share one verdict.
+_MIXED = (
+    "host,seed_url\n"
+    "shop.test:8099,http://shop.test:8099/p/one\n"
+    "plain.test,https://plain.test/item/three\n"
+    "plain.test,https://plain.test/item/four\n"
+)
+
+_REFUSED_ONLY = "host,seed_url\nplain.test,https://plain.test/item/three\n"
+
+
+async def _refuse(engine: AsyncEngine, host: str, state: str) -> sa.RowMapping:
+    """Move `host` into a state a file cannot approve, and return its row
+    so a test can prove the refusal left it exactly as it was."""
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "UPDATE crawl.domains SET state = CAST(:s AS crawl.domain_state) WHERE host = :h"
+            ),
+            {"s": state, "h": host},
+        )
+    return await _domain(engine, host)
 
 
 @pytest.mark.parametrize("state", ["paused", "broken", "archived"])
-async def test_a_domain_in_a_state_a_file_cannot_approve_refuses_the_whole_file(
+async def test_a_refused_domain_is_skipped_alone_and_the_rest_import(
     clean_crawl: AsyncEngine, state: str
 ) -> None:
-    """A conflict with the world, not with a row's syntax: the transaction
-    rolls back the whole file, and the operator removes that host's rows."""
-    configuration = PostgresConfiguration(clean_crawl)
+    """The human's 2.9 decision, over the whole-file refusal the YAML loader
+    keeps: a CSV is independent facts, so one paused host costs only its own
+    rows — the operator resumes or re-reviews that domain as its own
+    decision (spec 001 §2, ADR-0004)."""
+    engine = clean_crawl
+    configuration = PostgresConfiguration(engine)
     await load(configuration, _GOOD)
-    async with clean_crawl.begin() as conn:
-        await conn.execute(
-            sa.text(
-                "UPDATE crawl.domains SET state = CAST(:s AS crawl.domain_state)"
-                " WHERE host = 'shop.test:8099'"
-            ),
-            {"s": state},
-        )
-    before = await _counts(clean_crawl)
+    stuck = await _refuse(engine, "plain.test", state)
 
-    with pytest.raises(RefusedConfiguration, match=state):
-        await load(configuration, _GOOD)
+    result = await load(configuration, _MIXED)
 
-    assert await _counts(clean_crawl) == before
+    # One refusal, and it says why: the state, and the operator's move.
+    assert result.run_id is not None
+    (refusal,) = result.refusals
+    assert refusal.host == "plain.test"
+    assert state in refusal.message
+    assert "ADR-0004" in refusal.message
+
+    shop = await _domain(engine, "shop.test:8099")
+    async with engine.connect() as conn:
+        (run_domains,) = (
+            await conn.execute(
+                sa.text("SELECT domain_ids FROM crawl.runs WHERE id = :r"),
+                {"r": int(result.run_id)},
+            )
+        ).scalars()
+        refused_queue = (
+            await conn.execute(
+                sa.text(
+                    "SELECT count(*) FROM crawl.crawl_queue q"
+                    " JOIN crawl.domains d ON d.id = q.domain_id"
+                    " WHERE d.host = 'plain.test' AND q.run_id = :r"
+                ),
+                {"r": int(result.run_id)},
+            )
+        ).scalar_one()
+
+    # The run covers exactly what imported — the refused host is not in it,
+    # and its seeds never reached the queue: rows on a domain the file
+    # cannot approve would be claimed under a state the operator set.
+    assert run_domains == [shop["id"]]
+    assert refused_queue == 0
+    # The domain's row is untouched: the settings update a load would make
+    # never ran for it.
+    assert dict(await _domain(engine, "plain.test")) == dict(stuck)
+
+
+async def test_a_file_where_every_domain_is_refused_writes_nothing_and_names_it(
+    clean_crawl: AsyncEngine,
+) -> None:
+    engine = clean_crawl
+    configuration = PostgresConfiguration(engine)
+    await load(configuration, _REFUSED_ONLY)
+    await _refuse(engine, "plain.test", "paused")
+    before = await _counts(engine)
+
+    result = await load(configuration, _REFUSED_ONLY)
+
+    assert result.run_id is None
+    (refusal,) = result.refusals
+    assert refusal.host == "plain.test"
+    assert await _counts(engine) == before
 
 
 # ---------------------------------------------------------------------------
@@ -425,3 +495,77 @@ async def test_the_cli_refuses_a_header_only_file(
     assert done.returncode == 1
     assert "refused: no data rows" in done.stderr
     assert await _counts(clean_crawl) == _NOTHING
+
+
+async def test_the_cli_reports_a_refused_domain_per_host_and_exits_one(
+    clean_crawl: AsyncEngine, database_url: str, tmp_path: Path
+) -> None:
+    """Two rows name the refused host; one `refused:` line answers them —
+    the refusal is a fact about the domain's row, not about either line.
+    The summary counts only what imported, and the run still started."""
+    engine = clean_crawl
+    await load(PostgresConfiguration(engine), _GOOD)
+    await _refuse(engine, "plain.test", "paused")
+    path = tmp_path / "mixed.csv"
+    path.write_text(_MIXED, encoding="utf-8")
+
+    done = _cli(database_url, path)
+
+    assert done.returncode == 1
+    assert done.stderr.count("refused:") == 1
+    assert "plain.test is paused" in done.stderr
+    assert "ADR-0004" in done.stderr
+    assert "Its rows were skipped." in done.stderr
+    # The good host's rows imported and started a run; the summary does not
+    # count the refused domain or its seeds.
+    assert "1 domain, 1 seed imported" in done.stdout
+    assert "started from" in done.stdout
+    # The good host's rows imported and started a run; the summary does not
+    # count the refused domain or its seeds. Three queue rows from setup,
+    # one new: the mixed run enqueues only shop's seed.
+    assert await _counts(engine) == {"domains": 2, "templates": 0, "runs": 2, "queue": 4}
+
+
+async def test_the_cli_refuses_a_file_where_every_domain_was_refused(
+    clean_crawl: AsyncEngine, database_url: str, tmp_path: Path
+) -> None:
+    engine = clean_crawl
+    await load(PostgresConfiguration(engine), _REFUSED_ONLY)
+    await _refuse(engine, "plain.test", "broken")
+    before = await _counts(engine)
+    path = tmp_path / "all-refused.csv"
+    path.write_text(_REFUSED_ONLY, encoding="utf-8")
+
+    done = _cli(database_url, path)
+
+    assert done.returncode == 1
+    assert "refused: every domain in the file was refused" in done.stderr
+    assert "plain.test is broken" in done.stderr
+    assert await _counts(engine) == before
+
+
+async def test_the_cli_prints_row_rejects_before_domain_refusals(
+    clean_crawl: AsyncEngine, database_url: str, tmp_path: Path
+) -> None:
+    """Both channels in one file: the row's syntax is the operator's own
+    line to fix, the domain's state is the world's — printed in that
+    order, and the good rows still import between them."""
+    engine = clean_crawl
+    await load(PostgresConfiguration(engine), _GOOD)
+    await _refuse(engine, "plain.test", "archived")
+    path = tmp_path / "rejects-and-refusal.csv"
+    path.write_text(
+        "host,seed_url\n"
+        "shop.test:8099,https://elsewhere.test/nope\n"  # line 2 — a row reject
+        "plain.test,https://plain.test/item/three\n"  # line 3 — a refused domain
+        "shop.test:8099,http://shop.test:8099/p/one\n",  # line 4 — imports
+        encoding="utf-8",
+    )
+
+    done = _cli(database_url, path)
+
+    assert done.returncode == 1
+    assert "line 2: host_mismatch" in done.stderr
+    assert "plain.test is archived" in done.stderr
+    assert done.stderr.index("line 2:") < done.stderr.index("refused:")
+    assert "1 domain, 1 seed imported" in done.stdout

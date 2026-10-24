@@ -440,3 +440,46 @@ refused; nothing was written` (distinguishing header-only /
     the deliberate contrast.
   - Suite: `make lint` clean (ruff + mypy --strict); `make test-api`
     1250 passed, 3 failed (the three above), 2 skipped.
+- spydra-test (2.9 per-domain refusal pass) — the three expected-red
+  rewritten from the new contract plus the edges around it; supersedes
+  the whole-file refusal coverage in my first entry (its "world-conflict
+  refusal mirrors the YAML suite" sentence is void — the CSV loader no
+  longer mirrors the YAML loader there, which is the point of the
+  decision). `test_load_seeds.py` 16 → 21 tests:
+  - `test_a_refused_domain_is_skipped_alone_and_the_rest_import`
+    × [paused, broken, archived] — mixed CSV (good host + refused host
+    with TWO rows naming it): good domain imported with its seed, run's
+    `domain_ids` exactly it, zero queue rows for the refused host **in
+    the new run**, refused domain's row byte-identical to before the
+    load (the settings update never ran), one `DomainRefusal` naming the
+    state and ADR-0004.
+  - `test_a_file_where_every_domain_is_refused_writes_nothing_and_names_it`
+    — `run_id is None`, refusal carried, counts unchanged.
+  - CLI: per-host report (two refused rows → `stderr.count("refused:") ==
+1`, `"<host> is <state>"`, ADR-0004, "Its rows were skipped."),
+    summary counts imported only ("1 domain, 1 seed imported"), exit 1,
+    counts pinned (setup 3 + 1 new queue row); all-refused message +
+    state named + counts unchanged; rejects-and-refusal coexistence —
+    reject lines print BEFORE refusals (`stderr.index` ordering), the
+    good row between them still imports.
+  - YAML untouched, spot-verified before and after: the three
+    `test_loading_refuses_to_move_a_domain_only_a_human_may_move` params
+    green on the unmodified file (and they are what catches mutation C).
+  - **Mutations, each red → restored → green** (production byte-clean
+    after: `git diff backend/spydra/` empty):
+    ① refusal recording removed (`if not skip_refused` → `if True`, the
+    raise returns) → 7 red; ② refused domain's seeds still enqueued
+    (+`_LOCK_DOMAIN` lookup, `domain_ids` + `seeded`) → 6 red (stranded
+    claimable rows on a refused domain); ③ `skip_refused` default
+    flipped to True → 3 red, all in the **YAML** suite — the whole-file
+    refusal tests are the guard that the default did not drift;
+    ④ per-host stderr collapsed to per-line (`append` → one refusal per
+    seed row) → 4 red (the `count == 1` assertion and the
+    `(refusal,)` unpack); ⑤ run created over refused domains too
+    (`domain_ids` includes the host, seeds not enqueued) → 5 red (the
+    run-selection lie and the all-refused no-run guard).
+  - Defects: none. One authoring bug in my own mixed-CSV test (the
+    refused-queue query counted setup's legitimate run-1 row; scoped to
+    the new run, which is the sharper assertion anyway). Suite:
+    `make lint` clean; `make test-api` **1257 passed, 2 skipped** (+5 net
+    over the 1252+2 of the first pass).
