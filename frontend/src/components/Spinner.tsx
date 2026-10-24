@@ -12,15 +12,15 @@ export interface SpinnerProps {
 }
 
 export function Spinner({ size = "md", onBrand = false }: SpinnerProps) {
-  // brand-subtle doubles as the constant on-brand ink: text-inverse flips
-  // per theme and would go dark-on-indigo in dark mode.
+  // on-brand is the theme-constant ink for filled brand surfaces:
+  // text-inverse flips per theme and would go dark-on-indigo in dark mode.
   return (
     <svg
       viewBox="0 0 16 16"
       role="status"
       aria-label="Loading"
       className={`motion-safe:animate-spin shrink-0 ${SIZE_CLASSES[size]} ${
-        onBrand ? "text-brand-subtle" : "text-ink-subtle"
+        onBrand ? "text-on-brand" : "text-ink-subtle"
       }`}
     >
       <circle

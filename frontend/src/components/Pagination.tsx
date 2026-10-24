@@ -24,7 +24,7 @@ export function Pagination({
       aria-label="Previous page"
       disabled={single || onFirst}
       onClick={() => onChange?.(page - 1)}
-      className="flex h-6 w-6 items-center justify-center rounded-md text-ink-muted hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+      className="flex h-6 w-6 items-center justify-center rounded-md text-ink-muted hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
     >
       <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
         <path
@@ -44,7 +44,7 @@ export function Pagination({
       aria-label="Next page"
       disabled={single || onLast}
       onClick={() => onChange?.(page + 1)}
-      className="flex h-6 w-6 items-center justify-center rounded-md text-ink-muted hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+      className="flex h-6 w-6 items-center justify-center rounded-md text-ink-muted hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
     >
       <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true">
         <path

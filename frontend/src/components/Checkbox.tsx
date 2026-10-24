@@ -32,7 +32,7 @@ export function Checkbox({
       <span
         className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-xs border ${
           on || mixed
-            ? "border-brand bg-brand text-brand-subtle"
+            ? "border-brand bg-brand text-on-brand"
             : disabled
               ? "border-disabled-line bg-disabled"
               : "border-line-strong bg-surface"

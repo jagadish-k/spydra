@@ -30,7 +30,7 @@ export function Toggle({
         }`}
       >
         <span
-          className={`absolute top-[1px] left-[1px] h-3.5 w-3.5 rounded-full bg-brand-subtle transition-transform duration-[var(--sp-duration-fast)] ${
+          className={`absolute top-[1px] left-[1px] h-3.5 w-3.5 rounded-full bg-on-brand transition-transform duration-[var(--sp-duration-fast)] ${
             checked ? "translate-x-[14px]" : ""
           }`}
         />

@@ -51,7 +51,7 @@ export function SelectorField({
 
   return (
     <div
-      className={`grid grid-cols-[110px_1fr] items-start gap-x-3 gap-y-1 rounded-md border p-3 transition-colors duration-[var(--sp-duration-fast)] hover:bg-subtle ${stateClass}`}
+      className={`grid grid-cols-[110px_1fr] items-start gap-x-3 gap-y-1 rounded-md border p-3 transition-colors duration-[var(--sp-duration-fast)] hover:bg-hover ${stateClass}`}
     >
       {label != null && (
         <div className="flex items-center gap-[5px] pt-1.5 text-sm font-medium text-ink">

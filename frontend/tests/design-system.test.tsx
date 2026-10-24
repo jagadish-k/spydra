@@ -278,12 +278,14 @@ test("every colour utility in the library resolves through the theme", () => {
 });
 
 // Theme-constant by design: the brand ramp and the brand-500 focus colour do
-// not shift in dark mode (tokens.css has no dark override for them).
+// not shift in dark mode (tokens.css has no dark override for them), nor does
+// the on-brand ink that reads against that constant ramp.
 const THEME_CONSTANT = new Set([
   "--sp-brand-50",
   "--sp-brand-600",
   "--sp-brand-700",
   "--sp-border-focus",
+  "--sp-on-brand",
 ]);
 
 test("every token the library consumes has a dark value", () => {

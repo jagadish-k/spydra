@@ -21,7 +21,7 @@ export function FilterChip({
       className={`inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors duration-[var(--sp-duration-fast)] focus-within:ring-2 focus-within:ring-focus ${
         active
           ? "border-focus bg-selected text-ink-brand"
-          : "border-line bg-surface text-ink-muted hover:bg-subtle hover:text-ink"
+          : "border-line bg-surface text-ink-muted hover:bg-hover hover:text-ink"
       }`}
     >
       <button

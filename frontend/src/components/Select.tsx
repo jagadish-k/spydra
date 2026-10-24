@@ -78,7 +78,7 @@ export function Select({
                 role="option"
                 aria-selected={option.value === value}
                 onClick={() => onChange?.(option.value)}
-                className={`block w-full cursor-pointer px-3 py-1.5 text-left text-sm hover:bg-subtle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus ${
+                className={`block w-full cursor-pointer px-3 py-1.5 text-left text-sm hover:bg-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus ${
                   option.value === value
                     ? "bg-selected text-ink-brand"
                     : "text-ink"

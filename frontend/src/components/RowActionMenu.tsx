@@ -30,7 +30,7 @@ export function RowActionMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Row actions"
-        className="flex h-6 w-6 items-center justify-center rounded-md text-ink-muted hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-focus"
+        className="flex h-6 w-6 items-center justify-center rounded-md text-ink-muted hover:bg-hover hover:text-ink focus-visible:ring-2 focus-visible:ring-focus"
       >
         <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true">
           <circle cx="3.5" cy="8" r="1.4" fill="currentColor" />
@@ -53,7 +53,7 @@ export function RowActionMenu({
               className={`block w-full cursor-pointer px-3 py-1.5 text-left text-sm focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus disabled:cursor-not-allowed ${
                 action.danger
                   ? "text-state-broken hover:bg-state-broken-tint"
-                  : "text-ink hover:bg-subtle"
+                  : "text-ink hover:bg-hover"
               } disabled:text-ink-subtle disabled:hover:bg-transparent`}
             >
               {action.label}

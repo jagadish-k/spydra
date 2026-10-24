@@ -88,7 +88,7 @@ export function Banner({
           <button
             type="button"
             onClick={action.onAction}
-            className="rounded-md border border-line bg-surface px-2.5 py-1 text-sm font-medium text-ink hover:bg-subtle focus-visible:ring-2 focus-visible:ring-focus"
+            className="rounded-md border border-line bg-surface px-2.5 py-1 text-sm font-medium text-ink hover:bg-hover focus-visible:ring-2 focus-visible:ring-focus"
           >
             {action.label}
           </button>

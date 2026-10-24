@@ -73,6 +73,9 @@ remove the prefix.
 | Primary button    | `bg-brand text-white hover:bg-brand-hover` |
 | Active nav item   | `bg-selected text-ink-brand`               |
 | Broken state pill | `bg-state-broken-tint text-state-broken`   |
+| Hover surface     | `hover:bg-hover`                           |
+| Modal scrim       | `bg-scrim`                                 |
+| On-brand ink      | `text-on-brand` / `bg-on-brand`            |
 | Focus ring        | `ring-2 ring-focus ring-offset-2`          |
 | Chart series      | `stroke-viz-1` … `stroke-viz-6`            |
 
@@ -194,25 +197,25 @@ persistent state is a prop.
 
 **§3b — shared sets (17)**
 
-| Component           | Figma (node)               | Variants / props                                                                                                                                                                                       |
-| ------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `<TableHeaderCell>` | Table header cell          | `sort=` none · asc · desc (`aria-sort`) with the sort control a button in `<th>`; sortable when `onSort` is passed                                                                                     |
-| `<RowActionMenu>`   | Row action menu `199:1306` | `open` × per-item `danger` / `disabled`; the screen owns open state and outside-click dismissal                                                                                                        |
-| `<FilterChip>`      | Filter chip `199:1316`     | `active` · `removable` · `onClick`                                                                                                                                                                     |
-| `<SearchField>`     | Search field `199:1339`    | empty / typing / with-clear derived from `value`; the `noResults` arm is a prop                                                                                                                        |
-| `<BulkActionBar>`   | Bulk action bar `199:1294` | `count` — 0 unmounts (hidden); visible is count + `actions` + clear                                                                                                                                    |
-| `<Checkbox>`        | Checkbox                   | `checked` true · false · `"indeterminate"` (`aria-checked="mixed"`; a button, because the DOM property is not static markup) × `disabled`                                                              |
-| `<Pagination>`      | Pagination `196:1332`      | first / last / single-page **derived** from `page` × `pageCount`; ghosted chevrons at the ends, summary optional                                                                                       |
-| `<Select>`          | Select `51:293`            | `open` · `error` · `disabled` × with-value / placeholder derived; a custom listbox (a native select cannot express the open or error arms)                                                             |
-| `<Toggle>`          | Toggle `51:303`            | `checked` × `disabled`; `role="switch"`                                                                                                                                                                |
-| `<Skeleton>`        | Skeleton `33:120`          | `shape=` row · card · chart · pane · text-line; row is `h-row-comfortable` from the spacing token (test-asserted); card/chart/pane place children at fractional offsets so resizing never overflows    |
-| `<Spinner>`         | Spinner                    | `size=` sm · md × `onBrand` — `brand-subtle` is the constant on-brand ink (`text-inverse` flips per theme)                                                                                             |
-| `<EmptyState>`      | Empty state                | `kind=` first-run · filtered · no-results (icon + title + body + action; first-run's action is primary, filtered never offers to create)                                                               |
-| `<ErrorState>`      | Error state                | `kind=` fetch · permission · timeout · partial × `reason` + retry — never strands the user                                                                                                             |
-| `<Toast>`           | Toast `34:201`             | `tone=` info · success · warning · danger × `action` × `dismissible`; danger is `role="alert"`, the rest polite status                                                                                 |
-| `<Modal>`           | Modal `201:1381`           | `kind=` confirm · confirm-danger · form · wide × `submitting` (confirm goes loading, label held). **Dialog card only, no scrim** — no token-legal scrim colour exists; the screen dims its own surface |
-| `<Tooltip>`         | Tooltip `201:1406`         | `side=` top · bottom · left · right                                                                                                                                                                    |
-| `<LineChart>`       | Line chart `201:1489`      | 1–2 series on `viz-1`/`viz-2` × `live` (pulse on the last point); no-data derived from empty series; Recharts arrives with the first screen that needs axes                                            |
+| Component           | Figma (node)               | Variants / props                                                                                                                                                                                               |
+| ------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<TableHeaderCell>` | Table header cell          | `sort=` none · asc · desc (`aria-sort`) with the sort control a button in `<th>`; sortable when `onSort` is passed                                                                                             |
+| `<RowActionMenu>`   | Row action menu `199:1306` | `open` × per-item `danger` / `disabled`; the screen owns open state and outside-click dismissal                                                                                                                |
+| `<FilterChip>`      | Filter chip `199:1316`     | `active` · `removable` · `onClick`                                                                                                                                                                             |
+| `<SearchField>`     | Search field `199:1339`    | empty / typing / with-clear derived from `value`; the `noResults` arm is a prop                                                                                                                                |
+| `<BulkActionBar>`   | Bulk action bar `199:1294` | `count` — 0 unmounts (hidden); visible is count + `actions` + clear                                                                                                                                            |
+| `<Checkbox>`        | Checkbox                   | `checked` true · false · `"indeterminate"` (`aria-checked="mixed"`; a button, because the DOM property is not static markup) × `disabled`                                                                      |
+| `<Pagination>`      | Pagination `196:1332`      | first / last / single-page **derived** from `page` × `pageCount`; ghosted chevrons at the ends, summary optional                                                                                               |
+| `<Select>`          | Select `51:293`            | `open` · `error` · `disabled` × with-value / placeholder derived; a custom listbox (a native select cannot express the open or error arms)                                                                     |
+| `<Toggle>`          | Toggle `51:303`            | `checked` × `disabled`; `role="switch"`                                                                                                                                                                        |
+| `<Skeleton>`        | Skeleton `33:120`          | `shape=` row · card · chart · pane · text-line; row is `h-row-comfortable` from the spacing token (test-asserted); card/chart/pane place children at fractional offsets so resizing never overflows            |
+| `<Spinner>`         | Spinner                    | `size=` sm · md × `onBrand` — `on-brand` is the theme-constant ink for filled brand surfaces (`text-inverse` flips per theme)                                                                                  |
+| `<EmptyState>`      | Empty state                | `kind=` first-run · filtered · no-results (icon + title + body + action; first-run's action is primary, filtered never offers to create)                                                                       |
+| `<ErrorState>`      | Error state                | `kind=` fetch · permission · timeout · partial × `reason` + retry — never strands the user                                                                                                                     |
+| `<Toast>`           | Toast `34:201`             | `tone=` info · success · warning · danger × `action` × `dismissible`; danger is `role="alert"`, the rest polite status                                                                                         |
+| `<Modal>`           | Modal `201:1381`           | `kind=` confirm · confirm-danger · form · wide × `submitting` (confirm goes loading, label held). Includes the scrim overlay (`bg-scrim`, human decision 2026-10-25) — Figma's frame still draws the card only |
+| `<Tooltip>`         | Tooltip `201:1406`         | `side=` top · bottom · left · right                                                                                                                                                                            |
+| `<LineChart>`       | Line chart `201:1489`      | 1–2 series on `viz-1`/`viz-2` × `live` (pulse on the last point); no-data derived from empty series; Recharts arrives with the first screen that needs axes                                                    |
 
 There is deliberately **no generic table-row component**: Figma's `Table row`
 was deleted (hard-wired to one column set) and the six concrete rows land with

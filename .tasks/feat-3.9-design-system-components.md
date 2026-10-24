@@ -269,6 +269,43 @@ Docs:
 
 ## Handoff log
 
+- **Token pass (2026-10-25) — three human decisions, all wired.** Lands after
+  the 3.9 tick (`cec8dc7`), amending the slice.
+  1. **`--sp-scrim` created (human-decided):** `var(--sp-bg-backdrop)` in
+     **both** theme blocks — the translucent-ink convention the overlay and
+     hover tokens already use (rgba over the ink ramp with a documented
+     opacity), not a new colour; 40% neutral-900 in light, 60% near-black in
+     dark. Mapped `--color-scrim`. `Modal` now renders the scrim overlay
+     (`fixed inset-0 bg-scrim` wrapper centring the card) — the deliberate
+     divergence from Figma's scrim-less frame, sanctioned here.
+  2. **`--sp-bg-hover` mapped:** `--color-hover: var(--sp-bg-hover)` added;
+     the token existed in both themes all along. All 11 `hover:bg-subtle`
+     call-sites swapped to `hover:bg-hover` (Button secondary/ghost · Banner
+     action · FilterChip · Pagination ×2 · RowActionMenu ×2 · Select ·
+     SelectorField · ThemeToggle) — every one was hover-intent wearing the
+     nearest mapped token. Kept as-is: Button's `active:bg-subtle` (the
+     pressed step past the now-translucent hover) and Tabs' badge
+     `bg-brand-subtle` (a static tinted surface, not ink-on-brand). Two test
+     pins updated to match (RowActionMenu item-hover, FilterChip hover). The
+     resolution sweep now proves `bg-hover` resolves.
+  3. **`--sp-on-brand` created (human-decided):** `var(--sp-brand-50)`
+     (#eef0fb), declared once in `:root` — theme-constant exactly like the
+     brand ramp it reads against, which is the point. Mapped
+     `--color-on-brand`; call-sites swapped: Button primary
+     `text-on-brand`, Spinner `onBrand`, Checkbox mark, Toggle knob
+     (`bg-on-brand`). **Test-pin updates, implementer's privilege, said
+     here:** the Toggle knob pin asserted `bg-brand-subtle` and the Spinner
+     pin `text-brand-subtle` — both were pinning the theme-constant
+     light-on-brand _fix_, not the token name; they now assert
+     `bg-on-brand`/`text-on-brand` (Toggle still asserts `bg-ink-inverse`
+     absent, so the pin's meaning survives verbatim). `--sp-on-brand` also
+     joined `THEME_CONSTANT` in the dark sweep with a comment, mirroring how
+     `--sp-brand-600` is listed.
+     Gates after: `tsc --noEmit` clean, eslint + prettier clean, vitest
+     **107/107** (104 + the three review-pin tests that landed in `8854594`;
+     count otherwise unchanged — assertion swaps only). DESIGN_SYSTEM gained
+     the three utility-reference rows and the Modal/Spinner row updates; the
+     two stale Half-B flags below are resolved in place with notes.
 - **Integration (2026-10-24, integrator).** Gate run leg-by-leg, all green:
   `make lint` 0 · `make types` no diff (no API change — correct) ·
   `make generated` clean tree · `make test-api` **1285 passed, 2 skipped**
@@ -406,8 +443,9 @@ Docs:
     but `tailwind-theme.css` maps no `--color-hover`, so `hover:bg-hover`
     silently generates nothing (the exact trap DESIGN_SYSTEM §Tokens
     describes). `design/**` is not this slice's file, so components use the
-    mapped `hover:bg-subtle`. **Flag for a token pass:** add
-    `--color-hover: var(--sp-bg-hover);` and swap the seven call sites.
+    mapped `hover:bg-subtle`. _Resolved 2026-10-25 (human-decided): the
+    mapping landed and all hover-intent call-sites swapped to
+    `hover:bg-hover` — see the token-pass entry above._
   - **On-brand ink:** `text-ink-inverse` flips per theme and would go
     dark-on-indigo in dark mode, so filled-brand surfaces (Button primary,
     Spinner `onBrand`, the Checkbox mark) use `text-brand-subtle`
@@ -416,7 +454,9 @@ Docs:
     claimed the Toggle knob too, which was false — the knob shipped
     `bg-ink-inverse` and was near-invisible on the brand track in dark mode
     (~2.2:1). It is now `bg-brand-subtle`, so the list above is finally
-    accurate.
+    accurate. _Resolved 2026-10-25 (human-decided): `--sp-on-brand` now
+    exists and every listed call-site, Toggle knob included, wears it — see
+    the token-pass entry above._
   - **The two mandated behaviours:** `MetricTile value={null}` renders the
     unavailable tile (em dash, no error); `loading` swaps the value for a
     skeleton bar. `Skeleton shape="row"` is `h-row-comfortable` — the spacing

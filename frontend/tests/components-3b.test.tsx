@@ -112,7 +112,7 @@ test("RowActionMenu: closed renders no menu; open renders the menuitems", () => 
 test("RowActionMenu: item-danger is the broken arm; item-hover is drawn", () => {
   const open = arm(RowActionMenu, { actions: MENU_ACTIONS, open: true });
   expect(open).toContain("text-state-broken"); // Delete
-  expect(open).toContain("hover:bg-subtle"); // the item-hover arm
+  expect(open).toContain("hover:bg-hover"); // the item-hover arm
   expect(open).toContain("disabled"); // the unavailable item
 });
 
@@ -143,7 +143,7 @@ test("FilterChip: active is the selected arm, default is a surface", () => {
     ["active", active],
   ]);
   expect(active).toContain("bg-selected");
-  expect(idle).toContain("hover:bg-subtle"); // the hover arm
+  expect(idle).toContain("hover:bg-hover"); // the hover arm
 });
 
 test("FilterChip: removable shows the remove control only when asked", () => {
@@ -401,7 +401,7 @@ test("Toggle: the knob is the on-brand ink in both themes", () => {
   // pin this fix. bg-ink-inverse is #16191f on the theme-constant brand
   // track in dark mode: a ~2.2:1, near-invisible state indicator.
   const markup = arm(Toggle, { checked: true });
-  expect(markup).toContain("bg-brand-subtle");
+  expect(markup).toContain("bg-on-brand");
   expect(markup).not.toContain("bg-ink-inverse");
 });
 
@@ -450,7 +450,7 @@ test("Spinner: sizes and contexts are distinct arms", () => {
     ["md/on-surface", arm(Spinner, {})],
     ["md/on-brand", arm(Spinner, { onBrand: true })],
   ]);
-  expect(arm(Spinner, { onBrand: true })).toContain("text-brand-subtle");
+  expect(arm(Spinner, { onBrand: true })).toContain("text-on-brand");
   expect(arm(Spinner, {})).toContain("text-ink-subtle");
   expect(arm(Spinner, {})).toContain('role="status"');
 });

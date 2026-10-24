@@ -5,16 +5,17 @@ import { Spinner } from "./Spinner";
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
-  // brand-subtle is the on-brand ink: text-inverse flips per theme and would
-  // sit dark-on-indigo in dark mode. The active: arm is the pressed feedback
-  // (UI_STATES §3a State=active): one existing token per variant, same hue
-  // one step further than hover — no new tokens, nothing scales.
+  // on-brand is the theme-constant ink for filled brand surfaces:
+  // text-inverse flips per theme and would sit dark-on-indigo in dark mode.
+  // The active: arm is the pressed feedback (UI_STATES §3a State=active):
+  // one existing token per variant, same hue one step further than hover —
+  // no new tokens, nothing scales.
   primary:
-    "border border-brand bg-brand text-brand-subtle hover:bg-brand-hover hover:border-brand-hover active:bg-brand-hover",
+    "border border-brand bg-brand text-on-brand hover:bg-brand-hover hover:border-brand-hover active:bg-brand-hover",
   secondary:
-    "border border-line bg-surface text-ink hover:bg-subtle hover:border-line-strong active:bg-subtle active:border-line-strong",
+    "border border-line bg-surface text-ink hover:bg-hover hover:border-line-strong active:bg-subtle active:border-line-strong",
   ghost:
-    "border border-transparent text-ink-muted hover:bg-subtle hover:text-ink active:bg-subtle",
+    "border border-transparent text-ink-muted hover:bg-hover hover:text-ink active:bg-subtle",
   danger:
     "border border-line bg-surface text-state-broken hover:border-state-broken hover:bg-state-broken-tint active:border-state-broken active:bg-state-broken-tint",
 };

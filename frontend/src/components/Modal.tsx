@@ -24,8 +24,9 @@ export interface ModalProps {
   submitting?: boolean;
 }
 
-// The dialog card only — Figma has no scrim and no token-legal scrim colour
-// exists, so the screen dims the surface it floats the modal over.
+// The scrim is the mapped --sp-scrim token (a translucent-ink alias over the
+// backdrop, human decision 2026-10-25) — Figma's Modal frame still draws the
+// card only; the screens dim their own surface per that frame.
 export function Modal({
   kind,
   title,
@@ -37,38 +38,40 @@ export function Modal({
   submitting = false,
 }: ModalProps) {
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      className={`w-full ${KIND_WIDTHS[kind]} overflow-hidden rounded-xl border border-line bg-surface shadow-lg`}
-    >
-      <div className="border-b border-line px-5 py-4 text-lg font-semibold text-ink">
-        {title}
-      </div>
-      <div className="px-5 py-4 text-md text-ink-muted">{children}</div>
-      {(confirmLabel != null || onCancel != null) && (
-        <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
-          {onCancel != null && (
-            <Button
-              variant="secondary"
-              onClick={onCancel}
-              disabled={submitting}
-            >
-              {cancelLabel}
-            </Button>
-          )}
-          {confirmLabel != null && onConfirm != null && (
-            <Button
-              variant={kind === "confirm-danger" ? "danger" : "primary"}
-              onClick={onConfirm}
-              loading={submitting}
-            >
-              {confirmLabel}
-            </Button>
-          )}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`w-full ${KIND_WIDTHS[kind]} overflow-hidden rounded-xl border border-line bg-surface shadow-lg`}
+      >
+        <div className="border-b border-line px-5 py-4 text-lg font-semibold text-ink">
+          {title}
         </div>
-      )}
+        <div className="px-5 py-4 text-md text-ink-muted">{children}</div>
+        {(confirmLabel != null || onCancel != null) && (
+          <div className="flex justify-end gap-2 border-t border-line px-5 py-3">
+            {onCancel != null && (
+              <Button
+                variant="secondary"
+                onClick={onCancel}
+                disabled={submitting}
+              >
+                {cancelLabel}
+              </Button>
+            )}
+            {confirmLabel != null && onConfirm != null && (
+              <Button
+                variant={kind === "confirm-danger" ? "danger" : "primary"}
+                onClick={onConfirm}
+                loading={submitting}
+              >
+                {confirmLabel}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
