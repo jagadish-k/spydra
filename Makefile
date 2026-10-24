@@ -49,7 +49,8 @@ flat = $(subst $(NL), ,$(1))
         shell-api shell-bff shell-web psql verify-grants \
         lock migrate migrate-api migrate-ui migrate-down migrate-down-api \
         migrate-down-ui revision revision-ui drizzle-pull drizzle-studio \
-        test test-api test-bff test-web test-render e2e seed-dev \
+        test test-api test-bff test-web test-render e2e seed-dev storybook \
+        storybook-build chromatic \
         lint lint-api lint-bff lint-web fmt \
         fmt-staged fmt-staged-js typecheck-changed typecheck-changed-py \
         types types-crawler types-ui generated generated-check check load phase1-exit \
@@ -273,6 +274,25 @@ e2e: ## Playwright against the running stack
 
 seed-dev: ## two offline fixture domains (arrives with BUILD_PLAN 5.1)
 	$(call skip_if_missing,backend/spydra/seed_dev.py) && $(COMPOSE) run --rm --no-deps api python -m spydra.seed_dev
+
+# --- storybook (ADR-0043) ------------------------------------------------------
+# Not in `make check`: the smoke build is minutes, not seconds, and CI runs it
+# ahead of the Chromatic publish instead (check.yml). All three skip on a
+# checkout without .storybook/, per the phase-0 rule.
+
+storybook: ## serve the component workshop on 127.0.0.1:6006
+	$(call skip_if_missing,frontend/.storybook/main.ts) && $(COMPOSE) run --rm --no-deps -p 127.0.0.1:6006:6006 web npm run storybook
+
+storybook-build: ## smoke-build every story to storybook-static/
+	$(call skip_if_missing,frontend/.storybook/main.ts) && $(COMPOSE) run --rm --no-deps web npm run build-storybook
+
+# The CLI in-container, not chromaui/action — the action assumes host Node and
+# everything here runs through make + containers (AGENTS rule 1). Needs a prior
+# `make storybook-build` and CHROMATIC_PROJECT_TOKEN in the environment
+# (passthrough via -e). --exit-zero-on-changes until the human accepts a
+# baseline in Chromatic (ADR-0043 open question).
+chromatic: ## publish the prebuilt storybook to Chromatic
+	$(call skip_if_missing,frontend/.storybook/main.ts) && $(COMPOSE) run --rm --no-deps -e CHROMATIC_PROJECT_TOKEN web npx chromatic --storybook-build-dir=storybook-static --exit-zero-on-changes
 
 # --- lint and format ------------------------------------------------------------
 # ruff + mypy + import-linter live in the api image; eslint + prettier in the

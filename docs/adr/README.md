@@ -56,3 +56,4 @@ shape everything else sits inside.
 | [0040](0040-cap-breach-is-a-run-scoped-halt.md)                        | A URL-cap breach is a run-scoped halt, not a domain state                   | Accepted                                   |
 | [0041](0041-run-lifecycle-fenced-at-the-claim.md)                      | The run lifecycle is fenced at the claim                                    | Accepted                                   |
 | [0042](0042-monotonic-per-run-event-sequence-from-a-counter-column.md) | Monotonic per-run event sequence from a counter column                      | Accepted                                   |
+| [0043](0043-storybook-component-workshop.md)                           | Storybook is the component workshop, never a fourth spec artifact           | Accepted                                   |

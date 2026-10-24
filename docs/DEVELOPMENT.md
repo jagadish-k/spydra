@@ -526,6 +526,10 @@ make test-bff             # the BFF suite
 make test-web             # vitest
 make e2e                  # Playwright against the running stack
 
+make storybook            # the component workshop on 127.0.0.1:6006 (ADR-0043)
+make storybook-build      # smoke-build every story; CI runs this before chromatic
+make chromatic            # publish the build to Chromatic (needs the token)
+
 make lint                 # ruff + mypy + import-linter + eslint + prettier
 make fmt                  # ruff format + prettier --write
 make types                # regenerate BOTH API schemas (crawler + ui)

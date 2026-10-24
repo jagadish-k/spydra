@@ -8,8 +8,10 @@ Figma file [`GeJPFXY4CicHBdzLMyXG2E`](https://www.figma.com/design/GeJPFXY4CicHB
 page `🧩 Components` (`3:138`). Screens are page `🖥 Screens` (`3:139`); the
 registry is [`SCREENS.md`](SCREENS.md).
 
-**49 components, 230 variants, instanced 1,761 times across 62 frames.**
-41 are used by a screen; 8 are not, and §2 says why each.
+**56 components, 352 variants, instanced 1,761 times across 62 frames.**
+41 are used by a screen; 15 are not, and §2 says why each. (Before
+`3.9` Half A: 49 components, 230 variants — the re-measure, and what each
+set gained, is §5.)
 
 > **Cardinal rule (ADR-0032): anything above a primitive is a component here,
 > and a screen frame is a composition of instances.** Primitives are layout
@@ -47,7 +49,7 @@ registry is [`SCREENS.md`](SCREENS.md).
 | Field highlight    |        10 |       1 |
 | …plus 18 more      |           |         |
 
-**Ten of 49 carry TEXT properties, and that is a deliberate ceiling.**
+**Ten of 56 carry TEXT properties, and that is a deliberate ceiling.**
 A Figma instance can override its text without any component property — the
 file proves it: `Selector field` carries 68 distinct strings across its
 instances and has no text property at all. Properties buy a named,
@@ -56,13 +58,14 @@ precondition for anything, and each one risks resetting existing overrides
 (ADR-0032). Add them where a developer will read the component's API —
 `Button`, `Input`, the row components — not everywhere.
 
-## 2. The eight not used by a screen
+## 2. The fifteen not used by a screen
 
-| Component                                               | Why                                                                                                                                                                               |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Logo/Mark` · `Logo/Favicon` · `Logo/Lockup horizontal` | Export assets and the Cover. Not app chrome.                                                                                                                                      |
-| `Card` · `Kbd` · `Toast` · `Toggle`                     | **Specified in `UI_STATES.md` §3b, drawn by no screen yet.** Not violations — there is nothing hand-drawn for them to duplicate. They land with the screen that first needs them. |
-| `Screenshot viewport`                                   | A 420×300 library specimen of the overlay mechanic. Screens draw their own full-size panes; it documents the pattern rather than being instanced.                                 |
+| Component                                                                                                   | Why                                                                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Logo/Mark` · `Logo/Favicon` · `Logo/Lockup horizontal`                                                     | Export assets and the Cover. Not app chrome.                                                                                                                                                                               |
+| `Card` · `Kbd` · `Toast` · `Toggle`                                                                         | **Specified in `UI_STATES.md` §3b, drawn by no screen yet.** Not violations — there is nothing hand-drawn for them to duplicate. They land with the screen that first needs them.                                          |
+| `Bulk action bar` · `Row action menu` · `Filter chip` · `Search field` · `Modal` · `Tooltip` · `Line chart` | **Built by `3.9` Half A ahead of the screens that need them** (ADR-0025 §scope built the shared §3b sets before phase 3 screens). Zero instances today by design; the first table, form and monitoring screens adopt them. |
+| `Screenshot viewport`                                                                                       | A 420×300 library specimen of the overlay mechanic. Screens draw their own full-size panes; it documents the pattern rather than being instanced.                                                                          |
 
 **`Table row` was deleted.** It was hard-wired to the Domains column set, so
 it fitted one of the app's six tables and nothing instanced it. `UI_STATES.md`
@@ -112,7 +115,7 @@ These are **recorded, not hidden**. The first three are one-of-a-kind
 containers where a component buys nothing today; the fourth needs a
 two-segment control that does not exist yet.
 
-## 4. Three Figma constraints this work established
+## 4. Five Figma constraints this work established
 
 Worth knowing before the next design pass, because each cost a regression:
 
@@ -131,6 +134,18 @@ Worth knowing before the next design pass, because each cost a regression:
 3. **Adding a component property whose name already exists silently renames
    it.** `Metric tile` had a TEXT property `Detail`; adding a BOOLEAN `Detail`
    produced `Detail2`. It is now `ShowDetail`.
+4. **`clone()` of a variant lands on the page, not in the set — and drops the
+   clone's property references.** Both found in `3.9`: clones must be
+   `appendChild`-ed into their `COMPONENT_SET` explicitly, and a clone made
+   that way arrives with empty `componentPropertyReferences`, so instances
+   swapped onto it lose their text overrides until every child is re-wired to
+   the set-level keys. Re-wire, then re-apply overrides.
+5. **A set conversion re-keys its properties** (`Breadcrumb#84:20` → `#196:0`)
+   but instance overrides survive — verified against a captured baseline of
+   all 62 Topbar, 2 Pagination and 93 Input instances after `combineAsVariants`
+   and after adding Input's `Prefix`/`Clear`: zero resets. The baseline
+   procedure from ADR-0032 stays mandatory anyway; it is what proves the
+   survival.
 
 **And the method that matters:** when replacing a hand-drawn element with an
 instance, copy **text, text fills, nested variant properties and nested text**
@@ -138,55 +153,100 @@ instance, copy **text, text fills, nested variant properties and nested text**
 Seeds pill labels, both caught only by rendering the frame and comparing
 against `design/mockups/`.
 
-## 5. Against `UI_STATES.md` §3
+## 5. Against `UI_STATES.md` §3 — closed by `3.9` Half A
 
-### §3a variant completion — 4 of 17 done
+### §3a — 17 of 17 complete (re-measured 2026-10-24)
 
-| Component               | §3a asks for                                         | State                                                  |
-| ----------------------- | ---------------------------------------------------- | ------------------------------------------------------ |
-| Button                  | `State=` default·hover·active·focus·disabled·loading | **done** — 48 variants, plus `Label`                   |
-| Card                    | hover · selected · as-skeleton                       | **done** — `State=Loading` is as-skeleton              |
-| State pill              | nothing to add                                       | **done**                                               |
-| Logo set                | nothing to add                                       | **done**                                               |
-| Input                   | focus·error·disabled·readonly·with-prefix·with-clear | partial — no readonly, prefix, clear                   |
-| Progress bar            | determinate·stacked·indeterminate·complete·failed    | partial — no **stacked** (screen 6)                    |
-| Tag                     | removable · disabled                                 | missing — `Tone=` only                                 |
-| Tab                     | hover · disabled · with-count-badge                  | missing                                                |
-| Metric tile             | `State=` loaded·loading·**unavailable**              | missing — `Tone=` and `ShowDetail` only                |
-| Banner                  | dismissible · with-action                            | missing — `Tone=` only                                 |
-| Selector field          | resolving · disabled · **no-match**                  | missing                                                |
-| Sample cell · Sparkline | `State=pending`                                      | missing                                                |
-| Sidebar · Topbar        | expanded·collapsed · with-breadcrumb                 | **`Active=` and `Breadcrumb` done**; collapsed missing |
+| Component        | Axes now                                                           | Notes                                                                                                                                                                                   |
+| ---------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Button           | `Style×Size×State` (48)                                            | verified complete, untouched                                                                                                                                                            |
+| Card             | `State=` Default·Hover·Selected·Loading (4)                        | verified complete, untouched (`Loading` is as-skeleton)                                                                                                                                 |
+| State pill       | `State=` 6 lifecycle (6)                                           | verified complete — still no seventh                                                                                                                                                    |
+| Logo set         | 4 components                                                       | verified complete                                                                                                                                                                       |
+| Input            | `State×Content` (12) + `Prefix`/`Clear` BOOLEANs                   | `Readonly` added × both contents; prefix/clear are hidden children toggled by properties — a pure show/hide buys nothing as a variant axis                                              |
+| Tag              | `Tone×Removable×Disabled` (20)                                     | `Tone` kept: it maps to feedback semantics exactly as Banner's and Toast's tones do (the open question in `.tasks/3.9`, resolved)                                                       |
+| Progress bar     | `State=` Running·Paused·Complete·Failed·Empty·**Stacked** (6)      | `Stacked` is the four-segment bar without the legend, for compact per-row use; never a percentage                                                                                       |
+| Tab              | `State×Badge` (8)                                                  | hover · disabled · with-count-badge                                                                                                                                                     |
+| Metric tile      | `Tone×State` (9)                                                   | **`Unavailable` shows "—" as the variant's own default** — the Value property is deliberately unwired there so instances need no override; `Loading` swaps the value for a skeleton bar |
+| Banner           | `Tone×Action×Dismissible` (12)                                     | with-action follows Toast's spacer + ghost-small-button pattern                                                                                                                         |
+| Selector field   | `State=` Default·Warning·Error·**Resolving·Disabled·No match** (6) | no-match is neutral (muted), distinct from error's red; resolving shows the Sm spinner                                                                                                  |
+| Sample cell      | `Result=` Pass·Fail·Partial·**Pending** (4)                        | §3a's `State=pending` is drawn `Result=Pending` — a pending sample has no result                                                                                                        |
+| Sparkline        | `Trend=` Healthy·Slipping·Failing·**Pending** (4)                  | §3a's `State=pending` is drawn `Trend=Pending` (flat line, border/strong)                                                                                                               |
+| Confidence       | `Level=` High·Good·Medium·Low (4)                                  | verified complete, nothing built                                                                                                                                                        |
+| Validation badge | `Result=` Pass·Partial·Fail (3)                                    | verified complete, nothing built                                                                                                                                                        |
+| Sidebar          | `Active×Collapsed` (20)                                            | collapsed is a 56 px dot rail — `Nav item` has no icons, so the rail is dots; `Nav item` gained `Collapsed=No·Yes` (18) to carry it                                                     |
+| Topbar           | `Search=` Default·Focus (2)                                        | became a component set; nested Input swaps to Focus; `Breadcrumb` survived the conversion                                                                                               |
 
-**`Metric tile State=unavailable` still has a drawn contradiction**: the five
-Partial frames override a `Value` to an em dash instead. **`Skeleton` is still
-not size-tolerant** — `Shape=Card` overflows when resized, which collides with
-§1's requirement that a skeleton hold the height it replaces. Both are `3.9`.
+**The two early items, closed:**
+
+- **`Metric tile State=unavailable` exists and the Partial frames agree with
+  it.** The two frames that had overridden `Value` to an em dash — Domains —
+  home — Partial (`98:9162`) and Schedules — Partial (`85:8582`) — now
+  instance the variant; the Schedules caption ("counter unavailable — the
+  other four are live") rides its surviving `ShowDetail=true`. _The task
+  contract said five frames; two of the five carry the override_ — Run monitor
+  and Reports Partials draw all-live counters, and Runs history Partial has no
+  counter strip at all.
+- **`Skeleton` is size-tolerant.** `Shape=Card`, `Chart` and `Pane` were
+  converted from fixed auto-layout to absolutely positioned children with
+  SCALE constraints; a test instance of `Shape=Card` resized to a metric
+  tile's 190×96 held every child inside its bounds (proven numerically — the
+  agent pass cannot read images). `Shape=Row` stays exactly 36 px =
+  `--sp-row-comfortable`.
 
 ### Renames between §3 and the file
 
-| `UI_STATES.md` §3b | In Figma                                           |
-| ------------------ | -------------------------------------------------- |
-| Keycap             | `Kbd`                                              |
-| Selection overlay  | `Selection overlay` ✅ (was `Screenshot viewport`) |
-| Log line           | `Log line` ✅ (was `Log row`)                      |
-| Table row skeleton | `Skeleton` `Shape=Row`                             |
-| Stat strip counter | `Metric tile`                                      |
-| Table row          | six per-table row components (§3)                  |
+| `UI_STATES.md` §3b                | In Figma                                              |
+| --------------------------------- | ----------------------------------------------------- |
+| Keycap                            | `Kbd`                                                 |
+| Selection overlay                 | `Selection overlay` ✅ (was `Screenshot viewport`)    |
+| Log line                          | `Log line` ✅ (was `Log row`)                         |
+| Table row skeleton                | `Skeleton` `Shape=Row`                                |
+| Stat strip counter                | `Metric tile`                                         |
+| Table row                         | six per-table row components (§3)                     |
+| §3a `State=pending` (Sample cell) | `Result=Pending`                                      |
+| §3a `State=pending` (Sparkline)   | `Trend=Pending`                                       |
+| §3b Select "closed"               | `State=Default`                                       |
+| §3b Modal (scrim)                 | dialog card only — screens dim the surface themselves |
 
-### §3b — 17 still unbuilt
+### §3b — the ADR-0025 twenty all exist
 
-| Group                      | Unbuilt                                                        |
-| -------------------------- | -------------------------------------------------------------- |
-| Tables (1 · 2 · 5 · 7 · 8) | Bulk action bar · Row action menu · Filter chip · Search field |
-| States — every screen      | Modal · Tooltip                                                |
-| Forms (2 · 3)              | Numeric stepper · Dropzone · Validation row                    |
-| Review surfaces (4 · 10)   | Ancestor breadcrumb · Provenance badge · Diff row              |
-| Monitoring (6–9)           | Countdown · Line chart · Price history chart · Image thumbnail |
+Built this pass (7, all token-bound, zero instances until the screens adopt
+them): **Bulk action bar** (`State=` Hidden·Visible) · **Row action menu**
+(`State=` Closed·Open·Item hover·Item danger) · **Filter chip** (`State=`
+Default·Hover·Active·Removable) · **Search field** (`State=` Empty·Typing·With
+clear·No results) · **Modal** (`Kind=` Confirm·Confirm danger·Form·Wide ×
+`State=` Default·Submitting — submitting swaps the primary button to its
+loading state) · **Tooltip** (`Side=` Top·Bottom·Left·Right) · **Line chart**
+(`Series=` 1·2 × `State=` Live·Static·No data).
 
-`Dropzone` is the one to notice: screen 3's dropzone has five states in §4 and
-is the whole interaction of that screen, and it has no component and no drawn
-state beyond the populated frame.
+Axes completed on existing sets (4): **Toast** +`Dismissible=No·Yes` (16 —
+the ✕ was already drawn, so it became the `Yes` arm) · **Select** +`Error` and +`Content=Placeholder·Value` (10) · **Toggle** +`Focus=No·Yes` (6) ·
+**Pagination** became a set, `State=` First page·Default·Last page·Single page
+(4, `Summary` survived; its hardcoded white root fill is now bound to
+`bg/base`, and the prev chevron ghosts at 50% in First page — the two
+Schedules instances inherit both, which is the state §3b specifies).
+
+Verified complete unchanged (9): Table header cell · the six per-table row
+components (no generic row recreated) · `Skeleton Shape=Row` · Checkbox ·
+Spinner · Empty state · Error state · Stat strip counter (= Metric tile
+`State=Unavailable`).
+
+**The arithmetic, closed.** The old heading here said "17 still unbuilt" over
+a table of 16 rows, and BUILD_PLAN repeated "seventeen". **16 was right**: 34
+§3b sets, of which 20 are ADR-0025's shared scope and 14 screen-deferred sets
+covering 9 further components. After this pass the library is missing exactly
+those 9 — nothing more, nothing fewer:
+
+| Group            | Unbuilt (9)                                       |
+| ---------------- | ------------------------------------------------- |
+| Forms (2 · 3)    | Numeric stepper · Dropzone · Validation row       |
+| Review (4 · 10)  | Ancestor breadcrumb · Provenance badge · Diff row |
+| Monitoring (6–9) | Countdown · Price history chart · Image thumbnail |
+
+`Dropzone` remains the one to notice: screen 3's dropzone has five states in
+§4 and is the whole interaction of that screen, and it still has no component
+and no drawn state beyond the populated frame.
 
 ## 6. Screen 11's components
 

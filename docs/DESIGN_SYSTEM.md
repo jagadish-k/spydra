@@ -73,6 +73,9 @@ remove the prefix.
 | Primary button    | `bg-brand text-white hover:bg-brand-hover` |
 | Active nav item   | `bg-selected text-ink-brand`               |
 | Broken state pill | `bg-state-broken-tint text-state-broken`   |
+| Hover surface     | `hover:bg-hover`                           |
+| Modal scrim       | `bg-scrim`                                 |
+| On-brand ink      | `text-on-brand` / `bg-on-brand`            |
 | Focus ring        | `ring-2 ring-focus ring-offset-2`          |
 | Chart series      | `stroke-viz-1` … `stroke-viz-6`            |
 
@@ -161,24 +164,83 @@ than 400, nothing heavier than 600.
 Shared widgets, built once and composed everywhere. In the mockups these are CSS
 classes; in the React app they are the components named here.
 
-| Component               | Class             | Behaviour                                                                                                                                                            |
-| ----------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<DomainStatePill>`     | `.pill`           | Lifecycle state, dot + label, tooltip explains why                                                                                                                   |
-| `<SelectorField>`       | `.selector-field` | Editable selector + live resolved value + match count. Red when it resolves to nothing, amber when it resolves to several                                            |
-| `<PagePreview>`         | `.preview-frame`  | Screenshot + overlay canvas; active selector's matches outlined in place. No iframe — spec 014 §1                                                                    |
-| `<ValidationBadge>`     | `.pill` + count   | Per-field pass/fail with the failing rule named                                                                                                                      |
-| `<ProgressBar>`         | `.progress`       | Queued / in-flight / done / failed as a **stacked bar, never a percentage**                                                                                          |
-| `<Sparkline>`           | `.spark`          | 7-day health trend, coloured by band                                                                                                                                 |
-| `<ObservationTimeline>` | —                 | Time series with change points and template-version markers                                                                                                          |
-| `<DataTable>`           | `.table-wrap`     | Server-side pagination, column filters, URL-encoded state                                                                                                            |
-| `<Confidence>`          | `.confidence`     | Four-bar model confidence, coloured by band                                                                                                                          |
-| `<SampleMatrix>`        | `.sample-grid`    | Per-field pass/fail across sample URLs                                                                                                                               |
-| `<Banner>`              | `.banner`         | Info / warn / danger, with inline actions                                                                                                                            |
-| `<ProvenanceBadge>`     | `.prov`           | Where a selector came from — form · chat · clicked · escalated                                                                                                       |
-| `<SelectionOverlay>`    | `.sel-box`        | Absolutely positioned boxes over the screenshot: hovered, picked, other matches, container. Translucent, never opaque — they sit **over** the content being selected |
-| `<AncestryBar>`         | `.ancestry`       | The clicked node's ancestor chain; `[` / `]` walk it, rejected classes struck through                                                                                |
-| `<FieldVocabulary>`     | `.vocab`          | The canonical field list a click assigns to                                                                                                                          |
-| `<ChatMessage>`         | `.msg`            | Operator / system / refusal, with the terse mono variant for what the system did                                                                                     |
+### The coded library (`3.9`)
+
+Thirty-one components in `frontend/src/components/`, one file per component:
+props in, markup out, no fetching (spec 006 §1). Variant axes follow
+`UI_STATES.md` §3 against the Figma library re-measured in
+[`COMPONENTS.md`](COMPONENTS.md); the first line of each file names its Figma
+component. Hover, focus and pressed arms are `hover:` / `focus-visible:` /
+`active:` utilities, not
+props — a prop that says "hover" would fight the browser's own hover. Ephemeral
+state (spinner, skeleton) consumes the skeleton/disabled token pairs; every
+persistent state is a prop.
+
+**§3a — atoms and controls (14)**
+
+| Component           | Figma (node)            | Variants / props                                                                                                                                                                     |
+| ------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `<Button>`          | Button                  | `variant=` primary · secondary · ghost · danger × `size=` sm · md; `loading` — spinner joins the held label so the width never moves                                                 |
+| `<Input>`           | Input `42:156`          | `error` · `prefix` · `onClear` over native `value`/`disabled`/`readOnly`; focus ring lands on the wrapper (`focus-within`)                                                           |
+| `<Card>`            | Card                    | `interactive` (hover border) · `selected` (border-focus + bg-selected) · `loading` (content swaps for a skeleton)                                                                    |
+| `<Tag>`             | Tag `43:146`            | `tone=` neutral · info · success · warning · danger × `removable` × `disabled` — tones map to feedback semantics                                                                     |
+| `<ProgressBar>`     | Progress bar `43:270`   | `segments={queued,inFlight,done,failed}` stacked (in-flight is `viz-1`) or `state=` running · paused · complete · failed · empty + `fraction`; optional `legend`; never a percentage |
+| `<Tabs>`            | Tab `10:100`            | `items {id,label,count?,disabled?}` × `value`; count badge is a `tabular-nums` pill; within-screen only, never navigation                                                            |
+| `<StatePill>`       | State pill              | `state=` the six lifecycle states + `why` tooltip; dot + label on the state tint pair                                                                                                |
+| `<MetricTile>`      | Metric tile `11:71`     | `value: number \| null` — **null is the unavailable tile** (em dash, the partial-counter contract); `loading` swaps in a skeleton; `tone=` default · attention · danger              |
+| `<Banner>`          | Banner `11:84`          | `tone=` info · warning · danger × `action` × `dismissible`                                                                                                                           |
+| `<SelectorField>`   | Selector field `11:142` | state derived from `matches: number \| null` (null resolving · 0 no-match, muted · >1 warning) + `invalid` · `disabled`; mono selector over a resolved sample value                  |
+| `<Confidence>`      | Confidence              | `level=` high · good · medium · low; lit bars 4→1 carry the signal, band colour active/pending/broken                                                                                |
+| `<ValidationBadge>` | Validation badge        | `kind=` pass · partial · fail × `count` · `rule` (tooltip names the failing rule)                                                                                                    |
+| `<SampleCell>`      | Sample cell `10:83`     | `result=` pass · fail · partial · pending — pending is a neutral dash, not an error                                                                                                  |
+| `<Sparkline>`       | Sparkline `10:93`       | `trend=` healthy · slipping · failing · pending × `values` (empty draws the flat pending line); hand-written SVG                                                                     |
+
+**§3b — shared sets (17)**
+
+| Component           | Figma (node)               | Variants / props                                                                                                                                                                                               |
+| ------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<TableHeaderCell>` | Table header cell          | `sort=` none · asc · desc (`aria-sort`) with the sort control a button in `<th>`; sortable when `onSort` is passed                                                                                             |
+| `<RowActionMenu>`   | Row action menu `199:1306` | `open` × per-item `danger` / `disabled`; the screen owns open state and outside-click dismissal                                                                                                                |
+| `<FilterChip>`      | Filter chip `199:1316`     | `active` · `removable` · `onClick`                                                                                                                                                                             |
+| `<SearchField>`     | Search field `199:1339`    | empty / typing / with-clear derived from `value`; the `noResults` arm is a prop                                                                                                                                |
+| `<BulkActionBar>`   | Bulk action bar `199:1294` | `count` — 0 unmounts (hidden); visible is count + `actions` + clear                                                                                                                                            |
+| `<Checkbox>`        | Checkbox                   | `checked` true · false · `"indeterminate"` (`aria-checked="mixed"`; a button, because the DOM property is not static markup) × `disabled`                                                                      |
+| `<Pagination>`      | Pagination `196:1332`      | first / last / single-page **derived** from `page` × `pageCount`; ghosted chevrons at the ends, summary optional                                                                                               |
+| `<Select>`          | Select `51:293`            | `open` · `error` · `disabled` × with-value / placeholder derived; a custom listbox (a native select cannot express the open or error arms)                                                                     |
+| `<Toggle>`          | Toggle `51:303`            | `checked` × `disabled`; `role="switch"`                                                                                                                                                                        |
+| `<Skeleton>`        | Skeleton `33:120`          | `shape=` row · card · chart · pane · text-line; row is `h-row-comfortable` from the spacing token (test-asserted); card/chart/pane place children at fractional offsets so resizing never overflows            |
+| `<Spinner>`         | Spinner                    | `size=` sm · md × `onBrand` — `on-brand` is the theme-constant ink for filled brand surfaces (`text-inverse` flips per theme)                                                                                  |
+| `<EmptyState>`      | Empty state                | `kind=` first-run · filtered · no-results (icon + title + body + action; first-run's action is primary, filtered never offers to create)                                                                       |
+| `<ErrorState>`      | Error state                | `kind=` fetch · permission · timeout · partial × `reason` + retry — never strands the user                                                                                                                     |
+| `<Toast>`           | Toast `34:201`             | `tone=` info · success · warning · danger × `action` × `dismissible`; danger is `role="alert"`, the rest polite status                                                                                         |
+| `<Modal>`           | Modal `201:1381`           | `kind=` confirm · confirm-danger · form · wide × `submitting` (confirm goes loading, label held). Includes the scrim overlay (`bg-scrim`, human decision 2026-10-25) — Figma's frame still draws the card only |
+| `<Tooltip>`         | Tooltip `201:1406`         | `side=` top · bottom · left · right                                                                                                                                                                            |
+| `<LineChart>`       | Line chart `201:1489`      | 1–2 series on `viz-1`/`viz-2` × `live` (pulse on the last point); no-data derived from empty series; Recharts arrives with the first screen that needs axes                                                    |
+
+There is deliberately **no generic table-row component**: Figma's `Table row`
+was deleted (hard-wired to one column set) and the six concrete rows land with
+their screens (`COMPONENTS.md` §3) — the shared deliverable here is
+`<Skeleton shape="row">` over `--sp-row-comfortable` / `--sp-row-compact`.
+`Icon` was not coded: Empty/Error/Toast carry their own inline glyphs, and a
+13-glyph component with one consumer would be inventory, not reuse. Sidebar and
+Topbar variants are 3.8's `AppShell`, not this library.
+
+### Named ahead of their screens
+
+Reference implementations exist in the mockups; the React components land with
+the screen that first needs them.
+
+| Component               | Class            | Behaviour                                                                                                                                                            |
+| ----------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<PagePreview>`         | `.preview-frame` | Screenshot + overlay canvas; active selector's matches outlined in place. No iframe — spec 014 §1                                                                    |
+| `<ObservationTimeline>` | —                | Time series with change points and template-version markers                                                                                                          |
+| `<DataTable>`           | `.table-wrap`    | Server-side pagination, column filters, URL-encoded state                                                                                                            |
+| `<SampleMatrix>`        | `.sample-grid`   | Per-field pass/fail across sample URLs (composes `<SampleCell>`)                                                                                                     |
+| `<ProvenanceBadge>`     | `.prov`          | Where a selector came from — form · chat · clicked · escalated                                                                                                       |
+| `<SelectionOverlay>`    | `.sel-box`       | Absolutely positioned boxes over the screenshot: hovered, picked, other matches, container. Translucent, never opaque — they sit **over** the content being selected |
+| `<AncestryBar>`         | `.ancestry`      | The clicked node's ancestor chain; `[` / `]` walk it, rejected classes struck through                                                                                |
+| `<FieldVocabulary>`     | `.vocab`         | The canonical field list a click assigns to                                                                                                                          |
+| `<ChatMessage>`         | `.msg`           | Operator / system / refusal, with the terse mono variant for what the system did                                                                                     |
 
 ### Three decisions worth keeping
 

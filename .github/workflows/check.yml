@@ -79,6 +79,18 @@ jobs:
       - name: make check # lint · types · tests · generated drift
         run: make check
 
+      # ADR-0043: build the component workshop and publish it to Chromatic.
+      # Guarded on the token — until the human creates the project (task-file
+      # open question) this step skips silently, which is correct. The build
+      # deliberately lives here and not in `make check` (too slow for the gate).
+      - name: Storybook build + Chromatic
+        if: ${{ secrets.CHROMATIC_PROJECT_TOKEN != '' }}
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+        run: |
+          make storybook-build
+          make chromatic
+
       # BUILD_PLAN 1.14: the phase 1 exit criterion, against the live stack.
       # Both fetchers through one scheduler, render stopped mid-way. A gate
       # that only runs by hand stops being true without anyone noticing.
