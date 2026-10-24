@@ -56,6 +56,10 @@
   --sp-bg-hover: rgba(22, 25, 31, 0.035);
   --sp-bg-selected: var(--sp-brand-50);
   --sp-bg-backdrop: rgba(22, 25, 31, 0.4);
+  /* The modal scrim: the backdrop under the name the component consumes —
+     translucent ink (neutral-900 at 40%), the established rgba convention
+     (bg-hover, overlay-*) rather than a new colour. */
+  --sp-scrim: var(--sp-bg-backdrop);
 
   --sp-border: var(--sp-neutral-200);
   --sp-border-strong: var(--sp-neutral-300);
@@ -66,6 +70,10 @@
   --sp-text-secondary: var(--sp-neutral-600);
   --sp-text-muted: var(--sp-neutral-500);
   --sp-text-inverse: var(--sp-neutral-0);
+  /* Ink for filled brand surfaces (primary buttons, switch knobs, check
+     marks). Theme-constant like the brand ramp it reads against: the fill
+     does not shift, so the ink must not either. */
+  --sp-on-brand: var(--sp-brand-50);
   --sp-text-brand: var(--sp-brand-600);
   --sp-text-link: var(--sp-brand-600);
 
@@ -217,6 +225,7 @@
   --sp-bg-hover: rgba(232, 234, 238, 0.045);
   --sp-bg-selected: rgba(79, 86, 217, 0.16);
   --sp-bg-backdrop: rgba(9, 10, 13, 0.6);
+  --sp-scrim: var(--sp-bg-backdrop);
 
   --sp-border: #272c36;
   --sp-border-strong: #39404d;

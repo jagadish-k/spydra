@@ -36,6 +36,8 @@
   --color-subtle: var(--sp-bg-subtle); /* bg-subtle   */
   --color-inset: var(--sp-bg-inset); /* bg-inset    */
   --color-selected: var(--sp-bg-selected); /* bg-selected */
+  --color-hover: var(--sp-bg-hover); /* hover:bg-hover */
+  --color-scrim: var(--sp-scrim); /* bg-scrim    */
 
   /* ---- Text ---------------------------------------------------------- */
   --color-ink: var(--sp-text-primary); /* text-ink           */
@@ -43,6 +45,9 @@
   --color-ink-subtle: var(--sp-text-muted); /* text-ink-subtle    */
   --color-ink-inverse: var(--sp-text-inverse); /* text-ink-inverse   */
   --color-ink-brand: var(--sp-text-brand); /* text-ink-brand     */
+  --color-on-brand: var(
+    --sp-on-brand
+  ); /* text/bg-on-brand — ink on filled brand */
 
   /* ---- Lines and focus ----------------------------------------------- */
   --color-line: var(--sp-border); /* border-line        */
@@ -161,6 +166,9 @@
    | Primary button        | bg-brand text-white hover:bg-brand-hover       |
    | Active nav item       | bg-selected text-ink-brand                     |
    | Broken state pill     | bg-state-broken-tint text-state-broken         |
+   | Hover surface         | hover:bg-hover                                 |
+   | Modal scrim           | bg-scrim                                       |
+   | On-brand ink          | text-on-brand / bg-on-brand                    |
    | Focus ring            | ring-2 ring-focus ring-offset-2                |
    | Chart series 1        | stroke-viz-1                                   |
 

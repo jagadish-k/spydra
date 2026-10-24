@@ -735,7 +735,7 @@ Selectors are still hand-written; the model comes next._
 - [ ] `3.7` `make types` wired for **both** schemas; generated client
       (ADR-0013, ADR-0015).
 - [ ] `3.8` Frontend shell: `AppShell`, routing, theme with no-flash load.
-- [ ] `3.9` Design-system components (spec 006 §2) — build the whole set
+- [x] `3.9` Design-system components (spec 006 §2) — build the whole set
       before the screens, so screens compose rather than improvise.
       **Each ships its full variant set from `UI_STATES.md` §3**, not only its
       populated path. **Scope: the shared sets only** — all seventeen §3a
@@ -758,6 +758,15 @@ Selectors are still hand-written; the model comes next._
       overrides its own text — so add them only where a developer will read
       the component's API, and capture a baseline first because adding one can
       reset existing overrides (it reset 5 of 300).
+      **Done:** Half A in Figma — 49→56 components, 230→352 variants,
+      1,761 instances unchanged; §3a closed 17/17, seven §3b sets built,
+      `Skeleton` size-tolerant and `Metric tile State=unavailable` landed
+      early as planned; `COMPONENTS.md` §4 grew two constraints found the
+      hard way. Half B in code — 31 components, semantic utilities only,
+      no raw palette class; `DESIGN_SYSTEM.md` gained the coded-library
+      table. 97 tests (94 + 3 review pins), 9 mutations red. Review arc —
+      dark-mode `Toggle` knob, `Button` active arm, chart live-marker
+      index — all three pinned.
 - [ ] `3.10` Domains screen, sorted by health ascending, fed by the BFF's
       `/overview` in **one** request. Includes first-run empty, filtered
       empty — different sentences, different actions — and **partial
