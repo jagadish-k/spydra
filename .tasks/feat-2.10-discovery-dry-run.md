@@ -208,47 +208,53 @@ nowhere), `docs/BUILD_PLAN.md` (integrator ticks 2.10 in the PR).
 
 ## Acceptance (BUILD_PLAN 2.10, spec 004 §5)
 
-- [ ] Counts per rule against 2.1's fixtures: `dry_run` over the fixture
+- [x] Counts per rule against 2.1's fixtures: `dry_run` over the fixture
       site reports per-rule `matched` counts equal to the catalogue
       constants for that page — e.g. `/shop/cutting/discs/` with
       `EXIT_DISCOVERY`: products = `PER_PAGE` (page 1 of the leaf's set),
       `next_page` = 1, tiles per the page's own container; `/shop/cutting/`:
       the three tile links. Derived from `catalogue.py`, no magic numbers.
-- [ ] The facet trap's second half (spec 004 §5: "the dry-run reports the
+- [x] The facet trap's second half (spec 004 §5: "the dry-run reports the
       rejected count"): on a faceted leaf page, `rejected` carries
       `deny_pattern:[?&](colour|grit|sort|view|per_page)=` with the page's
       facet-link count and samples — 2.5's reasons surface unchanged.
-- [ ] Mega-menu wiring (spec 004 §5: "caught by the dry-run"): `dry_run`
+- [x] Mega-menu wiring (spec 004 §5: "caught by the dry-run"): `dry_run`
       with `subcategory_links: "nav a"` on `/shop/cutting/` returns the
       `whole_tree` finding in the report — 11 links, 3 branches, deepest
       chain 3 — and the scoped rule over the same page returns
       `mega_menu=None`. This is 2.6's flag reaching the report it was
       shaped for.
-- [ ] The projection: deterministic (same inputs, same number), the three
+- [x] The projection: deterministic (same inputs, same number), the three
       closed-form branches exercised (`f > 1`, `f = 1`, `f = 0`), the
       `nav a` case ≈ 195k vs the scoped case small, and the §3a comparison
       demonstrated both ways on the fixture — removing a redundant rule
       leaves the projection unchanged (the re-attribution case:
       `product_links: "nav.mega a"` + `subcategory_links: "nav a"`, unset
       the subcategory rule, projection identical → the amended check says
-      delete), removing a load-bearing one lowers it.
-- [ ] Writes nothing, three ways: the module's imports pinned by test (no
-      `adapters.postgres`, no engine); a counting fetcher sees exactly one
-      page request (one robots request when `respect_robots=True`; zero
-      robots requests when false); a real-engine test sees zero rows in
-      `crawl_queue`, `pages`, `page_observations` and `runs` after a call.
-- [ ] Robots posture: a disallowing robots.txt → `robots_disallowed`
+      delete), removing a load-bearing one lowers it. (The `nav a` number
+      is 177,155 by the pinned formula — see the backend handoff, deviation
+      1; the tests derive it, never assert it literally.)
+- [x] Writes nothing, three ways: the module's imports pinned by test (no
+      `adapters.postgres`, no engine; `spydra.scheduler.robots` on the
+      allowlist per the backend handoff's deviation 2, and that module
+      pinned in turn to stdlib + domain + ports so the purity is
+      transitive); a counting fetcher sees exactly one page request (one
+      robots request when `respect_robots=True`; zero robots requests when
+      false); a real-engine test sees zero rows in every `crawl` table —
+      enumerated from `pg_tables`, not a hand-copied list — after a call.
+- [x] Robots posture: a disallowing robots.txt → `robots_disallowed`
       notice, zero page requests; a 5xx robots → `robots_unavailable`
-      notice, zero page requests; `respect_robots=False` → no robots
+      notice, zero page requests (a robots `FetchFailed` too — both are
+      spec 002 §5's fail-closed); `respect_robots=False` → no robots
       fetch, page fetched.
-- [ ] The loud zero: a 200 via the STATIC path with zero accepted links →
+- [x] The loud zero: a 200 via the STATIC path with zero accepted links →
       `zero_links_static` notice; the same page with links accepted → no
       notice. A RENDERED-path fetch reporting zero carries no notice.
-- [ ] Report shape matches spec 004 §4's keys: `matched` per rule with
+- [x] Report shape matches spec 004 §4's keys: `matched` per rule with
       `count` + `sample`, `rejected` keyed `off_host` /
       `deny_pattern:<pattern>` with `pattern`, the mega-menu finding, the
       projection, `fetch_path`, `http_status`, `notices`.
-- [ ] `make check` green. Named mutations: the formula's `t`/`f` swapped,
+- [x] `make check` green. Named mutations: the formula's `t`/`f` swapped,
       the `f = 1` branch deleted (falls into the geometric form), sample
       cap changed, `whole_tree` called after samples are capped (the
       finding's link count drops), robots check skipped (disallowed page
@@ -311,6 +317,45 @@ nowhere), `docs/BUILD_PLAN.md` (integrator ticks 2.10 in the PR).
      amended check says delete; load-bearing: exit rules minus the
      subcategory rule — projection drops); exactly one page request and one
      robots request per call. To **spydra-test**.
+- test — `backend/tests/discovery/test_dry_run.py` (27 tests): counts per
+  rule derived from `catalogue.py` (products `PER_PAGE`, `next_page` from
+  the leaf's page count, tiles = children + the archive tile), the facet
+  tally verbatim (deny-keyed entry with pattern/count/sample, `off_host`
+  alongside), 2.6's finding in the report with every number derived from
+  `NODES`/`TREE`, and the projection asserted only as the pinned formula
+  recomputed from each report's own matched counts — `nav a`'s 177,155
+  included, never as a literal. Three branches on real pages: `f>1` on the
+  exit seed, `f=1` on discs (parametrised over `max_depth` 5 and 3 so the
+  renamed key's semantics are what is tested, not a hard-coded 5), `f=0` on
+  blades. §3a both ways: `nav.mega a`+`nav a` vs `nav.mega a` alone
+  (identical → delete) and the exit rules minus the subcategory rule
+  (drops). Writes-nothing three ways: the AST import allowlist (2.9's
+  relative-import fix, `spydra.scheduler.robots` on it per deviation 2 —
+  plus a second test pinning `scheduler/robots.py` itself to stdlib +
+  domain + ports, so the one outside-`discovery/` import is transitively
+  pure); the two-request posture asserted on the real fixture site's own
+  request log (robots-then-page, exactly, including the 404 outcome) and on
+  a scripted counting fetcher for the zero-page outcomes (disallow, 5xx,
+  robots `FetchFailed`); and an `integration`-marked real-engine test
+  counting every `crawl` table (enumerated from `pg_tables`) before/after
+  a call that demonstrably ran. `Backpressure` asserted to propagate
+  (deviation 3); `non_200` carries the status and runs no `discover`;
+  the loud zero on a STATIC-path JS-only listing stub, silence on the same
+  body via a RENDERED-path fetcher. One reading resolved against the
+  spawning brief: the brief said "a static-served page with zero links does
+  NOT carry the notice (AUTO-drift signal only)" — the contract (spec 004
+  §4, and the module) key the notice on `fetch_path is STATIC` with zero
+  accepted links, which is necessarily also what an AUTO domain's
+  static-first fetch reports; the tests pin the contract. Eleven mutations,
+  each red then restored green: `f=1` branch deleted; exponent `D→D−1`;
+  robots `can_fetch` gate removed (disallowed page fetched — the
+  request-count assert fired); page fetched twice; `zero_links_static`
+  never fires / inverted (two tests red); projection's product/next-page
+  arguments swapped; `whole_tree` never called; `whole_tree` fed
+  sample-capped links (finding shrank 11→5); sample slice dropped; `f=0`
+  tail made linear. `make test-api` 1283 collected (1256 + 27), all green;
+  `make lint` clean; `make generated` no diff (bff/web/render suites also
+  run green — the change adds one backend test file). To **spydra-reviewer**.
 
 ## Open questions
 
