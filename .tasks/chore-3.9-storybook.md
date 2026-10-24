@@ -339,6 +339,25 @@ touches these paths.
   `prettier --write tests/stories.test.ts`). One-line fix in the fmt
   recipe when its owner next touches the Makefile. **Hand off to
   `spydra-reviewer`.**
+- integrator — gate + PR handoff, verified 2026-10-24. Scope re-checked
+  against `575c62f...HEAD`: 47 files, every one inside the declared set
+  (31 stories, `.storybook/`×2, Makefile storybook block + `.PHONY`
+  only, the CI step, ignore lists, ADR-0043 + README line, the declared
+  `design-system.test.tsx` deviation, `stories.test.ts`,
+  `DEVELOPMENT.md`, `.env.example`, task file). Gate, in order: lint ✓ ·
+  types ✓ no diff · generated ✓ zero drift (agents 0 files) · test-api
+  1285 passed + 2 skipped ✓ · test-bff 10/10 ✓ · test-web 110/110 ✓ ·
+  test-render 57/57 ✓ (no environmental red) · **`make storybook-build`
+  ✓ in-container** — "Storybook build completed successfully", Vite
+  1.1s. No BUILD_PLAN tick — this chore has no task there. One history
+  fix before pushing: the `.storybook config` commit's subject was 74
+  chars and the commit-msg hook enforces ≤72 (it could only have landed
+  with hooks unwired); reworded to 65 chars, body verbatim, the five
+  descendants rebased on top with hooks active — trees identical (empty
+  diff old tip → new tip). Pushed `chore/3.9-storybook` → origin with
+  hooks passing (no `--no-verify`); PR body left at
+  `.tasks/pr-3.9-storybook-body.md`, base
+  `feat/3.9-design-system-components`, merge order 3.9 → this.
 
 ## Open questions
 
