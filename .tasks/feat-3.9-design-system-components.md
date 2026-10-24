@@ -237,7 +237,7 @@ Half A — Figma:
 
 Half B — code:
 
-- [ ] 31 component files, one per file, props in / markup out, no fetching,
+- [x] 31 component files, one per file, props in / markup out, no fetching,
       no `forwardRef`, header comment naming the Figma component.
 - [ ] Every shipped variant set is covered by a Vitest test that fails
       without it — each variant renders distinguishing markup.
@@ -257,14 +257,72 @@ Half B — code:
 
 Docs:
 
-- [ ] `COMPONENTS.md` reflects the final measured state (counts, §1 used-by,
-      §5 closed out) and records any override-reset incident.
-- [ ] `DESIGN_SYSTEM.md` carries an entry for every new coded component.
+- [x] `COMPONENTS.md` reflects the final measured state (counts, §1 used-by,
+      §5 closed out) and records any override-reset incident. _(Half A,
+      commit `7d460c4`.)_
+- [x] `DESIGN_SYSTEM.md` carries an entry for every new coded component.
+      _(Half B — §"The coded library", 31 rows.)_
 - [ ] No BUILD_PLAN tick (the human ticks in the PR).
 
 ## Handoff log
 
-- **Half A — Figma library (2026-10-24, session `04e77cfb`, this pass).**
+- **Half B — the React components (2026-10-24, this pass).** 31 files in
+  `frontend/src/components/`, one per component, props in / markup out, no
+  fetching, no `forwardRef`. Every file's first comment names its Figma
+  component; node ids appear where Half A recorded one — Button · Card ·
+  State pill · Confidence · Validation badge · Table header cell · Checkbox ·
+  Spinner · Empty state · Error state were untouched by Half A and carry no
+  recorded id (name only). `DESIGN_SYSTEM.md` §"The coded library" is the
+  prop-signature reference, one row per component.
+  - **Figma-arm → React mapping (recorded in DESIGN_SYSTEM too):** hover and
+    focus variants are `hover:` / `focus-visible:` utilities, not props — a
+    prop that says "hover" fights the browser's own hover. Every persistent
+    state (tone, kind, shape, sort, result, level, trend, side, loading,
+    submitting, unavailable) is a prop. Static-render tests can still
+    distinguish every arm: the classes are in the markup.
+  - **Token gap found — `bg-hover`:** `--sp-bg-hover` exists in both themes
+    but `tailwind-theme.css` maps no `--color-hover`, so `hover:bg-hover`
+    silently generates nothing (the exact trap DESIGN_SYSTEM §Tokens
+    describes). `design/**` is not this slice's file, so components use the
+    mapped `hover:bg-subtle`. **Flag for a token pass:** add
+    `--color-hover: var(--sp-bg-hover);` and swap the seven call sites.
+  - **On-brand ink:** `text-ink-inverse` flips per theme and would go
+    dark-on-indigo in dark mode, so filled-brand surfaces (Button primary,
+    Spinner `onBrand`, Checkbox/Toggle marks) use `text-brand-subtle`
+    (#eef0fb, theme-constant). Candidate for a real `--sp-on-brand` token in
+    the same token pass.
+  - **The two mandated behaviours:** `MetricTile value={null}` renders the
+    unavailable tile (em dash, no error); `loading` swaps the value for a
+    skeleton bar. `Skeleton shape="row"` is `h-row-comfortable` — the spacing
+    token, verified to generate as a utility in a real `vite build` (grep of
+    the emitted CSS; `dist/` deleted afterwards so `prettier --check .` stays
+    clean). Card/chart/pane skeletons place children at fractional absolute
+    offsets, mirroring Half A's SCALE constraints.
+  - **Derived-vs-prop calls:** Pagination's first/last/single-page are
+    derived from `page × pageCount` (a prop would drift from the arithmetic).
+    Select and RowActionMenu take `open` as a prop — the screen owns
+    outside-click. Checkbox is a `<button role="checkbox">` because the
+    indeterminate DOM property cannot appear in static markup (the
+    renderToStaticMarkup test harness would never see it). SelectorField
+    derives default/resolving/no-match/warning from `matches: number | null`
+    - `invalid`, so no screen re-derives it.
+  - **Icon was not coded** (permitted by the contract, not required): Banner,
+    Toast, EmptyState and ErrorState carry their own inline glyphs; nothing
+    else needs a 13-glyph component yet.
+  - **Naming:** `StatePill` replaces the old `<DomainStatePill>` name in
+    DESIGN_SYSTEM (code is the contract's name); `Tabs` renders a strip of the
+    Figma single-`Tab` component; MetricTile's third tone is `danger` per the
+    mockup's `.metric-value.danger` (Figma tone names are unrecorded —
+    default · attention · danger). Modal's confirm-danger uses the outline
+    `danger` Button — the mockups have no filled danger button to copy.
+  - **Verification:** `tsc --noEmit` clean (strict, noUncheckedIndexedAccess,
+    zero `any`), `make lint-web` clean (eslint + prettier), existing vitest
+    suite 10/10 green, `vite build` succeeds. New tests are the next agent's;
+    components are pure functions of props so `renderToStaticMarkup` can walk
+    the variant matrix mechanically.
+  - **Storybook: not added** — the repo has none (verified); a preview harness
+    is a possible follow-up, not part of 3.9.
+- **Half A — Figma library (2026-10-24, session `04e77cfb`).**
   Everything in the Half A acceptance list is done; live in file
   `GeJPFXY4CicHBdzLMyXG2E`, page 🧩 Components. Node ids: Metric tile
   `11:71` · Input `42:156` · Tag `43:146` · Progress bar `43:270` · Tab
