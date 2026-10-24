@@ -269,6 +269,21 @@ Docs:
 
 ## Handoff log
 
+- **Integration (2026-10-24, integrator).** Gate run leg-by-leg, all green:
+  `make lint` 0 · `make types` no diff (no API change — correct) ·
+  `make generated` clean tree · `make test-api` **1285 passed, 2 skipped**
+  (baseline held, untouched) · `make test-bff` **10/10** · `make test-web`
+  **107/107** (10 pre-existing + 94 matrix + 3 review pins) ·
+  `make test-render` **57/57**. Scope diff vs `develop` is exactly the
+  declared set: task file, `COMPONENTS.md`, `DESIGN_SYSTEM.md`, 31 files in
+  `frontend/src/components/`, 4 in `frontend/tests/` — nothing outside, all
+  commit subjects imperative ≤72. BUILD_PLAN `3.9` ticked with the Done
+  paragraph. Pushed to `origin/feat/3.9-design-system-components` over SSH
+  keepalive (no `--no-verify` — every leg green on its own); PR body left at
+  `.tasks/pr-3.9-body.md`, base `develop` (first slice of the phase-3 stack).
+  Three items for the human, recorded in the body: the `--sp-scrim` token
+  decision for Modal, the token pass (`--sp-bg-hover` mapping +
+  `--sp-on-brand` candidate), and the Half A screenshots in the OS temp dir.
 - **Tests — pins for the review fixes (3b454e8) (2026-10-24, this pass).**
   Three pins added to the existing files (no fork), suite now **107/107**
   (`make test-web`, prettier/eslint/tsc clean; components restored
