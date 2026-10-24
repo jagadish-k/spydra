@@ -96,7 +96,9 @@ def parse(text: str) -> tuple[DomainConfig, ...]:
 
 async def load(configuration: PostgresConfiguration, text: str) -> RunId:
     """Parse, then write everything and start the run in one transaction."""
-    return await configuration.apply(parse(text))
+    outcome = await configuration.apply(parse(text))
+    assert outcome.run_id is not None  # skip_refused unset: apply starts the run or raises
+    return outcome.run_id
 
 
 def _refuse_required(node: object, path: str = "") -> None:

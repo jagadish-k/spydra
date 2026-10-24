@@ -324,19 +324,23 @@ enqueue is `ON CONFLICT DO NOTHING`, so the second row's outcome is
 byte-identical to the first's and reporting it would report a non-failure.
 
 File-level refusals (`refused:`, nothing written, exit 1): a bad header; a
-header with no data rows; every data row rejected (no empty run is
-started). One refusal carries over from the YAML loader unchanged: a domain
-already `paused`, `broken` or `archived` makes `apply` refuse and roll back
-the **whole file** — a conflict with the world, not with a row's syntax;
-the operator removes that host's rows and re-runs.
+header with no data rows; every data row rejected; every domain refused
+(no run is started over nothing). A domain already `paused`, `broken` or
+`archived` — a conflict with the world, not with a row's syntax — is
+refused **alone**: its rows are skipped, the rest of the file imports, and
+the run covers what imported. The YAML loader keeps the whole-file
+refusal (a YAML file is one coherent template set; a CSV is independent
+facts), which is why the refusal is `apply(skip_refused=True)` and not a
+behaviour change to `spydra.load`.
 
 **Exit codes** — the only channel `make` has, and "imported with
 rejections" is not "success": `0` only when every data row imported (silent
-dedupes do not count against it); `1` when any row was rejected (the valid
-rows still imported — the summary says exactly what happened) or the file
-was refused. Rejects print to stderr one per line as
-`line N: <token> — <why>`; stdout carries the summary and
-`run N started from <path>`.
+dedupes do not count against it); `1` when any row was rejected, any
+domain was refused (the valid rows still imported — the summary says
+exactly what happened), or the file was refused. Rejects print to stderr
+one per line as `line N: <token> — <why>`, refusals one per host as
+`refused: <host> is <state>. … Its rows were skipped.`; stdout carries the
+summary and `run N started from <path>`.
 
 ### Acceptance
 

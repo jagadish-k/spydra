@@ -394,3 +394,49 @@ imported` + `run 11 started from tests/fixtures/phase2/seeds.csv`;
   `DomainConfig` lifted to a pure home (e.g. `spydra/domain/`), that is a
   small refactor of 1.14's exports — deferred, not decided, because
   moving it touches three files to save one import.
+
+**Decided (human), 2026-10-24:** OQ1 — overruled. A CSV naming a
+`paused`/`broken`/`archived` domain refuses only that domain's rows; the
+rest import. Implemented as `apply(skip_refused=True)` in
+`configuration.py` (default False keeps the YAML loader byte-identical);
+spec 004 §6 now states the per-domain refusal.
+
+**Decided (human), 2026-10-24:** `,`-only rows — keep: blank after strip
+(every field strips to empty ⇒ skipped silently), as flagged in the
+review-fix handoff.
+
+## Handoff log (2.9 per-domain refusal pass)
+
+- backend (decided-by-human, OQ1 overruled — per-domain refusal):
+  - **`PostgresConfiguration.apply(domains, *, skip_refused=False)
+-> ApplyOutcome`** — `ApplyOutcome(run_id: RunId | None, refusals:
+tuple[DomainRefusal, ...])`; `DomainRefusal(host, state, message)`,
+    all frozen slots. `_domain` now returns `int | DomainRefusal`; the
+    raise is composed at the call site as `_refusal_text(...) + "
+Nothing was written."` — byte-identical to the historical message
+    (asserted in-container; the YAML suite's refusal tests stayed green).
+    `run_id is None` only when `skip_refused` and every domain was
+    refused; an empty `domains` sequence still starts an empty run, as
+    the YAML loader has always allowed.
+  - **`load.py` adapted mechanically**: unwraps `outcome.run_id` with an
+    assert (skip_refused unset ⇒ run started or raised).
+  - **CLI reports refusals per host, not per line** — pinned decision:
+    the refusal is a fact about the domain's `crawl.domains` row; every
+    line naming the host shares it, so per-line would repeat one fact N
+    times. stderr: `refused: <host> is <state>. … (spec 001 §2,
+ADR-0004). Its rows were skipped.` — the shared `_refusal_text` plus
+    a CLI-owned outcome clause (the raise keeps its own "Nothing was
+    written." tail, which is only true there). Summary counts imported
+    domains/seeds only (refused hosts excluded); exit 1 on any reject OR
+    refusal; all-refused prints `refused: every domain in the file was
+refused; nothing was written` (distinguishing header-only /
+    all-rejected by `seed_file.domains`).
+  - **Went red, expected, for spydra-test to rewrite from this
+    contract** (assert the old whole-file raise):
+    `test_load_seeds.py::test_a_domain_in_a_state_a_file_cannot_approve_refuses_the_whole_file`
+    × [paused, broken, archived] — 3 failures. Everything else green.
+  - Spec 004 §6: file-level refusal paragraph now per-domain, exit
+    contract and stderr shape updated; YAML's whole-file refusal named as
+    the deliberate contrast.
+  - Suite: `make lint` clean (ruff + mypy --strict); `make test-api`
+    1250 passed, 3 failed (the three above), 2 skipped.
