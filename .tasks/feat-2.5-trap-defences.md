@@ -461,3 +461,6 @@ New:
    domain's breach is exact. If multi-domain runs ever exist, 2.7's lifecycle
    needs a per-domain stop decision; the seam is the halt statement's
    run-level UPDATE.
+
+**Decided (human), 2026-10-24:** OQ1 — keep the three-full-consecutive
+threshold reading. OQ2 — keep `allow_patterns` as the calendar escape.

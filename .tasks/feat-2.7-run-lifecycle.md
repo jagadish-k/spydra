@@ -539,3 +539,6 @@ test_run_lifecycle.py` (41): the fence (claim refuses paused + all three
   is a stop with extra steps); the snapshot-stats cost (same as ADR-0040's
   breach halt — a post-tail recompute was rejected as a reconciler for
   writes D2 makes correct at the write).
+
+**Decided (human), 2026-10-24:** the exact string `stopped by operator`
+(no actor/timestamp suffix) — keep.

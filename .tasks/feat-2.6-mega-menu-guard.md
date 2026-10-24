@@ -282,3 +282,6 @@ ancestor count`, roots sample = sorted canonical top-category paths) — no
    `projected_urls_at_depth_5` backstop. Not fixed — a repair (set the
    sole universal ancestor aside when counting roots) is easy but
    unpinned against real menus, and this slice ships the named blind spot.
+
+**Decided (human), 2026-10-24:** OQ1 (advise vs block) — explanation
+requested 2026-10-24, decision pending.
