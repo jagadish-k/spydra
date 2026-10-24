@@ -268,6 +268,11 @@ ancestor count`, roots sample = sorted canonical top-category paths) — no
    ("let `allow_patterns` and the dry-run confirm the count before
    approval"); a blocking mode changes the authoring pipeline's contract
    and would need an ADR. Not built.
+   **Decided (human, 2026-10-24): advise, keep.** Rationale on record:
+   the URL cap (2.5) already bounds the worst case at 20k queued URLs;
+   the two blind spots false-negate while a blocking mode would
+   false-positive legitimate menu-driven sites; revisit with
+   review-throughput data once 3.14 exists.
 2. The single-branch boundary (Decided) is deliberate: structural detection
    here, reachability projection in 2.10. Flagging it for the human because
    it is a chosen blind spot, not an accident — a one-branch catalogue's
