@@ -342,14 +342,18 @@ const ARBITRARY_COLOUR =
 
 test("components/ carries no raw palette classes — all 31 files scanned", () => {
   const dir = join(import.meta.dirname, "..", "src", "components");
+  // *.stories.tsx are Storybook documentation beside each component
+  // (ADR-0043), not components — the inventory counts the library only.
   const files = readdirSync(dir)
-    .filter((f) => f.endsWith(".tsx"))
+    .filter((f) => f.endsWith(".tsx") && !f.endsWith(".stories.tsx"))
     .sort();
   expect(files.length, "the coded library is 31 components + ThemeToggle").toBe(
     32,
   );
+  // Stories share the same rule though: they are scanned too.
+  const storyFiles = readdirSync(dir).filter((f) => f.endsWith(".stories.tsx"));
   const violations: string[] = [];
-  for (const file of files) {
+  for (const file of [...files, ...storyFiles]) {
     readFileSync(join(dir, file), "utf8")
       .split("\n")
       .forEach((line, i) => {
