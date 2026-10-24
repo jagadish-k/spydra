@@ -7,6 +7,6 @@ import js from "@eslint/js";
 // stays wired for whenever TS 7 gains parser support. tests/palette-guard
 // .test.ts is the real source of the "no raw palette classes" rule.
 export default [
-  { ignores: ["dist/", "node_modules/"] },
+  { ignores: ["dist/", "node_modules/", "storybook-static/"] },
   js.configs.recommended,
 ];

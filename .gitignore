@@ -34,6 +34,7 @@ htmlcov/
 node_modules/
 dist/
 .vite/
+storybook-static/
 *.tsbuildinfo
 
 # generated-artifact scratch: the COMMITTED artifacts are the .d.ts files
