@@ -214,23 +214,25 @@ test that fails without it.)_
 
 Half A — Figma:
 
-- [ ] All eleven §3a completions in the table above exist on 🧩 Components,
+- [x] All eleven §3a completions in the table above exist on 🧩 Components,
       each validated against `UI_STATES.md` §3a; Confidence and Validation
       badge verified complete; Button · Card · State pill · Logo set verified
       still complete.
-- [ ] `Metric tile State=unavailable` demonstrably exists **and** the five
+- [x] `Metric tile State=unavailable` demonstrably exists **and** the five
       Partial frames agree with it (no em-dash override fighting a component
-      that has no such variant).
-- [ ] `Skeleton` is size-tolerant: `Shape=Card` resized does not overflow —
+      that has no such variant). _(Measured: only two of the five frames
+      carried the override; both reconciled — see handoff log.)_
+- [x] `Skeleton` is size-tolerant: `Shape=Card` resized does not overflow —
       it holds the height it replaces (§1).
-- [ ] The seven unbuilt §3b sets exist with their full variant axes (listed
+- [x] The seven unbuilt §3b sets exist with their full variant axes (listed
       in Half A); the thirteen existing sets verified axis-by-axis against
       §3b, missing axes completed.
-- [ ] §4 constraints held: no instance child moved/resized; paint opacity
+- [x] §4 constraints held: no instance child moved/resized; paint opacity
       re-checked after any `createInstance` on variable-bound fills; no
       duplicate property names; override baseline captured **before** any
-      property addition and re-checked after.
-- [ ] Inventoried through `figma.root.children` via `use_figma`, never a bare
+      property addition and re-checked after. _(Two new constraints found and
+      recorded — COMPONENTS.md §4 items 4–5.)_
+- [x] Inventoried through `figma.root.children` via `use_figma`, never a bare
       `get_metadata`.
 
 Half B — code:
@@ -262,6 +264,69 @@ Docs:
 
 ## Handoff log
 
+- **Half A — Figma library (2026-10-24, session `04e77cfb`, this pass).**
+  Everything in the Half A acceptance list is done; live in file
+  `GeJPFXY4CicHBdzLMyXG2E`, page 🧩 Components. Node ids: Metric tile
+  `11:71` · Input `42:156` · Tag `43:146` · Progress bar `43:270` · Tab
+  `10:100` · Banner `11:84` · Selector field `11:142` · Sample cell `10:83` ·
+  Sparkline `10:93` · Skeleton `33:120` · Nav item `84:195` · Sidebar
+  `84:8306` · Topbar set `196:1280` · Toast `34:201` · Select `51:293` ·
+  Toggle `51:303` · Pagination set `196:1332` · Bulk action bar `199:1294` ·
+  Row action menu `199:1306` · Filter chip `199:1316` · Search field
+  `199:1339` · Modal `201:1381` · Tooltip `201:1406` · Line chart `201:1489`.
+  Library now 56 components · 352 variants; Screens page unchanged at 62
+  frames · 1,761 instances — no instance count moved.
+  - **Overrides reset: zero, measured.** Baselines captured before mutation
+    for the four property-risk groups (93 Input, 62 Topbar, 2 Pagination, 48
+    Metric tile instances; deterministic name+type+text hashes) and re-run
+    after the changes: 0/205 changed. One real reset was **caught and fixed
+    inside the pass**: the page-clone path drops `componentPropertyReferences`,
+    so the first swap of the Partial tiles to `State=Unavailable` lost their
+    Label overrides; re-wiring all six new Metric tile variants and
+    re-applying the two labels restored them (verified by text dump). Recorded
+    as §4 constraint 4 in `COMPONENTS.md`.
+  - **Early item 1 (Metric tile unavailable):** variant exists (3 tones ×
+    loaded/loading/unavailable); reconciled instances `98:9162` (Domains
+    Partial, Tone=Default) and `85:8582` (Schedules Partial, Tone=Attention).
+    **Conflict found, per instructions:** the contract says five Partial
+    frames override a Value to an em dash — only **two** do (Run monitor and
+    Reports Partials show all-live counters; Runs history Partial has no
+    counter strip). The two that exist are reconciled; the other three frames
+    needed nothing.
+  - **Early item 2 (size-tolerant Skeleton):** Card/Chart/Pane converted to
+    absolute children with SCALE constraints; `Shape=Card` instance resized to
+    190×96 holds all four bars inside bounds (numeric bounds check — this
+    agent cannot read images; the proof is the child-bounds dump in the
+    session, and `skeleton.png` among the evidence). `Shape=Row` = 36 px =
+    `--sp-row-comfortable`.
+  - **Design calls recorded** (all in COMPONENTS.md §5 too): Tag keeps `Tone`
+    (feedback semantics, like Banner/Toast); Input prefix/clear are BOOLEAN
+    properties, not variants (pure show/hide); §3a `State=pending` drawn as
+    `Result=Pending` / `Trend=Pending`; collapsed sidebar is a dot rail (Nav
+    item has no icons — it gained `Collapsed=No·Yes`); Modal is the dialog
+    card only, no scrim (no token-legal scrim colour exists — flag to the
+    human if a scrim token is wanted); Line chart series bind `viz/1`/`viz/2`.
+  - **Deliberate changes to existing instances (recorded, not silent):** the
+    two Schedules Pagination instances inherit First-page's ghosted prev
+    chevron and the root fill moving from hardcoded white to `bg/base` — both
+    are the state §3b specifies for first-page, and the fill is visually
+    identical on the page background. Input instances gained two hidden
+    prefix/clear children (invisible while the properties are false).
+  - **Screenshot evidence** (one per changed set, 24 PNGs) in
+    `/private/var/folders/4p/g8xnt_6168l0bqf8ylbj4jnc0000gp/T/opencode/figma-3.9-halfA/`:
+    metric-tile · input · tag · progress-bar · tab · banner · selector-field ·
+    sample-cell · sparkline · skeleton · nav-item · sidebar · topbar · toast ·
+    select · toggle · pagination · bulk-action-bar · row-action-menu ·
+    filter-chip · search-field · modal · tooltip · line-chart (`.png`). A
+    vision-capable review of these is the one check this pass could not do
+    itself.
+  - **§4 constraint-2 note:** nothing translucent was instanced into a
+    component this pass (Modal has no scrim; Line chart's pulse ring uses
+    node-level opacity inside the component, not paint-level opacity on an
+    instanced fill), so the `createInstance()` opacity drop had no surface to
+    bite — re-check when screens first instance Modal/Line chart.
+  - Six stray unnamed COMPONENT nodes (debris from a failed Row-action-menu
+    build attempt) were deleted; the page is 56 clean children.
 - planner — contract above. Read ADR-0025 §scope (both lists are copied
   there, not re-derived), `COMPONENTS.md` §4–5, `UI_STATES.md` §1–3,
   `DESIGN_SYSTEM.md`, spec 006 §1–3. Figma access verified this session;
@@ -274,18 +339,17 @@ Docs:
 
 ## Open questions
 
-- **§5's "17 still unbuilt" heading counts 16 rows** in its own table (and
-  BUILD_PLAN repeats "seventeen"). My reconciliation across all thirty-four
-  §3b sets also yields 16 unbuilt (the 7 in this slice's twenty plus the 9
-  screen-deferred ones — the fourteen-set table in ADR-0025 lists 14 sets
-  covering 9 further §3b components). The contract is unaffected — the
-  twenty sets are pinned by name from ADR-0025 §scope — but the Half A
-  re-measure of `COMPONENTS.md` should close the arithmetic and say which
-  count was right.
-- **Tag's `Tone=` axis** — §3a asks for removable · disabled; the one rule
-  says colour carries state. Implementer decides with the one rule in hand
-  (Tone is defensible only where it maps to state/feedback semantics, as
-  Banner and Toast's tones do) and records the call in `COMPONENTS.md`.
+- **§5's "17 still unbuilt" heading counts 16 rows** — **resolved by the Half
+  A re-measure: 16 was right.** 34 §3b sets − 20 in ADR-0025's shared scope −
+  14 screen-deferred sets covering 9 further components = 16 unbuilt before
+  this slice; after Half A, exactly those 9 remain (COMPONENTS.md §5). The
+  "17" and BUILD_PLAN's "seventeen" were both wrong; a docs pass can correct
+  BUILD_PLAN's mention.
+- **Tag's `Tone=` axis** — **resolved: Tone stays.** The one rule says colour
+  carries state, and Tag's tones map to feedback semantics exactly as Banner's
+  and Toast's tones do (success=verified, warning=stale, danger=broken);
+  removable/disabled arrived as orthogonal `Removable`/`Disabled` axes
+  (20 variants). Recorded in COMPONENTS.md §5.
 - **Spec 006 §2's counts are stale** ("39 components against §3's 51" —
   `COMPONENTS.md` measures 49). Not this slice's file; flagged for a docs
   pass rather than edited here.
