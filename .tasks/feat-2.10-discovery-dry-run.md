@@ -265,6 +265,52 @@ nowhere), `docs/BUILD_PLAN.md` (integrator ticks 2.10 in the PR).
   `RobotsCache`, `Fetchers.for_mode` and `Rejected` are all reusable
   as-is. First file for the implementer:
   `backend/spydra/discovery/dry_run.py`. To **spydra-backend**.
+- backend — `discovery/dry_run.py` built to the contract: robots first
+  through a fresh per-call `RobotsCache(static)` (`run_id=0`, cache dies
+  with the call; disallow and fail-closed → notice + **zero** page
+  requests), the one page fetch through the caller-resolved `page`
+  fetcher, `discover` on `fetched.final_url` at `depth=0`, `whole_tree`
+  on the full discovery before any sample view exists, the three-branch
+  projection (`f>1` geometric — exact integer division; `f=1` linear;
+  `f=0` plain `t`), and the five notice tokens as module-level constants
+  (`ROBOTS_DISALLOWED`, `ROBOTS_UNAVAILABLE`, `FETCH_FAILED`, `NON_200`,
+  `ZERO_LINKS_STATIC`) so 3.13/3.14 import them instead of retyping
+  strings. Empty-report edges: nothing fetched → `http_status=None`,
+  `final_url=""`, `fetch_path=page.path` (the posture the operator
+  configured, so the report still names it). Spec 004 §4 rewritten as
+  built (example gains `mega_menu`/`fetch_path`/`http_status`/`notices`,
+  samples absolute, rename line, estimate-semantics paragraph with the
+  formula); §3a's check reworded to the projection comparison. Three
+  deviations from the task file, none behavioural:
+  1. **The `nav a` example projects 177,155, not "≈195k".** The task's
+     own pinned formula gives `11·(11⁵−1)/10 = 177,155`; 195k is the
+     output of no variant (with the seed row: 177,156). Verified by
+     running it on the fixture site. The spec carries 177,155 — the
+     formula is the pinned thing, and an example that fails its own
+     arithmetic would be copied into screen copy.
+  2. **"`discovery/` never imports `scheduler/`" is unsatisfiable as
+     written**: `RobotsCache`, mandated for verbatim reuse three lines
+     later, lives in `spydra/scheduler/robots.py`. Read as "never imports
+     the claim-loop/render-mode world (`scheduler.crawl`)". The one
+     scheduler import is `scheduler.robots`, which itself imports only
+     domain + ports — no cycle (`scheduler.crawl` → `discovery.links`;
+     `discovery.dry_run` → `scheduler.robots`). The test-writer's import
+     allowlist needs `spydra.scheduler.robots` on it.
+  3. **`Backpressure` propagates** rather than becoming a notice: the
+     port contract says it is not a fetch failure and not the
+     supplier's doing, and a dry-run has no row to requeue — the caller
+     retries. The notice vocabulary stays the five tokens.
+     `make lint` clean; `make test-api` green, 1256 collected — exactly the
+     `required`-inertness parametrisation's one new case over 2.9's 1255.
+     A throwaway smoke (deleted) confirmed against the fixture site: exit
+     rules on `/shop/cutting/discs/` → products `PER_PAGE`, `next_page` 1,
+     the facet `deny_pattern` tally present, projection 55; `nav a` on
+     `/shop/cutting/` → the 11/3/3 finding and 177,155; the loud zero; a
+     404 → `non_200` with no discovery; the §3a comparison both ways
+     (re-attr: `nav.mega a`+`nav a` vs `nav.mega a` alone — 11 = 11, the
+     amended check says delete; load-bearing: exit rules minus the
+     subcategory rule — projection drops); exactly one page request and one
+     robots request per call. To **spydra-test**.
 
 ## Open questions
 

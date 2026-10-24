@@ -137,10 +137,19 @@ pagination; the menu is a faster route to the same URLs, not a different set.
 If depth 5 from the seed reaches them through listing pages, discovering them
 from the menu adds fragility and no coverage.
 
-Check this with the dry-run before building anything: crawl one category page
-with `subcategory_links` unset and compare `projected_urls_at_depth_5` against
-the run with it set. **If the two sets match, delete the rule.** Most of the
-time they do.
+Check this with the dry-run before building anything: run it on one
+category page with `subcategory_links` set and again with it unset, and
+compare `projected_urls_at_max_depth`. **Count equality can never prove set
+equality** — the "menu is a shortcut, not new coverage" case has identical
+reachable sets and different fan-outs, so whether two projections spell the
+same URL set is undecidable from one page, and always was. What the
+comparison decides safely: **a rule whose removal leaves the projection
+unchanged enqueues nothing the other rules don't — delete it** (first-match
+attribution makes this exact: links another rule already matched
+re-attribute, and the fan-out `t` is unchanged). A rule whose removal
+lowers the projection adds volume, and whether that volume is coverage or
+shortcut is the operator's call, informed by the mega-menu finding and the
+samples.
 
 ### Case B — reveal, then read
 
@@ -199,9 +208,12 @@ matched:
   "matched": {
     "product_links": {
       "count": 48,
-      "sample": ["/products/flap-disc-120g-115mm", "..."]
+      "sample": ["https://halden.test/shop/p/HT-CD-001", "..."]
     },
-    "next_page": { "count": 1, "sample": ["/products/abrasives?page=2"] },
+    "next_page": {
+      "count": 1,
+      "sample": ["https://halden.test/shop/cutting/discs?page=2"]
+    },
     "subcategory_links": { "count": 11, "sample": ["..."] }
   },
   "rejected": {
@@ -212,12 +224,59 @@ matched:
     },
     "off_host": { "count": 7, "sample": ["..."] }
   },
-  "projected_urls_at_depth_5": 2140
+  "mega_menu": {
+    "links": 11,
+    "paths": 11,
+    "branches": 3,
+    "levels": 3,
+    "roots": ["/shop/cutting", "/shop/finishing", "/shop/grinding"]
+  },
+  "projected_urls_at_max_depth": 2140,
+  "fetch_path": "static",
+  "http_status": 200,
+  "notices": []
 }
 ```
 
 This is where a facet trap is caught before it generates 40,000 URLs, and it
 is far cheaper than catching it mid-run.
+
+Samples are absolute fetchable URLs — an operator must be able to open one.
+The report is `spydra.discovery.dry_run.dry_run`, which makes exactly one
+robots request and at most one page request, through the fetcher the caller
+resolved for the domain's `render_mode`. A robots disallow or a fail-closed
+robots fetch (spec 002 §5) means **zero** page requests — the crawl would
+refuse the domain, and the report says so rather than silently reporting
+zero links. An AUTO domain gets no rendered second chance here (ADR-0039):
+a static fetch whose discovery accepts zero links is the one ambiguous case
+(broken selector or JS-dependent listing), and it is reported loudly rather
+than rendered around. The notice tokens: `robots_disallowed`,
+`robots_unavailable`, `fetch_failed`, `non_200` (rules run against a 403
+body are garbage — no discovery runs), and `zero_links_static`.
+
+`projected_urls_at_max_depth` — `max_depth`, not a hard-coded 5; the earlier
+name `projected_urls_at_depth_5` lied whenever a domain's cap differed — is
+a deterministic arithmetic **estimate** of the URLs a crawl from this one
+page would enqueue through `max_depth`, by the multiplicative fan-out model.
+From the report's own matched counts — `p` product links, `n` next-page
+links, `s` subcategory links — with `t = p + n + s` (total fan-out per
+listing) and `f = n + s` (fan-out into pages that expand further), products
+as leaves (a product template discovers nothing, spec 001 §1), and
+`D = max_depth`:
+
+```
+projected = t · (f^D − 1) / (f − 1)    f > 1
+projected = t · D                      f = 1
+projected = t                          f = 0
+```
+
+It is not a count of known URLs, not a set, and it cannot see dedupe or the
+site's closure: those live on pages it did not fetch. On Halden, `nav a` on
+`/shop/cutting/` (`t = 11`, `f = 11`, `D = 5`) projects 177,155 — the model
+says "if every page yields 11 new listings, by depth 5 you visit ~177k
+URLs", which is the hazard signal, not a prediction: the real crawl dedupes
+a finite site down to its 11 categories. The scoped leaf's rules
+(`t = 11`, `f = 1`) project 55. That gap is the whole point.
 
 The mega-menu guard joins the report: when a `subcategory_links` rule spans
 two or more branches from one page — a site-wide menu's shape, not one
@@ -226,7 +285,7 @@ container's tiles (§3a) — the report carries the finding from
 the deepest chain, so the operator scopes the selector before approval. Its
 blind spot is deliberate and named: a menu nested under a single top-level
 branch is invisible to structure, and §3a's "prefer the path already in the
-crawl" check — `projected_urls_at_depth_5` with the rule set and with it
+crawl" check — `projected_urls_at_max_depth` with the rule set and with it
 unset — is the backstop.
 
 ## 5. Acceptance
