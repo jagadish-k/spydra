@@ -273,6 +273,41 @@ touches these paths.
   first file `frontend/package.json` (in-container install first — nothing
   type-checks until SB exists); Makefile/CI edits ride along in the same
   slice per the patterns quoted above.
+- frontend — implemented, verified 2026-10-24. Installed in-container (all
+  `^`-majors per ADR-0017): `storybook 10.6.3` · `@storybook/react-vite
+10.6.3` · `@chromatic-com/storybook 5.6.0` · `chromatic 18.13.3` (CLI as
+  devDep — `make chromatic` runs `npx chromatic` in the web container, per
+  the contract's in-container-CLI call). **Addons list is string-form**
+  (`addons: ["@chromatic-com/storybook"]`) — the contract's "object form
+  only if needed" governs; no options needed (token flows via env, not
+  in-band). 31 `*.stories.tsx` files, **143 stories**, one per persistent
+  axis value plus exactly the matrix-test combinations (Modal
+  confirm×submitting, LineChart 2-series×live, Tag removable×disabled,
+  Spinner onBrand on a `bg-brand` patch); counts per component in the PR
+  body. One deviation from the owned-files list, forced by `make check`:
+  **`frontend/tests/design-system.test.tsx` edited** — its palette-guard
+  inventory asserted components/ holds exactly 32 `.tsx` files; stories
+  double it. The guard now excludes `*.stories.tsx` from the count but
+  still scans them for raw palette classes (stories follow rule 6 too).
+  Mechanical, intent preserved, noted here because the file was "not
+  owned". Verification: `tsc --noEmit` strict **clean** over the stories —
+  SB 10's shipped `.d.ts` and tsc 7 coexist fine, `skipLibCheck` already
+  on, no exclusions needed (the contract's one flagged risk did not
+  materialise). SB10 typed stories require `args` on any story whose
+  component has required props — Skeleton/Tooltip needed args+render or
+  args-with-children; caught by tsc, fixed. `make storybook-build`
+  succeeds in-container (Vite build 1.2s + SB build, output
+  `storybook-static/`, gitignored). `make storybook` served on
+  127.0.0.1:6006 — curl 200, dev `index.json` reports 143 stories, zero
+  errors in the log (in-browser addon/theme/code-panel checks are the
+  reviewer's by the task file's own acceptance list). `make lint` green
+  (prettier covers `.storybook/` and stories), `make test-web` **107/107
+  unchanged**, full `make check` green, `make agents` zero drift. Deviations
+  from contract: none besides the test file above; no BUILD_PLAN tick; no
+  host installs. **Hand off to `spydra-reviewer`** (test agent follows the
+  review per the umbrella's flow — this slice ships no component tests by
+  directive; the design-system.test.tsx edit is a guard adjustment, not a
+  new test).
 
 ## Open questions
 
