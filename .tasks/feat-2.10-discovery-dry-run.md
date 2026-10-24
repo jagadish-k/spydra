@@ -375,6 +375,31 @@ nowhere), `docs/BUILD_PLAN.md` (integrator ticks 2.10 in the PR).
      why, in server.py:274's trailing style.
      `make lint` clean; `make test-api` green — 1281 passed, 2 skipped
      (1283 collected, the review baseline, +0: assertion-only edits).
+- integrator — every gate leg green, individually: `make lint`;
+  `make types` no diff (no API route — expected); `make generated` clean;
+  `make test-api` 1281 passed, 2 skipped (exact); `make test-bff` 10/10;
+  `make test-web` 10/10 (2 files); `make test-render` 57/57. Scope
+  verified at the git level: `diff --stat feat/2.9-csv-seeds...HEAD` is
+  exactly the four owned files (task file, `dry_run.py` +234,
+  `test_dry_run.py` +839, spec 004); nothing under `scheduler/`,
+  `links.py`, `mega_menu.py`, fixtures or BUILD_PLAN in the diff; five
+  subjects, imperative, ≤ 72 (max 69). Phase-2 exit demo run live
+  in-container (cheap — the tests' own composition: `FixtureSite` on
+  loopback, `HttpxFetcher` for both ports): exit seed
+  `/shop/cutting/` + `EXIT_DISCOVERY` → `product_links` 1,
+  `subcategory_links` 3, no rejects, `mega_menu=None` (the scoped rule),
+  `notices=[]`, projection 484; discs leaf → products 10 (`PER_PAGE`),
+  `next_page` 1, `rejected[off_host]` 4, `rejected[deny_pattern:…]` 16,
+  projection 55. Both projections recompute by the pinned formula from
+  the reports' own counts — the exit line's dry-run half demonstrated,
+  not forced. BUILD_PLAN 2.10 ticked with a Done line; this entry
+  closes the handoff log. PR to `feat/2.9-csv-seeds` (stack top),
+  compare URL
+  `…/compare/feat/2.9-csv-seeds...feat/2.10-discovery-dry-run?expand=1`,
+  body left at `.tasks/pr-2.10-body.md`. With this slice **phase 2 is
+  complete**: the exit criteria are demonstrated by 2.3's and 2.4's exit
+  crawls (the crawl halves) plus this slice's acceptance tests and demo
+  (the dry-run half).
 
 ## Open questions
 

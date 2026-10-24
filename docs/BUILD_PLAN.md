@@ -633,12 +633,43 @@ from the task above it.
       rows imported, the run completed on exactly the two seeds, 2 ×
       `no_template`, domain stayed `active`. 1253 passed, 2 skipped.
 
-- [ ] `2.10` **Dry-run discovery as a library function** (spec 004 §4) —
+- [x] `2.10` **Dry-run discovery as a library function** (spec 004 §4) —
       what _would_ be enqueued, grouped by matching rule, with no writes.
       The seeds screen (`3.13`) and the review screen (`3.14`) both call it,
       which is why it is a function and not an endpoint.
       **Done when:** it reports counts per rule against `2.1`'s fixtures and
       provably writes nothing — asserted, not assumed.
+      **Done:** `discovery/dry_run.py` — one async function, one page fetch,
+      everything shareable shared: `discover` (the engine, `depth=0` on
+      `final_url`), its per-reason rejected tally **verbatim** (`off_host` /
+      `deny_pattern:<pattern>`), `whole_tree` on the full discovery before
+      samples are capped (2.6's finding reaches the report it was shaped
+      for), `_SAMPLES`, `RobotsCache` and `Fetchers.for_mode` at the caller.
+      `projected_urls_at_max_depth` is the renamed key — a deterministic
+      multiplicative-fan-out **estimate** (three closed-form branches:
+      geometric `f>1`, linear `f=1`, page total `f=0`), never a count of
+      known URLs; the rename happened while nothing consumed it. Robots is
+      fetch-and-check: a disallowing or 5xx robots.txt fails closed into a
+      notice with **zero** page requests, exactly the crawl's posture —
+      never trust-but-log, never a silent zero. `zero_links_static`: the
+      ambiguous 200-via-STATIC with zero accepted links reported loudly
+      (AUTO listings get no rendered second chance, ADR-0039); a rendered
+      zero is an unambiguous broken selector and stays silent. Writes
+      nothing, proven three ways: an AST import allowlist (with
+      `scheduler.robots` pinned in turn to stdlib + domain + ports, so the
+      purity is transitive), a counting fetcher (exactly one page request,
+      one robots when `respect_robots=True`), and a real-engine test
+      counting every `crawl` table (enumerated from `pg_tables`) before and
+      after. 27 tests, 11 mutations each red-then-green; spec 004 §4 gained
+      the estimate-semantics paragraph and a self-consistent example, §3a's
+      set-equality check reworded to the projection comparison (count
+      equality can never prove set equality from one page — a rule whose
+      removal leaves the projection unchanged enqueues nothing the others
+      don't, delete it). Demoed in-container against Halden: exit seed
+      `/shop/cutting/` → products 1, tiles 3, projection 484; the discs
+      leaf → products `PER_PAGE`, one next page, facets 16 into the deny
+      tally, 4 off-host, projection 55 — the dry-run half of the exit line.
+      1281 passed, 2 skipped.
 
 **Exit:** a category seed yields the full product set for the fixture site's
 catalogue without leaving the host and without a facet explosion; the dry-run
