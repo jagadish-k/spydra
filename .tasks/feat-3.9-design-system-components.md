@@ -239,21 +239,24 @@ Half B — code:
 
 - [x] 31 component files, one per file, props in / markup out, no fetching,
       no `forwardRef`, header comment naming the Figma component.
-- [ ] Every shipped variant set is covered by a Vitest test that fails
+- [x] Every shipped variant set is covered by a Vitest test that fails
       without it — each variant renders distinguishing markup.
-- [ ] **The mandated assertion:** `Skeleton shape="row"`'s height is
+      _(94 tests: 39 §3a + 49 §3b + 6 mandated/sweep; mutation-tested, six
+      mutations all red then green — see handoff log.)_
+- [x] **The mandated assertion:** `Skeleton shape="row"`'s height is
       `--sp-row-comfortable`, resolved against `design/tokens/tokens.css`
       (36 px) — a hardcoded height fails the test. (BUILD_PLAN 3.9,
       UI_STATES §6.)
-- [ ] `MetricTile` renders a `null` counter as the unavailable state (the
+- [x] `MetricTile` renders a `null` counter as the unavailable state (the
       partial-counter contract, ADR-0025).
-- [ ] No raw palette class anywhere in the new files (the existing
+- [x] No raw palette class anywhere in the new files (the existing
       `palette-guard` test scans `src/` — it must stay green) and both themes
       hold: components consume semantic utilities so `data-theme="dark"`
       needs no per-component branch; at least one test renders representative
       components under `data-theme="dark"`.
-- [ ] `tsc --noEmit` clean (strict, `noUncheckedIndexedAccess`); eslint +
-      prettier clean; `make check` green.
+- [x] `tsc --noEmit` clean (strict, `noUncheckedIndexedAccess`); eslint +
+      prettier clean; `make check` green. _(Re-verified after the tests
+      landed: full `make check` — 1285 backend + 104 web tests — green.)_
 
 Docs:
 
@@ -266,6 +269,68 @@ Docs:
 
 ## Handoff log
 
+- **Tests — the variant matrix (2026-10-24, this pass).** 94 new tests over
+  three files in `frontend/tests/`: `components-3a.test.tsx` (39) ·
+  `components-3b.test.tsx` (49) · `design-system.test.tsx` (6), plus the
+  shared `helpers/element-tree.ts`. Suite is 10 baseline + 94 = **104 green**;
+  `tsc --noEmit`, eslint, prettier and the full `make check` (1285 backend +
+  104 web) all clean. No production file touched; every component restored
+  byte-identical after mutation testing (`git status` shows only test files).
+  - **Harness (per the planner's Decided): zero new devDependencies.**
+    `renderToStaticMarkup` covers matrix arms; for the behavioural contract
+    (Tag onRemove, Banner/Toast action+dismiss, Tabs onChange, Pagination
+    bounds, Modal confirm/cancel, Checkbox/Toggle/FilterChip/SearchField/
+    RowActionMenu/BulkActionBar/TableHeaderCell/EmptyState/ErrorState) the
+    helper invokes the component as a function and **invokes the `onClick`
+    found in the element tree** — handlers fire with the right argument, not
+    just present. One exception: `Select` uses `useId` and cannot be invoked
+    outside a renderer, so its coverage is structural (open/closed/disabled/
+    error × value/placeholder × aria-selected); its `onChange` wiring is
+    untested until a DOM harness exists. Recorded as the one gap.
+  - **Matrix coverage:** every axis value §3 names for the 31 components
+    renders, and renders pairwise-distinctly (`expectDistinct`), plus the
+    documented marker per arm — em dash, ghosted chevrons (opacity-50 +
+    disabled attr), `aria-checked="mixed"`, `aria-sort`, the pending dash,
+    "no matches" muted ≠ error, danger `role="alert"`, filtered-empty's
+    action never `bg-brand`, Skeleton sheen children at absolute offsets.
+  - **The mandated assertions:** the Skeleton row test asserts the full
+    chain — `h-row-comfortable` in markup, no numeric/arbitrary height
+    utility beside it, `--spacing-row-comfortable: var(--sp-row-comfortable)`
+    in tailwind-theme, and a concrete px length in tokens.css. It does not
+    pin "36px": if the token changes deliberately the component follows and
+    the test should stay green (only a _literal_ in the component is red).
+    MetricTile `value={null}` → "—" and not an alert; `value={0}` renders
+    ">0<" so zero ≠ unavailable.
+  - **Both themes, mechanically:** all 31 render inside
+    `data-theme="dark"` with markup identical to light (no per-component
+    branch), every colour utility in the rendered library resolves to a
+    `--color-*`/`--text-*` declared in tailwind-theme (an unmapped token
+    silently paints nothing — UI_STATES §2), and every `--sp-*` token those
+    mappings reference carries a dark value in `tokens.css`, allowlisting
+    only the theme-constant brand ramp and `--sp-border-focus`.
+  - **Mutations — all red, then restored, then green (104/104):**
+    1. Skeleton `h-row-comfortable` → `h-9` (same 36px!) — mandated token
+       test RED.
+    2. MetricTile null ternary → `{value}` — em-dash test RED.
+    3. Tag `{removable && (` → `{true && (` — remove-control-absent RED.
+    4. Button danger arm → secondary's classes — three tests RED (variant
+       axis + BulkActionBar danger + Modal confirm-danger).
+    5. Card `bg-surface` → `bg-panel` (unmapped utility) — resolution sweep
+       RED.
+    6. `text-red-500` added to Tooltip — three guards RED (src-wide
+       palette-guard, components guard, resolution sweep).
+  - **Verdict on the implementer's two token flags — both correct as
+    documented deferrals, not defects to fix in this slice.** `bg-hover`:
+    `--sp-bg-hover` exists in both themes but maps to no `--color-hover`, so
+    `hover:bg-hover` would silently generate nothing; components correctly
+    used the mapped `hover:bg-subtle`, and the new resolution sweep now
+    makes any future unmapped utility a red test — but the fix (one mapping
+    line in `design/tokens/tailwind-theme.css` + swapping seven call sites)
+    edits `design/**`, which this slice explicitly does not own ("tokens are
+    not owned", planner Decided). Same for the `--sp-on-brand` candidate:
+    `text-brand-subtle` is theme-constant today and the dark sweep proves
+    the brand ramp needs no dark value. Both belong to the token pass the
+    handoff already flags; no test blocks on them.
 - **Half B — the React components (2026-10-24, this pass).** 31 files in
   `frontend/src/components/`, one per component, props in / markup out, no
   fetching, no `forwardRef`. Every file's first comment names its Figma
